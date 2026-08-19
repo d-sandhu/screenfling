@@ -12,7 +12,9 @@ and never submitting work unexpectedly.
 
 ScreenFling is **pre-alpha**. The product direction and technical feasibility
 have been researched, and the application scaffold plus automated quality gates
-are in place. Capture and destination routing are not implemented yet.
+are in place. The main-owned workflow state machine, destination data contract,
+runtime validation, and narrow preload bridge are also implemented. Capture and
+destination adapters are not implemented yet.
 
 The first reference implementation will be built on macOS, followed by Windows.
 Both are Tier 1 product targets. Linux is optional and may be explored later
@@ -62,6 +64,7 @@ automation of arbitrary applications.
 - strict TypeScript
 - React for visible application surfaces
 - Node.js in the Electron main process
+- Zod at untrusted IPC and adapter-data boundaries
 - electron-vite for the build pipeline
 - electron-builder for packaging
 - native helpers only after a measured Electron or operating-system API failure
@@ -75,6 +78,7 @@ replaced without rewriting the application.
 
 - [Product direction](docs/PRODUCT.md) — users, problem, scope, and principles
 - [Architecture](docs/ARCHITECTURE.md) — system boundaries and technical decisions
+- [Domain context](CONTEXT.md) — canonical product and routing vocabulary
 - [Roadmap](ROADMAP.md) — ordered milestones and acceptance gates
 - [Contributing](CONTRIBUTING.md) — how to participate while the project is pre-alpha
 - [Security policy](SECURITY.md) — reporting and security invariants

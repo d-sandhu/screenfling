@@ -9,6 +9,7 @@ Read these documents before proposing implementation work:
 
 - [Product direction](docs/PRODUCT.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Domain context](CONTEXT.md)
 - [Roadmap](ROADMAP.md)
 
 The [research reports](research/README.md) contain supporting evidence. They are

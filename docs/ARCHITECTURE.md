@@ -12,6 +12,10 @@ React, Node.js, electron-vite, and electron-builder. macOS and Windows are Tier
 introduced only when a measured requirement cannot be met through Electron or a
 documented operating-system API.
 
+Zod schemas validate data as it crosses untrusted IPC and adapter boundaries.
+TypeScript types describe trusted code; they are not treated as runtime input
+validation.
+
 This decision is supported by the
 [tech-stack validation](../research/tech-stack-validation.md) and
 [capture feasibility](../research/capture-platform-feasibility.md) research.
@@ -85,6 +89,12 @@ APIs.
 
 Every request includes an operation ID. The main process validates the sender,
 payload, operation, and allowed state transition.
+
+The preload exposes one function per allowed message and never exposes raw
+`ipcRenderer`. Each main-process handler accepts only the current main window's
+exact `WebContents`, its main frame, and the configured renderer document URL.
+Payload schemas are strict, so extra keys fail validation instead of being
+silently accepted.
 
 ### Renderers
 
@@ -176,13 +186,23 @@ idle
 -> idle
 
 any active state
--> cancelled | permission-blocked | failed
+-> result(cancelled | failed)
 -> idle
 ```
 
-A second shortcut while an operation is active is rejected or cancels according
-to an explicit rule. Stale renderer events, invalid coordinates, dead targets,
-and invalid transitions never advance the operation.
+Permission denial is a bounded `failed` reason (`permission-blocked`), not a
+separate state. This keeps every terminal outcome visible until the matching
+operation explicitly dismisses it.
+
+A second shortcut while an operation is active is rejected. Cancellation is a
+separate operation-ID-scoped action. Stale renderer events, invalid coordinates,
+dead targets, and invalid transitions never advance the operation.
+
+Successful Copy can be reported only after the clipboard-write phase. Stage can
+be reported only after image staging begins. Although `sent-verified` is part of
+the durable result vocabulary, the current state machine cannot produce it; a
+future verified Send implementation must add its own explicit phase and evidence
+gate.
 
 ## Destination model
 
@@ -242,7 +262,8 @@ until several adapters demonstrate which contracts are stable.
 
 Terminal or application automation uses argument-array subprocess APIs, not
 shell-concatenated commands. Notes are data, never code. The first note format is
-one line of printable text; C0 controls and newlines are rejected or normalized.
+at most 500 Unicode code points on one line; Unicode controls and line separators
+are rejected. Destination identifiers reject those characters as well.
 Subprocesses have timeouts, capped output, and explicit error mapping.
 
 ## Result semantics
