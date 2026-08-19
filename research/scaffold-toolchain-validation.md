@@ -4,6 +4,12 @@ Research date: 2026-08-19. Scope: Electron Forge stable, TypeScript/Webpack,
 React, package metadata, tests, packaging, and CI. No scaffold was run and no
 dependencies were changed.
 
+Status: Superseded by the measured
+[build-toolchain decision](forge-version-decision.md). The Forge facts remain
+useful research, but the application scaffold now uses stable electron-vite and
+electron-builder because the compatible graph supports TypeScript 7 and audits
+cleanly.
+
 ## Verified facts
 
 - Electron's current tutorial recommends `create-electron-app` when a
