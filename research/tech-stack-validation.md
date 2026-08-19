@@ -4,7 +4,10 @@ Research date: 2026-08-19
 
 Status: Supporting research snapshot. Canonical decisions live in
 [the product direction](../docs/PRODUCT.md),
-[architecture](../docs/ARCHITECTURE.md), and [roadmap](../ROADMAP.md).
+[architecture](../docs/ARCHITECTURE.md), and [roadmap](../ROADMAP.md). Its
+original Forge/Webpack packaging recommendation is superseded by the measured
+[build-toolchain decision](forge-version-decision.md); the core stack decision
+remains current.
 
 Scope: a serious open-source desktop application with first-class macOS and Windows support. Linux is optional and explicitly deferred. Ghostty is one possible destination adapter, not a product dependency.
 

@@ -29,6 +29,19 @@ The most useful pre-alpha contributions are:
 Features in the roadmap's demand-driven or optional sections should begin with a
 problem statement and evidence, not a large implementation.
 
+## Dependency policy
+
+Use the latest mutually compatible stable releases. Pin direct dependencies and
+toolchain inputs exactly so CI and local builds resolve the same graph. Do not
+adopt prereleases merely because their version number is higher; document any
+intentional hold below the latest stable release with the compatibility boundary
+that requires it, then revisit that boundary when the owning tool adds support.
+
+Current holds are deliberate: Vite 7 and `@vitejs/plugin-react` 5 match
+electron-vite 5's declared peer range, while `@types/node` 24 matches the Node 24
+LTS runtime. The [build-toolchain decision](research/forge-version-decision.md)
+records the measured Vite boundary.
+
 ## Before a large change
 
 Open an issue before work that:
@@ -75,10 +88,29 @@ Depending on the change, that may include:
 Wrong-target tolerance is zero. An uncertain dispatch must not automatically
 retry because that may duplicate input.
 
-The exact development commands will be added after the application scaffold is
-created. The scaffold change must install and document the anti-slop plugin with
-the chosen package manager. Do not invent setup instructions before they can be
-tested from a clean checkout.
+Use the Node.js version in `.node-version` and the npm version declared in
+`package.json` from a clean checkout:
+
+```bash
+npm ci
+npm start
+```
+
+The first `npm start` downloads the pinned Electron development binary through
+Electron's checksum-verifying installer. Electron 42 and newer intentionally do
+not perform that download during `npm ci`.
+
+Before opening a pull request, run:
+
+```bash
+npm run check:all
+```
+
+That command verifies formatting, Oxlint and the anti-slop plugin, strict
+TypeScript, unit tests, the production build, and a packaged application for the
+current host. Local macOS directory packages use an explicit ad-hoc signature so
+they can be launched without a Developer ID; release artifacts still require the
+signed and notarized path tracked in Milestone 2.
 
 ## Documentation
 

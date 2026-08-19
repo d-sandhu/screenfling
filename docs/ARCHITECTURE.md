@@ -7,9 +7,10 @@ Last reviewed: 2026-08-19
 ## Decision
 
 ScreenFling will begin as one Electron application using strict TypeScript,
-React, and Node.js. macOS and Windows are Tier 1 product targets delivered in
-sequence. Linux is optional. Native code is introduced only when a measured
-requirement cannot be met through Electron or a documented operating-system API.
+React, Node.js, electron-vite, and electron-builder. macOS and Windows are Tier
+1 product targets delivered in sequence. Linux is optional. Native code is
+introduced only when a measured requirement cannot be met through Electron or a
+documented operating-system API.
 
 This decision is supported by the
 [tech-stack validation](../research/tech-stack-validation.md) and
@@ -95,6 +96,11 @@ run with:
 - `sandbox: true`;
 - a restrictive Content Security Policy;
 - navigation and unrequested window creation denied.
+
+Packaged renderer assets are served from a standard, secure `screenfling://`
+scheme whose handler is restricted to the bundled renderer directory. Path
+traversal is rejected, and Electron's legacy elevated `file://` privileges are
+disabled at package time.
 
 The region overlay receives only the frozen image and display-local data needed
 to draw a selection. Destination automation never runs in a renderer.
@@ -343,10 +349,13 @@ or the project makes a separate explicit decision to adopt them.
 
 ## Distribution direction
 
-Electron Forge is the initial packaging tool. Start with its stable TypeScript
-and Webpack path; the Forge Vite plugin remains officially experimental at the
-time of this decision. CI runs shared checks on every change and native packaging
-checks on macOS and Windows.
+electron-vite is the initial development and build tool, paired with
+electron-builder for packaged applications. This uses the current stable,
+mutually compatible releases rather than Forge 7's advisory-bearing build graph
+or the pre-release Forge 8 line. The decision and reproduced audit evidence are
+recorded in the [build-toolchain report](../research/forge-version-decision.md).
+CI runs shared checks on every change and native packaging checks on macOS and
+Windows.
 
 Release artifacts must eventually be signed, with macOS notarization and Windows
 code signing treated as product work rather than release-day cleanup.

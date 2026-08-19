@@ -45,11 +45,18 @@ remain useful.
 
 ### [Phase 1 scaffold and toolchain validation](scaffold-toolchain-validation.md)
 
-Validates the stable Electron Forge TypeScript/Webpack scaffold, React
-integration, package metadata, packaging lifecycle, CI constraints, and where
-the anti-slop installation belongs. It records Forge 7.x as the current stable
-line and keeps the Vite plugin out of the initial scaffold while it remains
-experimental.
+Records the original Electron Forge TypeScript/Webpack validation, React
+integration, packaging lifecycle, CI constraints, and where the anti-slop
+installation belongs. Its Forge recommendation is superseded by the measured
+build-toolchain decision below; the underlying Forge facts remain historical
+evidence.
+
+### [Electron build-toolchain decision](forge-version-decision.md)
+
+Reproduces clean-install audits across Forge 7/Webpack, Forge 8 alpha, Forge
+7/Vite, and stable electron-vite/electron-builder. It supersedes the original
+Forge scaffold recommendation after the stable Forge graph exposed development
+and packaging advisories and failed against TypeScript 7.
 
 ## Research standard
 

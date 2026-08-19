@@ -47,7 +47,7 @@ or platforms.
 
 ## Milestone 0 — feasibility gates
 
-Status: **Next**
+Status: **In progress**
 
 Goal: retire the two highest-risk technical questions before building polished
 product UI.
@@ -112,14 +112,14 @@ pass as **dispatched-unverified**; it cannot claim verified staging.
 
 ### Milestone 0 deliverables
 
-- minimal Electron/TypeScript project scaffold;
-- strict compiler, formatter, test configuration, and Oxlint with the vendored
+- [x] minimal Electron/TypeScript project scaffold;
+- [x] strict compiler, formatter, test configuration, and Oxlint with the vendored
   generic anti-slop rules enabled at error severity;
-- capture benchmark harness and fixture grid;
-- destination adapter contract and routing harness;
-- recorded results with hardware, OS, terminal, and agent versions;
-- an architecture decision naming the first supported adapter;
-- a go/no-go decision for the alpha.
+- [ ] capture benchmark harness and fixture grid;
+- [ ] destination adapter contract and routing harness;
+- [ ] recorded results with hardware, OS, terminal, and agent versions;
+- [ ] an architecture decision naming the first supported adapter;
+- [ ] a go/no-go decision for the alpha.
 
 Do not build settings, history, remote transfer, browser integration, native
 helpers, or a public plugin system during these spikes.

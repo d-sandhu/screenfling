@@ -1,0 +1,15 @@
+.agent/
+.agents/
+.claude/
+.codex/
+.continue/
+.cursor/
+.gemini/
+.opencode/
+.pi/
+.roo/
+.windsurf/
+.webpack/
+node_modules/
+out/
+tools/oxlint/anti-slop/

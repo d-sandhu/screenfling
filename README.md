@@ -11,7 +11,8 @@ and never submitting work unexpectedly.
 ## Status
 
 ScreenFling is **pre-alpha**. The product direction and technical feasibility
-have been researched; implementation has not started.
+have been researched, and the application scaffold plus automated quality gates
+are in place. Capture and destination routing are not implemented yet.
 
 The first reference implementation will be built on macOS, followed by Windows.
 Both are Tier 1 product targets. Linux is optional and may be explored later
@@ -61,7 +62,8 @@ automation of arbitrary applications.
 - strict TypeScript
 - React for visible application surfaces
 - Node.js in the Electron main process
-- Electron Forge for packaging
+- electron-vite for the build pipeline
+- electron-builder for packaging
 - native helpers only after a measured Electron or operating-system API failure
 
 Electron provides the capture, display, clipboard, shortcut, and window

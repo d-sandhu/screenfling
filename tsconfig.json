@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["node"]
+  },
+  "include": [".github/**/*.ts", "*.config.mts", "*.config.ts", "src/**/*.ts", "src/**/*.tsx"]
+}
