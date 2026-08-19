@@ -3,6 +3,11 @@ import { join } from "node:path";
 import { app, BrowserWindow } from "electron";
 
 import { registerAppProtocol } from "./app-protocol";
+import {
+  isCapturePrototype,
+  reportCapturePrototypeFailure,
+  startCapturePrototype,
+} from "./capture-prototype";
 import { registerWorkflowIpc } from "./ipc";
 import { createMainWindowOptions } from "./window-options";
 import { readDevRendererUrl } from "./renderer-url";
@@ -47,6 +52,14 @@ function createWindow(): BrowserWindow {
 
 void app.whenReady().then(() => {
   registerAppProtocol();
+  if (isCapturePrototype()) {
+    const preload = join(__dirname, "../preload/index.js");
+    void startCapturePrototype(preload).catch((cause) => {
+      const error = cause instanceof Error ? cause : new Error("Unknown capture failure.");
+      reportCapturePrototypeFailure(error);
+    });
+    return;
+  }
   registerWorkflowIpc(getMainWebContents, rendererUrl, workflow);
   createWindow();
 
