@@ -1,572 +1,363 @@
-# ScreenFling Roadmap
+# Roadmap
 
-**Capture what you see. Send it to the right coding agent. Keep working.**
+Status: Active pre-alpha plan
 
-This document is the working product and engineering roadmap for ScreenFling. It is intended to make the project understandable without relying on prior chat context.
+Last reviewed: 2026-08-19
+
+This roadmap turns ScreenFling's [product direction](docs/PRODUCT.md) into
+testable releases. It intentionally has no calendar promises. A milestone moves
+forward only when its exit criteria are met.
+
+## Direction at a glance
+
+| Horizon | Outcome |
+| --- | --- |
+| **Now** | Prove capture quality and exact destination staging independently. |
+| **Next** | Ship one narrow macOS alpha that performs the complete handoff. |
+| **Then** | Harden the macOS release and add a second destination surface. |
+| **After that** | Deliver the same core product contract on Windows. |
+| **Demand-driven** | Managed agent sessions, browser context, remote delivery, and multi-capture tasks. |
+| **Optional** | Linux experiments without a parity or release commitment. |
+
+The first release is implemented on macOS, but the architecture and acceptance
+contract are cross-platform. Windows is a Tier 1 follow-up, not an afterthought.
+Linux is not on the committed path.
+
+## Release rule
+
+Each milestone must provide a coherent user outcome. Engineering work such as
+capture, clipboard, or adapter discovery may land in smaller branches, but those
+pieces do not become separate product milestones unless they are useful by
+themselves.
 
-ScreenFling is an open-source, cross-platform desktop tool for capturing visual context and routing it to the correct AI coding agent or chat session with as little friction as possible.
+The expansion rule is:
 
-## Product goal
+~~~text
+prove the primitive
+-> ship one complete workflow
+-> measure real use
+-> harden
+-> port
+-> expand
+~~~
 
-The core problem is not taking a screenshot. Operating systems and AI tools already do that well.
+If the alpha is not meaningfully better than an operating-system screenshot plus
+manual paste, improve or reconsider the handoff before adding more destinations
+or platforms.
 
-The problem is the handoff:
+## Milestone 0 — feasibility gates
 
-1. Notice a visual issue.
-2. Capture the right region, window, page, or element.
-3. Add only the context that matters.
-4. Identify the correct agent, project, worktree, terminal pane, browser chat, or desktop conversation.
-5. Deliver the image and note in the format that destination expects.
-6. Keep working without managing screenshot files or repeatedly switching windows.
+Status: **Next**
 
-The long-term product should feel like this:
+Goal: retire the two highest-risk technical questions before building polished
+product UI.
 
-```text
-capture -> add context -> choose destination -> stage or send
-```
+### Gate A: capture harness
 
-The user should not have to care whether the destination requires a native clipboard image paste, a browser attachment, a local file, or a temporary remote file transfer.
+Build a disposable Electron harness that:
 
-## Product principles
+1. captures one display at full physical resolution;
+2. records the actual returned image dimensions;
+3. displays the frozen image in a selection overlay;
+4. maps a display-local selection to image pixels using measured ratios;
+5. crops the region and writes an in-memory PNG to the image clipboard;
+6. records capture, overlay-ready, crop, and clipboard timings separately.
 
-### Clipboard-first
+Test Retina/scaled displays, mixed-scale multiple displays, negative origins,
+rotation, display reconnect, sleep/wake, cancellation, and permission denial.
 
-Captures should behave like clipboard content, not like files the user must manage.
+Gate A passes when:
 
-For local destinations that support image paste, ScreenFling should put image data on the operating-system clipboard and use the destination's native paste behavior.
+- every crop edge is correct within one physical pixel;
+- the overlay never appears in the captured result;
+- warm shortcut to interactive overlay is p95 <= 150 ms on the reference host,
+  or profiling identifies a credible path to that target;
+- selection release to clipboard-ready is p95 <= 150 ms;
+- cancel and failure leave the previous clipboard unchanged;
+- 200 capture/cancel cycles show no monotonic image, window, or listener growth;
+- all checks run in a packaged application with a stable identity.
 
-Files should be created only when required by a destination, such as a remote CLI session. Those files should be ephemeral and cleaned up automatically.
+Compare Electron's full-resolution source-thumbnail path with a first-frame
+display-media path only if necessary. Native ScreenCaptureKit is considered only
+if both practical Electron paths fail the agreed quality or latency target.
 
-Permanent saving should be optional.
+### Gate B: exact-routing harness
 
-### Local-first
+Build a separate developer harness around the destination contract in
+[ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-The core workflow should require:
+Evaluate one documented terminal control surface that provides an exact stable
+locator and targeted input. Ghostty, tmux, and WezTerm are current candidates.
+The choice must be based on target safety, supported input, verification,
+maintainability, and contributor reach—not on which terminal is currently
+focused or installed on one developer's computer.
 
-- no ScreenFling account;
-- no hosted backend;
-- no cloud image service;
-- no telemetry by default.
+Gate B passes when:
 
-Sensitive screenshots should stay on the user's machine unless the selected destination itself sends them elsewhere.
-
-### Cross-platform
-
-macOS, Windows, and Linux are product targets.
-
-Cross-platform does not mean pretending every operating system provides identical capabilities. ScreenFling should detect what the current platform and destination can safely support and expose only those actions.
-
-### Stage by default
-
-There are three delivery levels:
-
-- **Copy** — prepare the capture and place it on the clipboard.
-- **Stage** — place the capture and note into the selected destination, but do not submit.
-- **Send** — stage and submit.
-
-Stage should be the normal automated workflow.
-
-Send should only be enabled for adapters that can reliably identify the intended destination, verify the composer or input state, and know the destination-specific submit behavior.
-
-### TypeScript-first, native where justified
-
-Most of ScreenFling should be written in TypeScript.
-
-Native code should exist only where Electron and standard Node.js APIs cannot reliably provide the required operating-system integration.
-
-The planned native helper is Rust, initially focused on precise desktop UI automation such as macOS Accessibility and Windows UI Automation.
-
-### Small vertical slices
-
-Each implementation branch should prove one user-visible capability end to end.
-
-Avoid building generalized adapter systems, plugin frameworks, cloud services, or other abstractions before a real use case requires them.
-
-## Planned technical direction
-
-The current direction is:
-
-- **TypeScript** as the primary language;
-- **Electron** for the cross-platform desktop shell and system integration already exposed by Electron;
-- **React** for small desktop UI surfaces such as capture overlays, previews, target selection, history, and settings;
-- **Node.js** in the Electron main process for file, process, terminal, SSH, and local IPC work;
-- **Rust** as a small standalone native helper only for operating-system automation that cannot be implemented reliably through Electron;
-- **Chromium extension** later for browser-specific context such as URL, viewport, selected DOM element, and full-page capture;
-- **GitHub Actions** for cross-platform validation and release automation.
-
-The initial repository should stay simple. Do not split the code into many packages until there are multiple real responsibilities that benefit from separation.
-
-## Delivery strategies
-
-ScreenFling should hide destination-specific paste behavior from the user.
-
-Examples:
-
-### Claude Code, local
-
-Use the image clipboard and Claude Code's native image-paste shortcut.
-
-Current expected behavior:
-
-- macOS/Linux: `Ctrl+V` for image paste;
-- Windows: `Alt+V` for image paste.
-
-### Codex CLI, local
-
-Use the image clipboard and Codex's native image-paste behavior, currently `Ctrl+V`.
-
-### Browser and desktop chat composers
-
-Use the operating system's normal graphical paste behavior when supported:
-
-- macOS: typically `Cmd+V`;
-- Windows/Linux: typically `Ctrl+V`.
-
-A tested browser or desktop adapter may eventually attach the image directly rather than synthesizing a paste.
-
-### Remote CLI sessions
-
-A local clipboard generally cannot be read by a process running over SSH or another remote boundary.
-
-For those destinations ScreenFling may:
-
-1. materialize the capture as a temporary local file;
-2. copy it to an ephemeral remote path;
-3. insert or reference that remote image in the target agent session;
-4. clean up the temporary files later.
-
-The user should not need to manage those files manually.
-
-## Destination capabilities
-
-Adapters should expose capabilities rather than pretending every target supports every action.
-
-Conceptually:
-
-```ts
-type DestinationCapabilities = {
-  activate: boolean;
-  exactSession: boolean;
-  image: boolean;
-  text: boolean;
-  filePath: boolean;
-  verifyAttachment: boolean;
-  submit: boolean;
-};
-```
-
-The UI should use those capabilities to decide whether the destination supports Copy, Stage, or Send.
-
-## Milestone 1 — capture to clipboard
-
-**Goal:** prove that ScreenFling can capture visual content quickly and reliably without adding routing complexity yet.
+- 100 alternating dispatches across two instrumented targets produce zero
+  wrong-target events;
+- no test sends Enter or changes an unselected target;
+- dispatch does not steal focus;
+- a target closed or replaced after selection is rejected as stale;
+- duplicate names and working directories do not affect routing identity;
+- quotes, backslashes, Unicode, and key-like words remain literal note data;
+- newlines and control characters are rejected or normalized;
+- denied automation permission produces guidance and no fallback automation;
+- uncertainty causes no automatic retry or duplicate attachment;
+- the clipboard remains usable as a manual fallback.
+
+Run at least 30 observed Stage trials for each agent/version combination proposed
+for support. Record attachment behavior honestly. A surface without read-back may
+pass as **dispatched-unverified**; it cannot claim verified staging.
+
+### Milestone 0 deliverables
+
+- minimal Electron/TypeScript project scaffold;
+- strict compiler, formatter, test configuration, and Oxlint with the vendored
+  generic anti-slop rules enabled at error severity;
+- capture benchmark harness and fixture grid;
+- destination adapter contract and routing harness;
+- recorded results with hardware, OS, terminal, and agent versions;
+- an architecture decision naming the first supported adapter;
+- a go/no-go decision for the alpha.
+
+Do not build settings, history, remote transfer, browser integration, native
+helpers, or a public plugin system during these spikes.
+
+## Milestone 1 — useful macOS alpha
+
+Status: **Blocked by Milestone 0**
+
+Goal: ship the smallest version that proves ScreenFling is more than a screenshot
+tool.
 
 User flow:
 
-```text
-launch ScreenFling
--> press global shortcut
--> drag a region
--> release
--> PNG is available on the operating-system clipboard
--> paste manually into an image-capable destination
-```
+~~~text
+global shortcut
+-> frozen one-display region selection
+-> optional single-line note
+-> choose one exact local destination
+-> image copied to clipboard
+-> image and note staged without submission
+-> review or explicitly reveal destination
+~~~
 
 Scope:
 
-- Electron + TypeScript application scaffold;
-- background/tray application lifecycle as needed;
-- global capture shortcut;
-- region selection overlay;
-- cancel with `Esc`;
-- capture selected pixels;
-- place PNG on the image clipboard;
-- return to idle cleanly;
-- no permanent screenshot saving by default.
+- background application lifecycle and configurable global shortcut;
+- macOS Screen Recording and destination-automation permission onboarding;
+- accurate one-display region selection;
+- image clipboard output with no permanent file by default;
+- optional sanitized single-line note;
+- live destination picker backed by the adapter selected in Milestone 0;
+- exact-target revalidation immediately before Stage;
+- no Enter, no Send, no automatic focus change;
+- copied, dispatched-unverified, failed, and cancelled result states;
+- explicit Reveal action;
+- clipboard fallback after unsupported or failed Stage;
+- local timing and failure diagnostics that exclude user content;
+- packaged, signed development builds suitable for repeated dogfooding.
+
+Exit criteria:
+
+- zero wrong-target events in automated and human acceptance runs;
+- capture and routing continue to meet the Milestone 0 gates;
+- permission denial and revocation have recoverable, actionable UI;
+- 200 complete or cancelled workflows show no monotonic resource growth;
+- crash recovery leaves no overlay, stuck shortcut, or destination mutation;
+- users can complete the workflow without learning implementation-specific paste
+  behavior;
+- repeated dogfooding shows a meaningful time or reliability improvement over
+  screenshot plus manual paste.
+
+No alpha claim may imply the destination attached the image unless the chosen
+adapter can read that state back.
+
+## Milestone 2 — macOS public alpha
+
+Status: **Later**
+
+Goal: make the validated workflow installable, understandable, and dependable
+for contributors outside the original development environment.
+
+Scope:
+
+- signed and notarized installer;
+- first-run onboarding and permission diagnostics;
+- shortcut-conflict handling;
+- stable settings and adapter configuration;
+- accessibility, keyboard navigation, reduced motion, and screen-reader checks;
+- a second exact destination surface chosen from demonstrated demand;
+- explicitly named favorite targets with stale-target protection;
+- versioned compatibility fixtures for supported terminals and agents;
+- CI, release checks, contribution documentation, and issue templates;
+- a documented local diagnostics export with content redaction.
 
-Explicitly out of scope:
+Exit criteria:
 
-- destination picker;
-- agent detection;
-- automatic paste;
-- automatic submit;
-- Rust/native helper;
-- browser extension;
-- SSH;
-- cloud backend;
-- screenshot history beyond what is strictly needed to debug the capture flow.
+- a clean machine can install, grant permissions, complete the first Stage, and
+  uninstall without manual residue cleanup;
+- compatibility is stated by tested OS, terminal, and agent version ranges;
+- every adapter passes the shared zero-wrong-target suite;
+- application startup, idle CPU, memory, and capture latency are recorded for
+  release artifacts;
+- at least one contributor can build and test the project from the documented
+  setup without maintainer intervention.
 
-Success criteria:
+## Milestone 3 — Windows alpha
 
-1. Capture works repeatedly without leaking windows or slowing down.
-2. The resulting image can be manually pasted into Claude Code, Codex CLI, and normal graphical image inputs on supported local environments.
-3. `Esc` cancels without modifying the clipboard.
-4. Capture does not permanently save screenshots unless explicitly requested in a future feature.
-5. The interaction feels close to the speed of the operating system's built-in screenshot tool.
+Status: **Later, Tier 1**
 
-Performance targets should be measured, not claimed before profiling. Initial targets:
+Goal: deliver the same core product promise on Windows through native validation,
+not assumptions based on macOS behavior.
 
-- warm shortcut to visible selection UI: under 100 ms p95;
-- selection release to clipboard-ready image: under 200–250 ms p95;
-- idle CPU near zero;
-- no sustained memory growth across repeated captures.
+Scope:
 
-## Milestone 2 — destination picker and simple staging
+- packaged region capture and image clipboard;
+- per-monitor and mixed-DPI coordinate correctness;
+- global-shortcut registration and conflict UX;
+- required Windows permission and security-product guidance;
+- one exactly addressable or cooperative local destination adapter;
+- the same Copy/Stage semantics and clipboard fallback;
+- Windows installer, signing plan, CI, and native acceptance host.
 
-**Goal:** prove the product's real differentiator: routing the capture instead of merely creating it.
+Exit criteria:
 
-User flow:
+- the shared capture and routing suites pass on supported Windows versions;
+- mixed-DPI crops remain correct within one physical pixel;
+- wrong-target count remains zero;
+- the selected Windows adapter has an explicit identity and verification model;
+- unsigned-development and signed-release behavior are both tested;
+- macOS behavior does not regress as platform services are generalized.
 
-```text
-capture
--> small target chooser
--> choose destination
--> ScreenFling stages the image there
-```
+Windows is not considered supported merely because Electron launches there.
 
-Start with a small set of local destinations. Do not attempt universal agent discovery yet.
+## Milestone 4 — stable cross-platform core
 
-Potential initial targets:
+Status: **Later**
 
-- Clipboard only;
-- Claude Code;
-- Codex CLI;
-- a known terminal target such as tmux or WezTerm if it provides a reliable addressing mechanism.
+Goal: establish a reliable macOS and Windows foundation suitable for a first
+stable release.
 
-ScreenFling should use each destination's native image-paste method instead of pasting a file path when the destination supports image clipboard input.
+Scope is driven by alpha evidence and may include:
 
-Success criteria:
+- stable capture and destination contracts;
+- at least one supported exact destination path per Tier 1 platform;
+- reliable update and rollback policy;
+- signed release automation;
+- security review of IPC, subprocess, clipboard, and temporary-data boundaries;
+- compatibility and performance regression suites;
+- documented support matrix and deprecation policy.
 
-1. The correct selected target receives the image.
-2. No destination is submitted automatically.
-3. Failure leaves the user with the image still available on the clipboard.
-4. Routing behavior is adapter-specific but the user experience is consistent.
+Exit criteria:
 
-## Milestone 3 — exact coding-agent sessions
+- both Tier 1 platforms meet the same user-visible product contract;
+- release artifacts are reproducible enough to diagnose and replace;
+- unsupported capability combinations fail closed to Copy;
+- the project can maintain its declared terminal and agent compatibility ranges;
+- no native helper exists unless its measured gate and security boundary are
+  documented.
 
-**Goal:** route to a specific live development context, not merely an application.
+## Milestone 5 — stronger destinations
 
-A target should eventually be able to show useful identity such as:
+Status: **Demand-driven**
 
-```text
-Codex
-half-it
-daily-social worktree
-```
+Goal: improve identity or verification where real users need it.
 
-or:
+Candidate work:
 
-```text
-Claude Code
-treasuretrash
-main
-```
+- tmux or WezTerm adapters with pane-level addressability and read-back;
+- a managed Codex adapter using exact thread IDs and structured local-image input;
+- cooperative registration from agent sessions;
+- richer confidence-bearing repository and worktree labels;
+- adapter-specific verified Stage or Send.
 
-Possible session sources:
+A managed agent adapter is a different capability from automating an arbitrary
+existing terminal. It may expose verified Send when ScreenFling owns the session
+identity and receives structured completion events.
 
-- tmux panes;
-- WezTerm panes;
-- known terminal processes;
-- explicitly named targets;
-- later, sessions launched and managed through ScreenFling.
+The public plugin API remains deferred until multiple maintained adapters prove
+which discovery, capability, and lifecycle contracts are stable.
 
-Useful metadata may include:
+## Milestone 6 — workflow expansion
 
-- agent type;
-- process ID;
-- working directory;
-- Git repository;
-- branch/worktree;
-- local or remote environment.
+Status: **Demand-driven**
 
-Do not build a terminal emulator as part of this milestone. Prefer mature terminal control surfaces and existing PTY libraries where needed.
+Choose the next workflow from observed use rather than implementing all of these:
 
-Success criteria:
+### Browser context
 
-1. Multiple simultaneous agent sessions can be distinguished.
-2. A capture consistently reaches the chosen session.
-3. Project and branch/worktree labels are accurate enough to reduce target-selection mistakes.
+Potentially add visible viewport, selected element, URL, dimensions, and narrowly
+scoped DOM context through a separate browser extension. Permissions must be
+minimal and visible.
 
-## Milestone 4 — remote development
+### Remote development
 
-**Goal:** make local visual capture work with agents running in remote environments.
+Potentially add SSH, WSL, or container staging using owner-only temporary files,
+explicit endpoint identity, secure transfer, durable cleanup leases, and cleanup
+after confirmed consumption or a visible time-to-live.
 
-Potential environments:
+### Multi-capture tasks
 
-- SSH;
-- WSL;
-- remote VPS or workstation;
-- dev containers where clipboard access is unavailable.
+Potentially group several captures and notes into one visual task while reusing
+the existing capture and routing model.
 
-Typical strategy:
+Each candidate needs a problem statement, user evidence, threat model, and
+acceptance gate before entering committed scope.
 
-```text
-local capture
--> ephemeral file
--> secure transfer
--> remote temp path
--> target session
--> automatic cleanup
-```
+## Optional Linux track
 
-Success criteria:
+Status: **Uncommitted**
 
-1. No public upload is required.
-2. Paths with spaces and unusual filenames are handled safely.
-3. Temporary local and remote artifacts have documented cleanup behavior.
-4. The remote workflow remains close to the local workflow from the user's perspective.
+Linux support is not required for the macOS/Windows product plan.
 
-## Milestone 5 — browser visual context
+Community experiments may explore X11 and desktop-portal workflows behind
+explicit capability detection. Wayland cannot be promised the same custom
+global-overlay behavior: compositor policy restricts global positioning, cursor
+queries, and source selection, and a native helper cannot portably bypass those
+rules.
 
-**Goal:** send more useful debugging context than a raw screenshot.
+A Linux support tier requires:
 
-Add a Chromium extension only after the basic ScreenFling workflow is proven.
+- a named maintainer;
+- an explicit desktop/compositor test matrix;
+- packaged permission and portal testing;
+- documented differences from the Tier 1 workflow;
+- CI or repeatable native acceptance coverage.
 
-Potential browser capture modes:
+Until then, Linux code is experimental and must not complicate the Tier 1 core.
 
-- visible viewport;
-- selected element;
-- full page;
-- current clipboard image.
+## Deferred and rejected early work
 
-Potential context fields:
+These items are not on the committed roadmap:
 
-- current URL;
-- viewport dimensions;
-- device pixel ratio;
-- selected element selector;
-- element bounding box;
-- small DOM fragment;
-- relevant computed styles.
+- automatic Send to generic applications;
+- arbitrary active-window automation;
+- a cloud backend or ScreenFling accounts;
+- image hosting or synchronization;
+- screenshot-library and database features;
+- built-in OCR or AI analysis;
+- a custom terminal emulator or PTY;
+- a browser extension before local product validation;
+- remote file staging before a cleanup and endpoint-security design;
+- a public plugin marketplace;
+- a speculative Rust or native rewrite;
+- simultaneous parity across macOS, Windows, X11, and Wayland.
 
-Console and network collection should not be added automatically if it requires broad browser permissions. Add it only if user value justifies the additional permission surface.
+## Immediate implementation sequence
 
-Success criteria:
+The next work should be issue-sized and land in this order:
 
-1. The browser extension materially improves an agent's ability to identify a visual UI problem.
-2. Permissions remain narrow and documented.
-3. Browser context is packaged consistently with normal ScreenFling captures.
+1. Scaffold the single Electron application with strict TypeScript, choose and
+   record its package manager, install Oxlint plus the generic anti-slop plugin,
+   and add packaged smoke tests.
+2. Define the capture result, destination, adapter capability, and workflow-state
+   contracts.
+3. Build the physical-pixel capture benchmark harness.
+4. Build the exact-routing harness and select the first adapter by its gate.
+5. Record both spike results and make the alpha go/no-go decision.
+6. Implement the macOS alpha as vertical slices from shortcut through Stage.
 
-## Milestone 6 — web and desktop chat adapters
-
-**Goal:** make ScreenFling useful outside terminal coding agents without losing the routing model.
-
-Potential targets:
-
-- ChatGPT web;
-- Claude web;
-- supported desktop AI applications;
-- generic image-capable applications.
-
-Generic fallback:
-
-```text
-image clipboard -> activate target -> normal paste
-```
-
-More advanced adapters may use browser integration or native accessibility when that provides a significantly more reliable target.
-
-This is the point where the small Rust native helper may become justified.
-
-Likely native responsibilities:
-
-- application/window enumeration beyond Electron's needs;
-- precise UI element discovery;
-- focusing a known composer;
-- invoking supported accessibility actions;
-- determining whether a target can support verified staging or submission.
-
-The native helper should remain a separate process with a small request/response protocol instead of embedding product logic in Rust.
-
-## Milestone 7 — verified Send
-
-**Goal:** optionally submit captures without creating a dangerous global "press Enter" feature.
-
-Send must be destination-specific.
-
-Enable Send only when ScreenFling can reliably establish:
-
-1. the correct destination is active;
-2. the correct conversation/session is selected;
-3. the intended composer/input is targeted;
-4. the image attachment or native image paste succeeded where verification is possible;
-5. the destination's submit action is known and tested.
-
-Unknown or generic destinations should remain Copy- or Stage-only.
-
-## Milestone 8 — multi-capture visual tasks
-
-**Goal:** allow a developer to send a complete visual problem rather than a series of disconnected screenshots.
-
-Example:
-
-```text
-Task: Fix mobile navigation
-
-1. desktop-correct.png
-   "Desktop layout is correct."
-
-2. mobile-broken.png
-   "Menu covers the leaderboard."
-
-3. expected.png
-   "Expected mobile design."
-
-Browser context:
-localhost:3000/leaderboard
-390 x 844
-
-Destination:
-Codex - project/worktree
-```
-
-Multi-capture tasks should build on the existing capture and routing model rather than introduce a separate workflow.
-
-## Storage model
-
-The user-facing mental model is clipboard-first.
-
-A capture may exist:
-
-- in memory;
-- on the operating-system clipboard;
-- as an ephemeral local file when required;
-- as an ephemeral remote file when required;
-- as a permanent file only when the user explicitly chooses to save it.
-
-If a recent-captures view is added, treat it as temporary working context rather than a permanent screenshot library.
-
-Possible actions:
-
-- send again;
-- copy;
-- save permanently;
-- delete now.
-
-Do not introduce a database until the history requirements actually justify one. A small filesystem-based representation is sufficient initially.
-
-## Security and privacy expectations
-
-ScreenFling can handle sensitive visual information, including source code, credentials, customer data, chats, and private dashboards.
-
-The project should therefore follow these defaults:
-
-- local-first processing;
-- no screenshot uploads by ScreenFling itself unless a future feature explicitly requires and explains them;
-- no analytics or telemetry by default;
-- narrow Electron preload/IPC surface;
-- context isolation and sandboxing where applicable;
-- request operating-system permissions only when a feature needs them;
-- no automatic submission by default;
-- visibly identify the selected destination before automated delivery;
-- safe handling and cleanup of temporary files;
-- never claim a delivery or verification guarantee stronger than the implementation actually provides.
-
-## Performance expectations
-
-ScreenFling should prioritize interaction latency over architectural novelty.
-
-Electron is acceptable if the app remains responsive and its unavoidable Chromium/Node footprint does not turn into unnecessary work.
-
-Engineering rules:
-
-- keep the Electron main process non-blocking;
-- avoid synchronous filesystem/process APIs on interactive paths;
-- minimize long-lived renderer windows;
-- lazy-load work that is not required at startup;
-- measure first-capture and warm-capture latency separately;
-- benchmark repeated capture cycles for leaks and regressions;
-- add Rust for measured or platform-API reasons, not speculative performance optimization.
-
-## Cross-platform expectations
-
-Capabilities should be detected and reported honestly.
-
-Initial conceptual matrix:
-
-| Capability | macOS | Windows | Linux |
-| --- | --- | --- | --- |
-| Region capture | Target | Target | Target, portal/compositor dependent |
-| Window/display capture | Target | Target | Target, portal/compositor dependent |
-| Image clipboard | Target | Target | Target |
-| Global shortcut | Target | Target | Target, environment dependent |
-| Browser extension | Target | Target | Target |
-| Precise external-app UI automation | Target | Target | Limited / environment dependent |
-| Automatic Send | Adapter-specific | Adapter-specific | Adapter/capability-specific |
-
-Platform differences are not bugs by themselves. The product should provide the strongest safe behavior available on the current platform and communicate limitations clearly.
-
-## Open-source project quality
-
-ScreenFling should eventually demonstrate production-quality OSS practices without front-loading ceremony before code exists.
-
-Add these as the project grows and they become useful:
-
-- automated TypeScript tests;
-- Rust tests when the native helper exists;
-- cross-platform CI;
-- formatting and lint checks;
-- security policy;
-- contribution guide;
-- issue and pull-request templates;
-- deterministic packaging;
-- signed/notarized releases where practical;
-- performance benchmarks;
-- architecture/security documentation for non-obvious boundaries.
-
-The codebase should stay approachable to contributors. A simple implementation is preferable to a flexible framework until multiple real features require the abstraction.
-
-## Explicit non-goals for the early project
-
-Do not add these simply because they are technically interesting:
-
-- hosted ScreenFling accounts;
-- a cloud backend;
-- image hosting;
-- built-in AI analysis or OCR;
-- a custom terminal emulator;
-- a custom PTY implementation;
-- an MCP server without a concrete user need;
-- a plugin marketplace;
-- a large database layer;
-- collaboration/team features;
-- permanent screenshot management;
-- automatic submission to unknown applications;
-- a broad Rust rewrite of capabilities already handled well by TypeScript/Electron.
-
-## Implementation sequence
-
-The intended development order is:
-
-```text
-1. Capture reliably
-2. Route to a chosen local destination
-3. Identify exact coding-agent sessions
-4. Support remote sessions
-5. Add rich browser context
-6. Add tested web/desktop adapters
-7. Enable verified Send where safe
-8. Add multi-capture visual tasks
-```
-
-Each phase should remain shippable and useful on its own.
-
-If an earlier phase does not produce a workflow meaningfully better than the operating system screenshot shortcut plus manual paste, stop and rethink the product before adding later complexity.
-
-## Immediate next branch
-
-The next implementation branch should focus only on **Milestone 1: capture to clipboard**.
-
-Suggested branch name:
-
-```text
-agent/capture-to-clipboard
-```
-
-The branch should not add routing, agent detection, Rust, browser extensions, SSH, or automatic submission.
-
-The only important question for that branch is:
-
-> Can ScreenFling make region capture to image clipboard fast, reliable, repeatable, and cross-platform enough to justify building the routing layer on top of it?
-
-That is the next proof point for the project.
+The first implementation branch should not contain remote support, browser
+integration, Linux work, a native helper, history, or automatic submission.
