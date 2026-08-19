@@ -1,48 +1,87 @@
 # ScreenFling
 
-**Capture what you see. Send it to the right coding agent. Keep working.**
+**Capture visual context. Route it to the right coding session. Keep working.**
 
-ScreenFling is an open-source, cross-platform desktop tool for capturing visual context and routing it to the right AI coding agent or chat session.
+ScreenFling is a local-first desktop tool for moving screenshots and short notes
+into an explicitly chosen AI coding session. It is not intended to replace the
+operating system's screenshot utility. Its value is the handoff after capture:
+choosing the right destination, using that destination's supported input method,
+and never submitting work unexpectedly.
 
 ## Status
 
-Pre-alpha. The repository is being initialized before implementation starts.
+ScreenFling is **pre-alpha**. The product direction and technical feasibility
+have been researched; implementation has not started.
 
-## Product direction
+The first reference implementation will be built on macOS, followed by Windows.
+Both are Tier 1 product targets. Linux is optional and may be explored later
+without a promise of feature parity.
 
-ScreenFling is intended to make this workflow fast and predictable:
+## Intended workflow
 
-1. Capture a screen region, window, or display.
-2. Optionally add a short note.
-3. Choose the exact destination.
-4. Stage the image and note in that destination.
+```text
+global shortcut
+-> select one screen region
+-> optionally add a short note
+-> choose an exact destination
+-> copy or stage
+-> review in the destination
+```
 
-The initial focus is local Claude Code and Codex CLI workflows. Browser, desktop-app, remote-session, and richer browser-context adapters can follow after the core handoff is proven useful.
+ScreenFling distinguishes three actions:
 
-## Principles
+- **Copy** puts the capture on the image clipboard.
+- **Stage** places the capture and note in a selected destination without
+  submitting.
+- **Send** submits only through a versioned adapter that can verify the target
+  and submission behavior. It is not part of the first release.
 
-- **Clipboard-first.** Use native image paste when the destination supports it.
-- **Local-first.** No cloud backend is required for the core workflow.
-- **Cross-platform.** macOS, Windows, and Linux are first-class targets, with capability differences handled honestly.
-- **Stage by default.** Automatic submission should only be available when a destination can be targeted and verified reliably.
-- **Keep the core simple.** Add native code only where the operating system requires it.
+If routing fails or cannot be verified, the capture remains available on the
+clipboard.
 
-## Planned stack
+## First release boundary
 
-- TypeScript
+The first useful alpha will provide:
+
+- fast, one-display region capture;
+- image clipboard output;
+- an optional single-line note;
+- explicit selection of one addressable local coding-agent destination;
+- Stage without Enter, submission, or focus theft;
+- honest delivery status and a manual clipboard fallback;
+- local processing with no ScreenFling account or hosted backend.
+
+The first release will not include Linux support, remote transfer, browser
+extensions, screenshot history, cloud storage, a plugin marketplace, or generic
+automation of arbitrary applications.
+
+## Technical direction
+
 - Electron
-- React
-- Node.js
-- A small Rust native helper only for OS automation that Electron cannot provide reliably
+- strict TypeScript
+- React for visible application surfaces
+- Node.js in the Electron main process
+- Electron Forge for packaging
+- native helpers only after a measured Electron or operating-system API failure
 
-## First milestone
+Electron provides the capture, display, clipboard, shortcut, and window
+primitives required by the core workflow. The architecture keeps capture and
+destination adapters behind narrow contracts so an implementation can be
+replaced without rewriting the application.
 
-Prove the shortest useful workflow:
+## Project documents
 
-`global shortcut -> region capture -> image clipboard -> choose local agent target -> stage`
+- [Product direction](docs/PRODUCT.md) — users, problem, scope, and principles
+- [Architecture](docs/ARCHITECTURE.md) — system boundaries and technical decisions
+- [Roadmap](ROADMAP.md) — ordered milestones and acceptance gates
+- [Contributing](CONTRIBUTING.md) — how to participate while the project is pre-alpha
+- [Security policy](SECURITY.md) — reporting and security invariants
+- [Research index](research/README.md) — supporting evidence and feasibility reports
 
-No automatic submit and no cloud services in the first implementation slice.
+Canonical decisions live in the product, architecture, and roadmap documents.
+Research reports explain the evidence behind those decisions but do not override
+them.
 
 ## License
 
-MIT
+[MIT](LICENSE)
