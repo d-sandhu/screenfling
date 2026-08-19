@@ -115,6 +115,8 @@ pass as **dispatched-unverified**; it cannot claim verified staging.
 - [x] minimal Electron/TypeScript project scaffold;
 - [x] strict compiler, formatter, test configuration, and Oxlint with the vendored
   generic anti-slop rules enabled at error severity;
+- [x] main-owned workflow state machine, runtime-validated destination contract,
+  and sender-validated narrow IPC bridge;
 - [ ] capture benchmark harness and fixture grid;
 - [ ] destination adapter contract and routing harness;
 - [ ] recorded results with hardware, OS, terminal, and agent versions;

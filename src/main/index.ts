@@ -3,10 +3,18 @@ import { join } from "node:path";
 import { app, BrowserWindow } from "electron";
 
 import { registerAppProtocol } from "./app-protocol";
+import { registerWorkflowIpc } from "./ipc";
 import { createMainWindowOptions } from "./window-options";
 import { readDevRendererUrl } from "./renderer-url";
+import { WorkflowStore } from "./workflow-store";
 
 let mainWindow: BrowserWindow | null = null;
+const workflow = new WorkflowStore();
+const rendererUrl = readDevRendererUrl(process.env.ELECTRON_RENDERER_URL);
+
+function getMainWebContents() {
+  return mainWindow?.webContents ?? null;
+}
 
 function createWindow(): BrowserWindow {
   const preload = join(__dirname, "../preload/index.js");
@@ -28,7 +36,6 @@ function createWindow(): BrowserWindow {
     if (mainWindow === window) mainWindow = null;
   });
 
-  const rendererUrl = readDevRendererUrl(process.env.ELECTRON_RENDERER_URL);
   if (rendererUrl) {
     void window.loadURL(rendererUrl);
   } else {
@@ -40,6 +47,7 @@ function createWindow(): BrowserWindow {
 
 void app.whenReady().then(() => {
   registerAppProtocol();
+  registerWorkflowIpc(getMainWebContents, rendererUrl, workflow);
   createWindow();
 
   app.on("activate", () => {
