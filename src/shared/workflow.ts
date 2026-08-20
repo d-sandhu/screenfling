@@ -71,24 +71,24 @@ export class StaleWorkflowActionError extends Error {
   }
 }
 
-function nextPhase(phase: ActiveWorkflowPhase): ActiveWorkflowPhase | null {
+function canAdvanceTo(phase: ActiveWorkflowPhase, targetPhase: ActiveWorkflowPhase): boolean {
   switch (phase) {
     case "snapshotting":
-      return "selecting";
+      return targetPhase === "selecting";
     case "selecting":
-      return "editing";
+      return targetPhase === "editing";
     case "editing":
-      return "target-selected";
+      return targetPhase === "target-selected" || targetPhase === "writing-clipboard";
     case "target-selected":
-      return "revalidating";
+      return targetPhase === "revalidating";
     case "revalidating":
-      return "writing-clipboard";
+      return targetPhase === "writing-clipboard";
     case "writing-clipboard":
-      return "staging-image";
+      return targetPhase === "staging-image";
     case "staging-image":
-      return "staging-note";
+      return targetPhase === "staging-note";
     case "staging-note":
-      return null;
+      return false;
   }
 }
 
@@ -127,7 +127,7 @@ export function advanceWorkflow(
   targetPhase: ActiveWorkflowPhase,
 ): WorkflowSnapshot {
   const active = requireActiveOperation(snapshot, operationId);
-  if (nextPhase(active.phase) !== targetPhase) {
+  if (!canAdvanceTo(active.phase, targetPhase)) {
     throw new InvalidWorkflowTransitionError();
   }
   return workflowSnapshotSchema.parse({ phase: targetPhase, operationId });

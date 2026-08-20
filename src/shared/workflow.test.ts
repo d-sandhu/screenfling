@@ -71,13 +71,24 @@ describe("workflow state machine", () => {
     const writingClipboard = advanceThrough(startWorkflow(IDLE_WORKFLOW, OPERATION_ID), [
       "selecting",
       "editing",
-      "target-selected",
-      "revalidating",
       "writing-clipboard",
     ]);
     expect(finishWorkflow(writingClipboard, OPERATION_ID, { status: "copied" })).toMatchObject({
       result: { status: "copied" },
     });
+  });
+
+  it("keeps exact-target validation on the Stage branch", () => {
+    const editing = advanceThrough(startWorkflow(IDLE_WORKFLOW, OPERATION_ID), [
+      "selecting",
+      "editing",
+    ]);
+    expect(advanceWorkflow(editing, OPERATION_ID, "target-selected")).toMatchObject({
+      phase: "target-selected",
+    });
+    expect(() => advanceWorkflow(editing, OPERATION_ID, "staging-image")).toThrow(
+      InvalidWorkflowTransitionError,
+    );
   });
 
   it("rejects a second start and skipped transitions", () => {
