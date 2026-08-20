@@ -190,14 +190,12 @@ idle
 -> editing
    |-> writing-clipboard -> result(copied)
    |-> target-selected
-       -> revalidating
        -> writing-clipboard
-       -> staging-image
-       -> staging-note
+       -> staging
        -> result(dispatched-unverified | staged-verified)
 -> idle
 
-any active state
+any active state before clipboard or destination side effects
 -> result(cancelled | failed)
 -> idle
 ```
@@ -210,11 +208,14 @@ A second shortcut while an operation is active is rejected. Cancellation is a
 separate operation-ID-scoped action. Stale renderer events, invalid coordinates,
 dead targets, and invalid transitions never advance the operation.
 
-Successful Copy can be reported only after the clipboard-write phase. Stage can
-be reported only after image staging begins. Although `sent-verified` is part of
-the durable result vocabulary, the current state machine cannot produce it; a
-future verified Send implementation must add its own explicit phase and evidence
-gate.
+Successful Copy can be reported only after the clipboard-write phase. Stage
+writes and verifies the image clipboard before invoking one selected adapter
+transaction, so a failed or stale dispatch still leaves the explicit fallback
+available. Cancellation stops once target selection and side effects begin; an
+uncertain dispatch is allowed to finish exactly once and is never retried.
+Although `sent-verified` is part of the durable result vocabulary, the current
+state machine cannot produce it; a future verified Send implementation must add
+its own explicit phase and evidence gate.
 
 The production capture core keeps the lossless `NativeImage` behind a
 main-process capture session. It exposes only bounded JPEG previews, validates
@@ -268,6 +269,14 @@ user choose, but they never replace an exact routing locator.
 Destinations are rediscovered and revalidated immediately before dispatch. An
 adapter must never fall back to the active window, active pane, or similarly
 named target after its selected endpoint disappears.
+
+The main-process destination registry owns an operation-scoped discovery
+snapshot. The renderer can submit only that operation ID, one discovered
+destination ID, and a validated optional note; it cannot provide executable
+paths, mux selectors, or destination objects. The registry consumes the snapshot
+before invoking Stage, so duplicate requests and cross-operation selections fail
+as stale. Malformed results are omitted; duplicate, ambiguous, or aggregate
+over-limit discovery fails the operation closed.
 
 An endpoint instance ID is generation-scoped. A restarted terminal or mux server
 is a new endpoint even when it reuses the same socket path or numeric pane ID.
@@ -325,6 +334,12 @@ native acceptance remains release-blocking and Copy remains available. The
 adapter never inherits `WEZTERM_PANE`, chooses the focused pane, activates a
 window, or claims that CLI acceptance proves an agent attachment.
 
+The current product wiring exposes this adapter only through a complete,
+explicit macOS developer environment configuration. Missing or invalid values
+produce an empty registry and preserve Copy. This is an acceptance-test path,
+not a compatibility claim; trusted-path ownership and permission checks plus
+visible native and real-agent trials remain release gates.
+
 Surface adapters and managed adapters are separate families. A surface adapter
 can place input into an existing, exact terminal composer. A managed adapter owns
 an agent thread/session and starts work through a structured API, so its action
@@ -337,9 +352,9 @@ Runtime status must describe evidence, not optimism:
 | Result | Meaning |
 | --- | --- |
 | `copied` | The image was written to the local clipboard. |
-| `dispatched-unverified` | A live exact endpoint accepted the adapter operation, but attachment or composer state could not be read back. |
-| `staged-verified` | The adapter verified the intended composer and staged attachment or input. |
-| `sent-verified` | A versioned adapter submitted to an exact target and verified the expected completion evidence. |
+| `dispatched-unverified` | Names the exact destination that accepted the adapter operation, but attachment or composer state could not be read back. |
+| `staged-verified` | Names the exact destination whose intended composer and staged attachment or input the adapter verified. |
+| `sent-verified` | Names the exact target to which a versioned adapter submitted and verified the expected completion evidence. |
 | `failed` | The operation did not reach its promised result; the clipboard fallback remains available when possible. |
 | `cancelled` | The user cancelled without destination changes. |
 

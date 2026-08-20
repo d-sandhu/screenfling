@@ -7,6 +7,12 @@ describe("createMainWindowOptions", () => {
     const options = createMainWindowOptions("/tmp/preload.js");
 
     expect(options.show).toBe(false);
+    expect(options).toMatchObject({
+      height: 720,
+      minHeight: 640,
+      minWidth: 760,
+      width: 920,
+    });
     expect(options.webPreferences).toMatchObject({
       contextIsolation: true,
       nodeIntegration: false,

@@ -5,7 +5,7 @@ import type {
   AdapterStageResult,
   DestinationAdapter,
 } from "./destination-adapter";
-import { destinationSchema, noteSchema } from "../shared/domain";
+import { destinationSchema, noteSchema, receiptForDestination } from "../shared/domain";
 
 import type { Destination, Note } from "../shared/domain";
 import type { DeliveryResult } from "../shared/workflow";
@@ -31,14 +31,16 @@ function mapAdapterResult(
   destination: Destination,
 ): StageDeliveryResult {
   if (result.status === "dispatched-unverified") {
-    return result;
+    return { ...result, destination: receiptForDestination(destination) };
   }
   if (result.status === "staged-verified") {
     const canVerifyStage =
       destination.capabilities.verification.includes("composer-ready") &&
       destination.capabilities.verification.includes("image-attached") &&
       destination.capabilities.readBack !== "none";
-    return canVerifyStage ? result : { status: "failed", reason: "dispatch-failed" };
+    return canVerifyStage
+      ? { ...result, destination: receiptForDestination(destination) }
+      : { status: "failed", reason: "dispatch-failed" };
   }
   if (result.status === "stale") {
     return { status: "failed", reason: "target-stale" };

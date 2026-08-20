@@ -2,10 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { CaptureController } from "./capture-controller";
 import { CapturePermissionBlockedError, CaptureSession } from "./capture-session";
-import { StaleWorkflowActionError } from "../shared/workflow";
+import { DestinationRegistry } from "./destination-registry";
+import { parseDestination } from "../shared/domain";
+import { InvalidWorkflowTransitionError, StaleWorkflowActionError } from "../shared/workflow";
 import { WorkflowStore } from "./workflow-store";
 
 import type { CaptureOverlayPort, MainSurfacePort } from "./capture-controller";
+import type {
+  AdapterStageRequest,
+  AdapterStageResult,
+  DestinationAdapter,
+} from "./destination-adapter";
 import type {
   CaptureBackend,
   CaptureDisplay,
@@ -28,6 +35,21 @@ const DISPLAY: CaptureDisplay = {
   scaleFactor: 2,
   rotation: 0,
 };
+const DESTINATION = parseDestination({
+  id: "instrumented:generation-a:7",
+  adapter: "instrumented",
+  endpoint: { scope: "local", instanceId: "generation-a" },
+  surface: { kind: "pane", locator: "7" },
+  context: { cwd: "/screenfling", observedAt: "2026-08-20T16:00:00.000Z" },
+  capabilities: {
+    address: "exact",
+    imageInput: "clipboard-key",
+    textInput: "paste",
+    readBack: "none",
+    verification: ["target-live"],
+    actions: ["copy", "stage"],
+  },
+});
 
 class ControllerImage implements CaptureImage {
   readonly #size: PixelSize;
@@ -149,7 +171,30 @@ class ControllerMainSurface implements MainSurfacePort {
   }
 }
 
-function createHarness() {
+class ControllerDestinationAdapter implements DestinationAdapter {
+  readonly id = "instrumented";
+  readonly staged: AdapterStageRequest[] = [];
+  waitForFinish = false;
+  #finish: ((result: AdapterStageResult) => void) | null = null;
+
+  async discover() {
+    return [DESTINATION];
+  }
+
+  async stageIfCurrent(request: AdapterStageRequest): Promise<AdapterStageResult> {
+    this.staged.push(request);
+    if (!this.waitForFinish) return { status: "dispatched-unverified" };
+    return new Promise((resolve) => {
+      this.#finish = resolve;
+    });
+  }
+
+  finish(result: AdapterStageResult): void {
+    this.#finish?.(result);
+  }
+}
+
+function createHarness(adapter: DestinationAdapter | null = null) {
   const calls: string[] = [];
   const backend = new ControllerBackend(calls);
   const clipboard = new ControllerClipboard();
@@ -159,11 +204,31 @@ function createHarness() {
   const controller = new CaptureController(
     new WorkflowStore(),
     session,
+    new DestinationRegistry(adapter === null ? [] : [adapter]),
     overlay,
     mainSurface,
     () => OPERATION_ID,
   );
   return { backend, calls, clipboard, controller, mainSurface, overlay, session };
+}
+
+async function prepareEditingCapture(
+  harness: ReturnType<typeof createHarness>,
+): Promise<PixelSize> {
+  await harness.controller.startCapture();
+  harness.controller.overlayReady(OPERATION_ID);
+  harness.controller.completeSelection(OPERATION_ID, {
+    x: 378,
+    y: 217.75,
+    width: 756,
+    height: 435.5,
+  });
+  const { pixels } = harness.controller.getDraft(OPERATION_ID);
+  harness.clipboard.evidence = {
+    bitmap: Uint8Array.from([4, 3, 2, 1]),
+    size: pixels,
+  };
+  return pixels;
 }
 
 describe("capture workflow controller", () => {
@@ -285,5 +350,71 @@ describe("capture workflow controller", () => {
     expect(session.activeOperationId).toBe(OPERATION_ID);
     expect(overlay.closeCalls).toBe(0);
     expect(mainSurface.showCalls).toBe(0);
+  });
+
+  it("joins verified clipboard output to one exact unverified Stage transaction", async () => {
+    const adapter = new ControllerDestinationAdapter();
+    const harness = createHarness(adapter);
+    await prepareEditingCapture(harness);
+
+    await expect(harness.controller.discoverDestinations(OPERATION_ID)).resolves.toEqual([
+      DESTINATION,
+    ]);
+    await expect(
+      harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, "literal note"),
+    ).resolves.toEqual({
+      phase: "result",
+      operationId: OPERATION_ID,
+      result: {
+        status: "dispatched-unverified",
+        destination: {
+          id: DESTINATION.id,
+          adapter: DESTINATION.adapter,
+          surface: DESTINATION.surface,
+        },
+      },
+    });
+
+    expect(harness.clipboard.writes).toBe(1);
+    expect(adapter.staged).toEqual([{ destination: DESTINATION, note: "literal note" }]);
+    expect(harness.session.activeOperationId).toBeNull();
+    expect(harness.mainSurface.published.slice(-4).map((snapshot) => snapshot.phase)).toEqual([
+      "target-selected",
+      "writing-clipboard",
+      "staging",
+      "result",
+    ]);
+  });
+
+  it("does not cancel or invalidate a workflow after destination dispatch begins", async () => {
+    const adapter = new ControllerDestinationAdapter();
+    adapter.waitForFinish = true;
+    const harness = createHarness(adapter);
+    await prepareEditingCapture(harness);
+    await harness.controller.discoverDestinations(OPERATION_ID);
+
+    const pending = harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, null);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(harness.controller.snapshot).toMatchObject({ phase: "staging" });
+    expect(() => harness.controller.cancel(OPERATION_ID)).toThrow(InvalidWorkflowTransitionError);
+    expect(harness.controller.displayChanged(DISPLAY.id)).toMatchObject({ phase: "staging" });
+    await expect(
+      harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, null),
+    ).rejects.toThrow(InvalidWorkflowTransitionError);
+    expect(harness.session.activeOperationId).toBe(OPERATION_ID);
+
+    adapter.finish({ status: "dispatched-unverified" });
+    await expect(pending).resolves.toMatchObject({
+      phase: "result",
+      result: {
+        status: "dispatched-unverified",
+        destination: {
+          id: DESTINATION.id,
+          adapter: DESTINATION.adapter,
+          surface: DESTINATION.surface,
+        },
+      },
+    });
   });
 });

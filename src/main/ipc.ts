@@ -1,6 +1,10 @@
 import { ipcMain } from "electron";
 
-import { CAPTURE_OVERLAY_CHANNELS, IPC_CHANNELS } from "../shared/bridge";
+import {
+  CAPTURE_OVERLAY_CHANNELS,
+  IPC_CHANNELS,
+  stageCaptureRequestSchema,
+} from "../shared/bridge";
 import { captureSelectionRequestSchema } from "../shared/capture";
 import { assertTrustedIpcSender } from "./ipc-sender";
 import {
@@ -50,6 +54,12 @@ export function registerWorkflowIpc(
     ),
   );
   ipcMain.handle(
+    IPC_CHANNELS.discoverDestinations,
+    createValidatedOperationHandler(authorizeMain, (operationId) =>
+      controller.discoverDestinations(operationId),
+    ),
+  );
+  ipcMain.handle(
     IPC_CHANNELS.copyCapture,
     createValidatedOperationHandler(authorizeMain, (operationId) =>
       controller.copyCapture(operationId),
@@ -64,6 +74,20 @@ export function registerWorkflowIpc(
     createValidatedOperationHandler(authorizeMain, (operationId) =>
       controller.dismissResult(operationId),
     ),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.stageCapture,
+    (event: IpcMainInvokeEvent, ...payloads: SerializedIpcValue[]) => {
+      authorizeMain(event);
+      if (payloads.length !== 1) throw new Error("Invalid Stage request.");
+      const request = stageCaptureRequestSchema.safeParse(payloads[0]);
+      if (!request.success) throw new Error("Invalid Stage request.");
+      return controller.stageCapture(
+        request.data.operationId,
+        request.data.destinationId,
+        request.data.note,
+      );
+    },
   );
 
   ipcMain.handle(

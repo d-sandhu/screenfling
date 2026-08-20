@@ -1,24 +1,31 @@
 import { z } from "zod";
 
-import { operationIdSchema } from "./domain";
+import { destinationReceiptSchema, operationIdSchema } from "./domain";
 
 export const activeWorkflowPhaseSchema = z.enum([
   "snapshotting",
   "selecting",
   "editing",
   "target-selected",
-  "revalidating",
   "writing-clipboard",
-  "staging-image",
-  "staging-note",
+  "staging",
 ]);
 
 export const deliveryResultSchema = z
   .discriminatedUnion("status", [
     z.strictObject({ status: z.literal("copied") }),
-    z.strictObject({ status: z.literal("dispatched-unverified") }),
-    z.strictObject({ status: z.literal("staged-verified") }),
-    z.strictObject({ status: z.literal("sent-verified") }),
+    z.strictObject({
+      status: z.literal("dispatched-unverified"),
+      destination: destinationReceiptSchema,
+    }),
+    z.strictObject({
+      status: z.literal("staged-verified"),
+      destination: destinationReceiptSchema,
+    }),
+    z.strictObject({
+      status: z.literal("sent-verified"),
+      destination: destinationReceiptSchema,
+    }),
     z.strictObject({
       status: z.literal("failed"),
       reason: z.enum([
@@ -80,14 +87,10 @@ function canAdvanceTo(phase: ActiveWorkflowPhase, targetPhase: ActiveWorkflowPha
     case "editing":
       return targetPhase === "target-selected" || targetPhase === "writing-clipboard";
     case "target-selected":
-      return targetPhase === "revalidating";
-    case "revalidating":
       return targetPhase === "writing-clipboard";
     case "writing-clipboard":
-      return targetPhase === "staging-image";
-    case "staging-image":
-      return targetPhase === "staging-note";
-    case "staging-note":
+      return targetPhase === "staging";
+    case "staging":
       return false;
   }
 }
@@ -110,7 +113,7 @@ function isAllowedResult(phase: ActiveWorkflowPhase, result: DeliveryResult): bo
   if (result.status === "failed" || result.status === "cancelled") return true;
   if (result.status === "copied") return phase === "writing-clipboard";
   if (result.status === "sent-verified") return false;
-  return phase === "staging-image" || phase === "staging-note";
+  return phase === "staging";
 }
 
 export function startWorkflow(snapshot: WorkflowSnapshot, operationId: string): WorkflowSnapshot {
@@ -146,6 +149,13 @@ export function finishWorkflow(
 }
 
 export function cancelWorkflow(snapshot: WorkflowSnapshot, operationId: string): WorkflowSnapshot {
+  if (
+    snapshot.phase === "target-selected" ||
+    snapshot.phase === "writing-clipboard" ||
+    snapshot.phase === "staging"
+  ) {
+    throw new InvalidWorkflowTransitionError();
+  }
   return finishWorkflow(snapshot, operationId, { status: "cancelled" });
 }
 

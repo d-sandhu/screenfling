@@ -13,16 +13,19 @@ and never submitting work unexpectedly.
 ScreenFling is **pre-alpha**. The application scaffold, automated quality gates,
 main-owned workflow state machine, runtime-validated destination contract,
 narrow preload bridge, measured capture geometry, fail-closed Stage orchestration,
-and the first exact WezTerm adapter primitive are in place. The packaged macOS
-application now provides the first complete vertical slice: it hides its main
-window, captures the exact
-display under the pointer, presents a frozen region overlay, reviews the crop,
-and writes and verifies the image clipboard only after explicit Copy. The global
-shortcut and display-change invalidation are wired through the main-owned
-controller. WezTerm discovery and one-shot exact-pane staging now fail closed on
-unsupported versions, malformed discovery data, and stale generations. The
-destination picker, optional note, joined capture-to-Stage workflow, and remaining
-hardware/real-agent acceptance rows still block an alpha claim.
+and the first joined capture-to-Stage workflow are in place. The application
+hides its main window, captures the exact display under the pointer, presents a
+frozen region overlay, reviews the crop, and writes and verifies the image
+clipboard only after an explicit Copy or Stage action. Stage requires an explicit
+destination choice, accepts an optional one-line note, never sends Enter, and
+reports unverified dispatch honestly. The global shortcut and display-change
+invalidation are wired through the main-owned controller.
+
+The WezTerm integration remains an opt-in macOS developer experiment. Discovery
+and one-shot exact-pane staging fail closed on unsupported versions, malformed
+data, ambiguous identities, and stale generations. Missing hardware/lifecycle
+coverage, trusted configuration checks, visible no-focus trials, and real-agent
+attachment trials still block any alpha or compatibility claim.
 
 The first reference implementation will be built on macOS, followed by Windows.
 Both are Tier 1 product targets. Linux is optional and may be explored later
@@ -87,6 +90,25 @@ instance-and-pane routing primitive passed on native macOS and Windows. WezTerm
 is an optional integration, not the identity or runtime foundation of
 ScreenFling. Copy remains available without it; real-agent support is not claimed
 until the roadmap's observed trials pass.
+
+## Experimental WezTerm developer configuration
+
+The joined picker can load the compiled WezTerm adapter on macOS only when all
+four environment variables below are present. This path exists for controlled
+acceptance work; it is not yet a supported user setup.
+
+| Variable | Value |
+| --- | --- |
+| `SCREENFLING_EXPERIMENTAL_WEZTERM_EXECUTABLE` | Absolute path to the pinned WezTerm executable |
+| `SCREENFLING_EXPERIMENTAL_WEZTERM_CONFIG_FILE` | Absolute path to the exact configuration under test |
+| `SCREENFLING_EXPERIMENTAL_WEZTERM_SOCKET` | Absolute path to the selected mux socket |
+| `SCREENFLING_EXPERIMENTAL_WEZTERM_IMAGE_INPUT_HEX` | One to 64 raw input bytes as hexadecimal, with no CR or LF |
+
+The input bytes must match a tested agent binding that stages an image without
+submission. A partial, malformed, unsafe, unsupported-version, or non-macOS
+configuration exposes no destination and leaves Copy available. Do not treat
+this environment-variable path as a secret store or a substitute for the
+ownership, mode, ACL, and replacement checks still required by the roadmap.
 
 ## Project documents
 

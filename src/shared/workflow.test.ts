@@ -15,6 +15,11 @@ import type { ActiveWorkflowPhase, WorkflowSnapshot } from "./workflow";
 
 const OPERATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const STALE_OPERATION_ID = "8b2165ea-699b-44f1-a497-95df2f997834";
+const DESTINATION_RECEIPT = {
+  id: "instrumented:7",
+  adapter: "instrumented",
+  surface: { kind: "pane", locator: "7" },
+} as const;
 
 function advanceThrough(
   initial: WorkflowSnapshot,
@@ -34,35 +39,34 @@ describe("workflow state machine", () => {
       "selecting",
       "editing",
       "target-selected",
-      "revalidating",
       "writing-clipboard",
-      "staging-image",
-      "staging-note",
+      "staging",
     ]);
     const result = finishWorkflow(staging, OPERATION_ID, {
       status: "staged-verified",
+      destination: DESTINATION_RECEIPT,
     });
 
     expect(result).toEqual({
       phase: "result",
       operationId: OPERATION_ID,
-      result: { status: "staged-verified" },
+      result: { status: "staged-verified", destination: DESTINATION_RECEIPT },
     });
     expect(resetWorkflow(result, OPERATION_ID)).toBe(IDLE_WORKFLOW);
   });
 
-  it("supports an honest unverified Stage result before an optional note", () => {
-    const stagingImage = advanceThrough(startWorkflow(IDLE_WORKFLOW, OPERATION_ID), [
+  it("supports an honest unverified Stage result after the one adapter transaction", () => {
+    const staging = advanceThrough(startWorkflow(IDLE_WORKFLOW, OPERATION_ID), [
       "selecting",
       "editing",
       "target-selected",
-      "revalidating",
       "writing-clipboard",
-      "staging-image",
+      "staging",
     ]);
     expect(
-      finishWorkflow(stagingImage, OPERATION_ID, {
+      finishWorkflow(staging, OPERATION_ID, {
         status: "dispatched-unverified",
+        destination: DESTINATION_RECEIPT,
       }),
     ).toMatchObject({ phase: "result" });
   });
@@ -86,7 +90,7 @@ describe("workflow state machine", () => {
     expect(advanceWorkflow(editing, OPERATION_ID, "target-selected")).toMatchObject({
       phase: "target-selected",
     });
-    expect(() => advanceWorkflow(editing, OPERATION_ID, "staging-image")).toThrow(
+    expect(() => advanceWorkflow(editing, OPERATION_ID, "staging")).toThrow(
       InvalidWorkflowTransitionError,
     );
   });
@@ -124,6 +128,24 @@ describe("workflow state machine", () => {
     );
   });
 
+  it("does not claim cancellation after the Stage branch begins", () => {
+    const targetSelected = advanceThrough(startWorkflow(IDLE_WORKFLOW, OPERATION_ID), [
+      "selecting",
+      "editing",
+      "target-selected",
+    ]);
+    const writingClipboard = advanceWorkflow(targetSelected, OPERATION_ID, "writing-clipboard");
+    const staging = advanceWorkflow(writingClipboard, OPERATION_ID, "staging");
+
+    expect(() => cancelWorkflow(targetSelected, OPERATION_ID)).toThrow(
+      InvalidWorkflowTransitionError,
+    );
+    expect(() => cancelWorkflow(writingClipboard, OPERATION_ID)).toThrow(
+      InvalidWorkflowTransitionError,
+    );
+    expect(() => cancelWorkflow(staging, OPERATION_ID)).toThrow(InvalidWorkflowTransitionError);
+  });
+
   it("records permission denial as a bounded failure category", () => {
     const started = startWorkflow(IDLE_WORKFLOW, OPERATION_ID);
     expect(
@@ -135,16 +157,18 @@ describe("workflow state machine", () => {
   });
 
   it("does not permit Send before a verified Send phase exists", () => {
-    const stagingImage = advanceThrough(startWorkflow(IDLE_WORKFLOW, OPERATION_ID), [
+    const staging = advanceThrough(startWorkflow(IDLE_WORKFLOW, OPERATION_ID), [
       "selecting",
       "editing",
       "target-selected",
-      "revalidating",
       "writing-clipboard",
-      "staging-image",
+      "staging",
     ]);
-    expect(() => finishWorkflow(stagingImage, OPERATION_ID, { status: "sent-verified" })).toThrow(
-      InvalidWorkflowTransitionError,
-    );
+    expect(() =>
+      finishWorkflow(staging, OPERATION_ID, {
+        status: "sent-verified",
+        destination: DESTINATION_RECEIPT,
+      }),
+    ).toThrow(InvalidWorkflowTransitionError);
   });
 });

@@ -150,9 +150,10 @@ Minimum conformance cases:
 
 ## Explicit gaps
 
-- ScreenFling now has a production-tree adapter primitive with automated
-  conformance coverage, but it is not wired into the product workflow. Existing
-  native prototype evidence remains transport-level, not agent-attachment or
+- ScreenFling now has a production-tree adapter with automated conformance
+  coverage and Phase 7 product wiring behind a complete, macOS-only developer
+  environment configuration. It is not a supported integration. Existing native
+  prototype evidence remains transport-level, not agent-attachment or
   visible-focus proof.
 - WezTerm exposes no documented atomic revalidate-and-send or pane-generation API, so stale protection has an unavoidable race window.
 - `send-text` is not a semantic agent API. Agent keybindings, terminal modes, remapped keys, and image-transfer behavior remain external dependencies.

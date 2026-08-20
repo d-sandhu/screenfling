@@ -10,6 +10,7 @@ const boundedIdentifierSchema = z
   .refine((value) => !NON_SINGLE_LINE_CHARACTER.test(value), {
     message: "Identifiers cannot contain controls or line separators.",
   });
+export const destinationIdSchema = boundedIdentifierSchema;
 const contextLabelSchema = z
   .string()
   .min(1)
@@ -41,6 +42,14 @@ const surfaceSchema = z
   .strictObject({
     kind: z.enum(["terminal", "pane", "agent-thread"]),
     locator: boundedIdentifierSchema,
+  })
+  .readonly();
+
+export const destinationReceiptSchema = z
+  .strictObject({
+    id: destinationIdSchema,
+    adapter: boundedIdentifierSchema,
+    surface: surfaceSchema,
   })
   .readonly();
 
@@ -151,7 +160,7 @@ const capabilitiesSchema = z
 
 export const destinationSchema = z
   .strictObject({
-    id: boundedIdentifierSchema,
+    id: destinationIdSchema,
     adapter: boundedIdentifierSchema,
     endpoint: endpointSchema,
     surface: surfaceSchema,
@@ -160,13 +169,24 @@ export const destinationSchema = z
   })
   .readonly();
 
+export const destinationListSchema = z.array(destinationSchema).max(512).readonly();
+
 export type Destination = z.infer<typeof destinationSchema>;
 export type DestinationInput = z.input<typeof destinationSchema>;
+export type DestinationReceipt = z.infer<typeof destinationReceiptSchema>;
 export type Note = z.infer<typeof noteSchema>;
 export type OperationId = z.infer<typeof operationIdSchema>;
 
 export function parseDestination(input: DestinationInput): Destination {
   return destinationSchema.parse(input);
+}
+
+export function receiptForDestination(destination: Destination): DestinationReceipt {
+  return destinationReceiptSchema.parse({
+    id: destination.id,
+    adapter: destination.adapter,
+    surface: destination.surface,
+  });
 }
 
 export function parseNote(input: z.input<typeof noteSchema>): Note {
