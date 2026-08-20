@@ -90,6 +90,19 @@ vertical slice, the fast-drag defect found and fixed during dogfooding, the
 verified Copy result, and the native acceptance rows that remain open. Captured
 pixels and private QA screenshots are not stored in the repository.
 
+### [Production WezTerm adapter evidence](production-wezterm-adapter-current-evidence.md)
+
+Checks the current WezTerm CLI, JSON discovery, instance selection, subprocess,
+versioning, and stale-generation boundaries against Context7 and primary sources.
+It defines what the adapter can prove and the native acceptance work it cannot
+replace.
+
+### [Phase 6 WezTerm adapter results](phase-6-wezterm-adapter-results.md)
+
+Records the production-tree adapter boundary, automated conformance results,
+fail-closed behavior, and the security, visible native, and real-agent rows that
+remain open.
+
 ## Research standard
 
 New reports should:
