@@ -2,7 +2,7 @@
 
 Status: Accepted direction for the pre-alpha
 
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-20
 
 ## Product statement
 
@@ -153,9 +153,12 @@ The first useful alpha includes:
 - packaged-build testing, not development-mode testing alone;
 - local diagnostic timings and failure categories.
 
-The exact first terminal adapter is an implementation choice evaluated by the
-routing proof in the roadmap. Ghostty, tmux, and WezTerm are adapter candidates,
-not product dependencies.
+The first surface-adapter implementation targets WezTerm because its exact-pane
+CLI primitive passed the cross-platform routing harness on native macOS and
+Windows. This makes WezTerm the first integration selected for implementation,
+not a dependency of ScreenFling itself: Copy remains available without it.
+Support remains gated by real-agent acceptance trials. tmux is the
+exactness/read-back reference; Ghostty remains an optional macOS adapter.
 
 ## Deliberate non-goals
 

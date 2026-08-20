@@ -2,7 +2,7 @@
 
 Status: Accepted pre-alpha direction
 
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-20
 
 ## Decision
 
@@ -19,6 +19,8 @@ validation.
 This decision is supported by the
 [tech-stack validation](../research/tech-stack-validation.md) and
 [capture feasibility](../research/capture-platform-feasibility.md) research.
+The first destination implementation is recorded separately in
+[ADR 0001](adr/0001-wezterm-first-stage-adapter.md).
 
 ## Why this stack
 
@@ -248,6 +250,9 @@ Destinations are rediscovered and revalidated immediately before dispatch. An
 adapter must never fall back to the active window, active pane, or similarly
 named target after its selected endpoint disappears.
 
+An endpoint instance ID is generation-scoped. A restarted terminal or mux server
+is a new endpoint even when it reuses the same socket path or numeric pane ID.
+
 ## Adapter contract
 
 An adapter has four jobs:
@@ -257,6 +262,24 @@ An adapter has four jobs:
 3. revalidate the selected routing identity;
 4. perform only an action listed in its capabilities.
 
+The main process invokes one `stageIfCurrent` transaction at most once. The
+compiled adapter must revalidate the complete routing identity immediately next
+to its side effect or return `stale`; this avoids a check/use gap. Context labels
+may refresh during that transaction, but the endpoint or surface locator may not
+silently change. An uncertain accepted operation maps to
+`dispatched-unverified` and is never retried automatically.
+
+The interface expresses this obligation but cannot prove an implementation is
+atomic. Every production adapter therefore needs an interleaving conformance test
+that replaces or restarts the selected target at the final side-effect boundary
+and proves zero bytes reach the replacement.
+
+Adapter implementations must runtime-parse data returned by subprocesses or
+external APIs before it satisfies the trusted internal adapter interface. The
+main process runtime-validates selected destinations, notes, and adapter outcomes
+and fails closed on malformed data. Discovery wiring must likewise parse each
+compiled adapter's returned destinations before presenting them to a user.
+
 Adapters are compiled into ScreenFling initially. A public plugin ABI is deferred
 until several adapters demonstrate which contracts are stable.
 
@@ -265,6 +288,11 @@ shell-concatenated commands. Notes are data, never code. The first note format i
 at most 500 Unicode code points on one line; Unicode controls and line separators
 are rejected. Destination identifiers reject those characters as well.
 Subprocesses have timeouts, capped output, and explicit error mapping.
+
+Surface adapters and managed adapters are separate families. A surface adapter
+can place input into an existing, exact terminal composer. A managed adapter owns
+an agent thread/session and starts work through a structured API, so its action
+is Send. A managed thread ID never substitutes for a terminal pane identity.
 
 ## Result semantics
 
@@ -387,7 +415,7 @@ The following remain intentionally undecided until product evidence exists:
 
 - the public adapter/plugin API;
 - update-channel and auto-update policy;
-- the first Windows destination adapter;
+- additional Windows-native or cooperative destination adapters;
 - browser integration architecture;
 - remote file-transfer and cleanup protocol;
 - history persistence format;

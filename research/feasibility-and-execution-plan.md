@@ -330,9 +330,13 @@ Choose browser context, multi-capture tasks, or remote delivery using observed d
 
 Enable Send only for versioned adapters that prove target, composer, attachment, submit semantics, and completion. Generic applications remain Copy or unverified Stage.
 
-## Roadmap edits this research supports
+## Historical roadmap recommendations
 
-No roadmap file has been changed yet. A careful revision should:
+At the research date, no roadmap file had been changed. The subsequent revision
+was expected to follow the recommendations below. They are preserved as research
+history and are superseded by the current
+[WezTerm decision](../docs/adr/0001-wezterm-first-stage-adapter.md) and
+[roadmap](../ROADMAP.md):
 
 1. distinguish engineering slices from user-valued milestones;
 2. make macOS + Ghostty the initial product contract;
@@ -372,4 +376,8 @@ prove capture
 -> generalize only the parts that survive contact with use
 ```
 
-For this machine and this moment, Ghostty's new AppleScript surface is the shortest route to that proof. Electron remains the correct shell. Rust, SSH, browser extensions, universal discovery, and automatic Send remain outside the first proof.
+At that research point, Ghostty's new AppleScript surface appeared to be the
+shortest route to that proof on the reference machine. The later cross-platform
+gate selected WezTerm instead. Electron remains the correct shell. Rust, SSH,
+browser extensions, universal discovery, and automatic Send remain outside the
+first proof.

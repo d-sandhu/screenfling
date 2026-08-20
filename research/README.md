@@ -1,8 +1,8 @@
 # Research index
 
 These reports record the evidence behind ScreenFling's current direction. They
-include documentation findings, feasibility analysis, risks, and proposed
-acceptance tests as of 2026-08-19.
+include documentation findings, feasibility analysis, risks, acceptance tests,
+and dated validation results.
 
 Research is supporting material, not the live product plan. Current decisions
 are controlled by:
@@ -57,6 +57,24 @@ Reproduces clean-install audits across Forge 7/Webpack, Forge 8 alpha, Forge
 7/Vite, and stable electron-vite/electron-builder. It supersedes the original
 Forge scaffold recommendation after the stable Forge graph exposed development
 and packaging advisories and failed against TypeScript 7.
+
+### [Current routing-surface evidence](routing-surface-current-evidence.md)
+
+Compares exact terminal control surfaces on native macOS and Windows. It selects
+WezTerm for the cross-platform routing prototype, tmux as the Unix exactness
+reference, and Ghostty as an optional macOS adapter rather than a project target.
+
+### [Managed-agent routing evidence](managed-agent-routing-current-evidence.md)
+
+Separates passive Stage into an existing user-owned surface from managed Send
+through Codex or Claude session APIs. Managed APIs are later adapter candidates;
+they do not substitute for Gate B.
+
+### [Phase 3 feasibility results](phase-3-feasibility-results.md)
+
+Records the packaged capture measurements, native macOS/Windows routing results,
+permanent decisions, explicit remaining acceptance gaps, and the conditional
+go/no-go decision for alpha implementation.
 
 ## Research standard
 
