@@ -326,10 +326,7 @@ async function main() {
     process.stdout.write(
       `${JSON.stringify(
         {
-          verdict:
-            process.platform === "darwin"
-              ? "macos-primitive-pass-windows-pending"
-              : "windows-primitive-pass-macos-evidence-required",
+          verdict: "platform-routing-primitive-pass",
           platform: process.platform,
           arch: process.arch,
           weztermVersion: VERSION,
@@ -346,7 +343,7 @@ async function main() {
           osFocusObserved: false,
           limitations: [
             "headless mux proof; no human-visible GUI focus trial",
-            "native Windows run required before cross-platform Gate B passes",
+            "one run proves only its reported platform; aggregate both Tier 1 runs separately",
             "control bytes prove transport only; supported agent/version bindings require observed trials",
           ],
         },

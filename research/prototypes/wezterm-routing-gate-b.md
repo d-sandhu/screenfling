@@ -69,10 +69,24 @@ operation does show that dispatch does not require a focus command.
 
 ### Native Windows
 
-Pending until the prototype-branch Windows workflow runs the identical harness.
-The pinned Windows ZIP digest is
-`57e5d03b585303d81e8b8e96d1230362852eb39aca92b3b29c7a42cfb82f9ac4`.
-Gate B is not cross-platform-passed until this evidence exists.
+The identical harness passed on a GitHub-hosted native Windows Server 2025 x64
+runner ([workflow run 32387884325](https://github.com/d-sandhu/screenfling/actions/runs/32387884325)):
+
+| Check | Result |
+| --- | ---: |
+| Alternating Stage operations | 100/100 |
+| Exact targeted CLI sends | 200/200 |
+| Wrong-target writes | 0 |
+| Enter bytes | 0 |
+| Exact final receiver buffers | yes |
+| Closed route refused before send | yes |
+| Active-pane fallback | never used |
+| Focus/activation command | never used |
+| WezTerm ZIP SHA-256 | `57e5d03b585303d81e8b8e96d1230362852eb39aca92b3b29c7a42cfb82f9ac4` |
+
+The aggregate transport primitive therefore passes on native macOS and native
+Windows. As on macOS, the headless runner cannot supply human-visible focus or
+real coding-agent attachment evidence.
 
 ## Documentation/source validation
 
@@ -92,10 +106,10 @@ Primary sources:
 - [Pinned stable local-listener source](https://github.com/wezterm/wezterm/blob/20240203-110809-5046fc22/wezterm-mux-server-impl/src/local.rs)
 - [Pinned stable release](https://github.com/wezterm/wezterm/releases/tag/20240203-110809-5046fc22)
 
-## Provisional verdict
+## Verdict
 
-The exact-routing primitive passes on macOS and is suitable for native Windows
-validation. It validates this permanent design direction:
+The exact-routing primitive passes on both Tier 1 operating systems. It
+validates this permanent design direction:
 
 - routes bind an adapter endpoint/instance generation and exact surface ID;
 - every Stage revalidates the exact destination;
