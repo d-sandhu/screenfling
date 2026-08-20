@@ -12,13 +12,16 @@ and never submitting work unexpectedly.
 
 ScreenFling is **pre-alpha**. The application scaffold, automated quality gates,
 main-owned workflow state machine, runtime-validated destination contract,
-narrow preload bridge, measured capture geometry, and fail-closed Stage
-orchestration are in place. The packaged macOS application now provides the
-first complete vertical slice: it hides its main window, captures the exact
+narrow preload bridge, measured capture geometry, fail-closed Stage orchestration,
+and the first exact WezTerm adapter primitive are in place. The packaged macOS
+application now provides the first complete vertical slice: it hides its main
+window, captures the exact
 display under the pointer, presents a frozen region overlay, reviews the crop,
 and writes and verifies the image clipboard only after explicit Copy. The global
 shortcut and display-change invalidation are wired through the main-owned
-controller. The production destination adapter, optional note, and remaining
+controller. WezTerm discovery and one-shot exact-pane staging now fail closed on
+unsupported versions, malformed discovery data, and stale generations. The
+destination picker, optional note, joined capture-to-Stage workflow, and remaining
 hardware/real-agent acceptance rows still block an alpha claim.
 
 The first reference implementation will be built on macOS, followed by Windows.

@@ -124,7 +124,11 @@ Gate B passes when:
 - duplicate names and working directories do not affect routing identity;
 - quotes, backslashes, Unicode, and key-like words remain literal note data;
 - newlines and control characters are rejected or normalized;
-- denied automation permission produces guidance and no fallback automation;
+- unavailable or denied CLI/mux access produces guidance and no GUI-automation
+  fallback; adapter-specific operating-system permissions are tested only when
+  that adapter actually requires them;
+- configured executable, config, and socket selectors pass platform ownership,
+  permission, and replacement checks before picker exposure;
 - uncertainty causes no automatic retry or duplicate attachment;
 - the clipboard remains usable as a manual fallback.
 
@@ -135,12 +139,19 @@ pass as **dispatched-unverified**; it cannot claim verified staging.
 **Current evidence:** the checksum-pinned WezTerm stable routing primitive passed
 100 alternating two-pane dispatches on both native macOS and Windows with exact
 bytes, zero wrong-target writes, zero Enter bytes, stale refusal before send, and
-no active-pane or activation command. Gate B remains open for visible no-focus
-trials and 30 actual attachment trials on every terminal/agent/version combination
-proposed for support. WezTerm has no macOS Automation/TCC dependency; ScreenFling
-must not add a fallback automation path. See
-[ADR 0001](docs/adr/0001-wezterm-first-stage-adapter.md) and the
-[Phase 3 results](research/phase-3-feasibility-results.md).
+no active-pane or activation command. The production-tree adapter now adds
+runtime-validated discovery, explicit executable/config/socket selection,
+generation-scoped stable pane routes, one combined image-binding-and-note write,
+bounded subprocesses, a final pre-spawn generation guard, and conservative
+uncertain-result handling. Its automated suite repeats 100 alternating exact
+routes and covers malformed discovery, endpoint replacement, timeout, literal
+input, and no-retry behavior. Gate B remains open for visible no-focus trials and
+30 actual attachment trials on every terminal/agent/version combination proposed
+for support. WezTerm has no macOS Automation/TCC dependency; ScreenFling must not
+add a fallback automation path. See
+[ADR 0001](docs/adr/0001-wezterm-first-stage-adapter.md), the
+[Phase 3 results](research/phase-3-feasibility-results.md), and the
+[Phase 6 results](research/phase-6-wezterm-adapter-results.md).
 
 ### Milestone 0 deliverables
 
@@ -153,6 +164,8 @@ must not add a fallback automation path. See
   permanent coordinate fixture grid in the production tree;
 - [x] destination adapter contract in the production tree and disposable
   cross-platform routing harness retained on its prototype branch;
+- [x] production WezTerm discovery and one-shot exact-pane Stage primitive with
+  bounded subprocess, stale-generation, literal-input, and no-retry tests;
 - [x] recorded primitive results with hardware, OS, and terminal versions, plus
   explicit missing agent-version evidence;
 - [x] an architecture decision selecting WezTerm as the first Stage adapter
@@ -389,19 +402,16 @@ These items are not on the committed roadmap:
 
 ## Immediate implementation sequence
 
-The next work should be issue-sized and land in this order:
+The capture-to-Copy path and production WezTerm adapter primitive are now in the
+main implementation. The next work should be issue-sized and land in this order:
 
-1. Complete the remaining production-capture hardware and lifecycle acceptance
-   rows using the wired packaged workflow.
-2. Implement WezTerm discovery and one-shot `stageIfCurrent` routing behind the
-   adapter contract, including version and stale-instance preflight.
-3. Join capture, optional note, exact destination choice, Copy, and Stage through
+1. Join capture, optional note, exact destination choice, Copy, and Stage through
    the main-owned workflow state machine without Enter or focus changes.
-4. Run the missing Gate A hardware/lifecycle matrix and Gate B visible real-agent
+2. Run the missing Gate A hardware/lifecycle matrix and Gate B visible real-agent
    acceptance rows; record exact supported versions rather than broad claims.
-5. Add recoverable permission, stale-target, unsupported, and clipboard-fallback
+3. Add recoverable permission, stale-target, unsupported, and clipboard-fallback
    UI, then complete the 200-workflow soak and packaged dogfooding evidence.
-6. Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
+4. Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 
 The first implementation branch should not contain remote support, browser

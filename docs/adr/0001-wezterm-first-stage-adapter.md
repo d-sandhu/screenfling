@@ -13,6 +13,15 @@ passed 100 alternating dispatches on macOS and Windows with zero wrong-target or
 Enter events. The adapter is an optional integration rather than a ScreenFling
 runtime dependency; Copy remains the safe fallback.
 
+## Implementation status
+
+The production-tree primitive now implements pinned-version preflight, bounded
+JSON discovery, explicit absolute executable/config/socket selection,
+stable-within-generation pane routes, one combined stdin dispatch, and
+conservative no-retry outcomes. This satisfies the implementation decision, not the release gate:
+visible no-focus and real-agent attachment trials remain open, and the adapter is
+not yet wired into the application picker.
+
 ## Consequences
 
 - Every dispatch pins the WezTerm instance and pane, revalidates immediately,

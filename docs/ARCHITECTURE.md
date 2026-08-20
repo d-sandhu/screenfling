@@ -308,6 +308,23 @@ at most 500 Unicode code points on one line; Unicode controls and line separator
 are rejected. Destination identifiers reject those characters as well.
 Subprocesses have timeouts, capped output, and explicit error mapping.
 
+The first WezTerm implementation keeps its executable, config file, and mux
+socket in main-owned adapter configuration. Discovery accepts only the pinned
+stable compatibility fixture, runtime-parses bounded `list --format json`
+output, and mints stable-within-generation routes scoped to a fingerprint of the
+selected executable, config, socket, and version. Dispatch re-runs that exact discovery,
+requires the selected pane, checks the generation again immediately before
+spawning, and performs one `send-text --no-paste --pane-id` call. The image-paste
+binding and optional note share one stdin payload; neither shell interpolation
+nor a second partially successful note process exists. A timeout or post-spawn
+failure is reported as `dispatched-unverified` and is never retried.
+
+WezTerm does not provide an atomic compare-and-send operation. The generation
+guard narrows but cannot remove the final endpoint replacement race, so visible
+native acceptance remains release-blocking and Copy remains available. The
+adapter never inherits `WEZTERM_PANE`, chooses the focused pane, activates a
+window, or claims that CLI acceptance proves an agent attachment.
+
 Surface adapters and managed adapters are separate families. A surface adapter
 can place input into an existing, exact terminal composer. A managed adapter owns
 an agent thread/session and starts work through a structured API, so its action
