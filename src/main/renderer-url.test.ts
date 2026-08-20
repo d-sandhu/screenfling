@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readDevRendererUrl } from "./renderer-url";
+import { readDevRendererUrl, rendererDocumentUrl } from "./renderer-url";
 
 describe("readDevRendererUrl", () => {
   it("accepts local electron-vite origins", () => {
@@ -20,6 +20,18 @@ describe("readDevRendererUrl", () => {
   ])("rejects an untrusted renderer URL: %s", (url) => {
     expect(() => readDevRendererUrl(url)).toThrow(
       "ELECTRON_RENDERER_URL must be an uncredentialed loopback origin.",
+    );
+  });
+});
+
+describe("renderer document URLs", () => {
+  it("keeps main and capture surfaces on exact same-origin documents", () => {
+    expect(rendererDocumentUrl(null, "main")).toBe("screenfling://bundle/index.html");
+    expect(rendererDocumentUrl(null, "capture")).toBe(
+      "screenfling://bundle/index.html?surface=capture",
+    );
+    expect(rendererDocumentUrl("http://127.0.0.1:5173/", "capture")).toBe(
+      "http://127.0.0.1:5173/?surface=capture",
     );
   });
 });

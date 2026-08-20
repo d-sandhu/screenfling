@@ -83,6 +83,13 @@ and macOS permission APIs plus implementation guidance for the production path.
 It separates those API facts from the packaged hardware checks that remain
 release-blocking.
 
+### [Phase 5 packaged capture dogfood](phase-5-packaged-capture-dogfood.md)
+
+Records the sanitized local packaged-app run for the production Capture-to-Copy
+vertical slice, the fast-drag defect found and fixed during dogfooding, the
+verified Copy result, and the native acceptance rows that remain open. Captured
+pixels and private QA screenshots are not stored in the repository.
+
 ## Research standard
 
 New reports should:

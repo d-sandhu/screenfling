@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { StaleWorkflowActionError } from "../shared/workflow";
-import { createValidatedOperationHandler } from "./validated-operation-handler";
+import {
+  createAuthorizedNoPayloadHandler,
+  createValidatedOperationHandler,
+} from "./validated-operation-handler";
 import { WorkflowStore } from "./workflow-store";
 
 import type { SerializedIpcValue } from "./validated-operation-handler";
@@ -77,5 +80,22 @@ describe("validated workflow operation handler", () => {
       StaleWorkflowActionError,
     );
     expect(workflow.snapshot).toMatchObject({ operationId: OPERATION_ID });
+  });
+});
+
+describe("authorized no-payload handler", () => {
+  it("authorizes and rejects hidden positional input", () => {
+    const calls: string[] = [];
+    const handler = createAuthorizedNoPayloadHandler(
+      (event: string) => calls.push(`authorize:${event}`),
+      () => {
+        calls.push("action");
+        return { phase: "idle" };
+      },
+    );
+
+    expect(handler("trusted")).toEqual({ phase: "idle" });
+    expect(() => handler("trusted", null)).toThrow("Invalid empty workflow request.");
+    expect(calls).toEqual(["authorize:trusted", "action", "authorize:trusted"]);
   });
 });

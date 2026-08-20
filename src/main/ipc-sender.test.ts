@@ -4,11 +4,12 @@ import { isTrustedIpcSenderEvidence, isTrustedRendererFrameUrl } from "./ipc-sen
 
 describe("IPC renderer URL policy", () => {
   it("accepts only the exact packaged entry point in production", () => {
-    expect(isTrustedRendererFrameUrl("screenfling://bundle/index.html", null)).toBe(true);
-    expect(isTrustedRendererFrameUrl("screenfling://bundle/settings.html", null)).toBe(false);
-    expect(isTrustedRendererFrameUrl("screenfling://bundle/index.html?trusted=true", null)).toBe(
-      false,
-    );
+    const expected = "screenfling://bundle/index.html";
+    expect(isTrustedRendererFrameUrl(expected, expected)).toBe(true);
+    expect(isTrustedRendererFrameUrl("screenfling://bundle/settings.html", expected)).toBe(false);
+    expect(
+      isTrustedRendererFrameUrl("screenfling://bundle/index.html?trusted=true", expected),
+    ).toBe(false);
   });
 
   it("accepts only the configured development document", () => {
@@ -19,7 +20,7 @@ describe("IPC renderer URL policy", () => {
   });
 
   it("rejects malformed input and packaged URLs in development", () => {
-    expect(isTrustedRendererFrameUrl("not a URL", null)).toBe(false);
+    expect(isTrustedRendererFrameUrl("not a URL", "http://127.0.0.1:5173/")).toBe(false);
     expect(
       isTrustedRendererFrameUrl("screenfling://bundle/index.html", "http://127.0.0.1:5173/"),
     ).toBe(false);
@@ -34,7 +35,9 @@ describe("IPC sender evidence policy", () => {
   };
 
   it("requires the selected main window, its main frame, and its exact URL", () => {
-    expect(isTrustedIpcSenderEvidence(trustedEvidence, null)).toBe(true);
+    expect(isTrustedIpcSenderEvidence(trustedEvidence, "screenfling://bundle/index.html")).toBe(
+      true,
+    );
   });
 
   it.each([
@@ -43,6 +46,6 @@ describe("IPC sender evidence policy", () => {
     { ...trustedEvidence, frameUrl: null },
     { ...trustedEvidence, frameUrl: "screenfling://bundle/other.html" },
   ])("rejects mismatched, child-frame, closed-window, or wrong-URL evidence", (evidence) => {
-    expect(isTrustedIpcSenderEvidence(evidence, null)).toBe(false);
+    expect(isTrustedIpcSenderEvidence(evidence, "screenfling://bundle/index.html")).toBe(false);
   });
 });

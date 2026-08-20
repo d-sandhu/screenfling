@@ -26,9 +26,11 @@ const pixelSizeSchema = z
   })
   .readonly();
 
-const captureDisplaySchema = z
+export const captureDisplaySchema = z
   .strictObject({
     id: z.string().min(1).max(128),
+    x: z.number().finite(),
+    y: z.number().finite(),
     width: z.number().finite().positive(),
     height: z.number().finite().positive(),
     scaleFactor: z.number().finite().positive(),
@@ -54,6 +56,15 @@ export const captureDraftSchema = z
   })
   .readonly();
 
+export const captureSelectionRequestSchema = z
+  .strictObject({
+    operationId: operationIdSchema,
+    selection: dipSelectionSchema,
+  })
+  .readonly();
+
 export type CaptureDraft = z.infer<typeof captureDraftSchema>;
+export type CaptureDisplayInput = z.input<typeof captureDisplaySchema>;
 export type CaptureOverlaySnapshot = z.infer<typeof captureOverlaySnapshotSchema>;
+export type CaptureSelectionRequest = z.infer<typeof captureSelectionRequestSchema>;
 export type DipSelectionInput = z.input<typeof dipSelectionSchema>;

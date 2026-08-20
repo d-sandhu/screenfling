@@ -13,12 +13,13 @@ and never submitting work unexpectedly.
 ScreenFling is **pre-alpha**. The application scaffold, automated quality gates,
 main-owned workflow state machine, runtime-validated destination contract,
 narrow preload bridge, measured capture geometry, and fail-closed Stage
-orchestration are in place. The production capture backend/session core now
-selects one exact display, retains the lossless image in main memory, creates a
-bounded preview, crops against measured geometry, and writes only on explicit
-Copy. Its overlay, shortcut, and application-workflow wiring—and the production
-destination adapter—are not implemented yet. The remaining hardware/real-agent
-acceptance rows still block an alpha claim.
+orchestration are in place. The packaged macOS application now provides the
+first complete vertical slice: it hides its main window, captures the exact
+display under the pointer, presents a frozen region overlay, reviews the crop,
+and writes and verifies the image clipboard only after explicit Copy. The global
+shortcut and display-change invalidation are wired through the main-owned
+controller. The production destination adapter, optional note, and remaining
+hardware/real-agent acceptance rows still block an alpha claim.
 
 The first reference implementation will be built on macOS, followed by Windows.
 Both are Tier 1 product targets. Linux is optional and may be explored later

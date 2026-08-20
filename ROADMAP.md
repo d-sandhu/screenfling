@@ -91,12 +91,15 @@ origin hardware, rotation, reconnect, sleep/wake, permission denial/revocation,
 and native Windows capture. See the
 [Phase 3 results](research/phase-3-feasibility-results.md).
 
-The production capture core now implements exact display-source selection,
-bounded renderer previews, measured-geometry cropping, explicit image-clipboard
-writes with pixel read-back verification, post-capture geometry revalidation,
-and a display-change invalidation hook. It is not yet wired to display events,
-the overlay, or the shortcut, so this implementation does not close any
-remaining Gate A row.
+The production capture path now wires exact display-source selection, a hidden
+snapshot-first overlay, bounded renderer previews, measured-geometry cropping,
+explicit image-clipboard writes with pixel read-back verification, display-event
+invalidation, and a registered global shortcut through one main-owned
+controller. A packaged macOS dogfood run completed Capture, fast region drag,
+review, verified Copy, and Escape cancellation with clean renderer diagnostics.
+This closes the implementation gap, but not the remaining Gate A hardware,
+latency, permission, or soak rows. See the
+[Phase 5 packaged dogfood record](research/phase-5-packaged-capture-dogfood.md).
 
 ### Gate B: exact-routing harness
 
@@ -388,8 +391,8 @@ These items are not on the committed roadmap:
 
 The next work should be issue-sized and land in this order:
 
-1. Implement the production capture service and frozen one-display selection,
-   retaining measured returned-image geometry.
+1. Complete the remaining production-capture hardware and lifecycle acceptance
+   rows using the wired packaged workflow.
 2. Implement WezTerm discovery and one-shot `stageIfCurrent` routing behind the
    adapter contract, including version and stale-instance preflight.
 3. Join capture, optional note, exact destination choice, Copy, and Stage through
