@@ -117,6 +117,6 @@ validates this permanent design direction:
 - literal note data travels through stdin, not shell or automation source;
 - transport success is not attachment verification.
 
-It does **not** yet validate a production WezTerm adapter, native Windows,
-human-visible no-focus behavior, configurable agent keybindings, or an actual
-image chip in Claude Code/Codex. Those remain explicit Gate B work.
+It does **not** yet validate a production WezTerm adapter, human-visible
+no-focus behavior on either desktop, configurable agent keybindings, or an
+actual image chip in Claude Code/Codex. Those remain explicit Gate B work.
