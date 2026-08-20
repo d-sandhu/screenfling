@@ -1,14 +1,17 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { CaptureDragTracker, selectionFromDrag } from "./capture-drag";
+import { DestinationPicker, destinationName } from "./destination-picker";
 import "./styles.css";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { ShortcutStatus } from "../../shared/bridge";
 import type { CaptureDraft, CaptureOverlaySnapshot } from "../../shared/capture";
+import type { Destination } from "../../shared/domain";
 import type { DeliveryResult, WorkflowSnapshot } from "../../shared/workflow";
 import type { CaptureDrag, CapturePoint } from "./capture-drag";
+import { MAX_NOTE_LENGTH } from "../../shared/domain";
 
 type UiCopy = {
   readonly detail: string;
@@ -201,16 +204,34 @@ function resultCopy(result: DeliveryResult): UiCopy {
   if (result.status === "failed") {
     const details = {
       "capture-failed": "The display changed or ScreenFling could not read its pixels.",
-      "clipboard-failed": "ScreenFling could not verify the image after writing the clipboard.",
-      "dispatch-failed": "The destination rejected the staged image.",
+      "clipboard-failed":
+        "ScreenFling could not verify the image on the clipboard, so Stage stopped.",
+      "dispatch-failed":
+        "ScreenFling could not confirm the destination operation. The image remains on your clipboard.",
       "permission-blocked":
         "Allow Screen Recording for ScreenFling in system settings, then retry.",
-      "target-stale": "The selected destination is no longer available.",
+      "target-stale":
+        "The selected destination changed before Stage. The image remains on your clipboard.",
       unexpected: "ScreenFling stopped safely before delivering anything.",
     } as const;
     return { detail: details[result.reason], title: "Capture stopped" };
   }
-  return { detail: "The image reached the selected destination.", title: "Delivered" };
+  if (result.status === "dispatched-unverified") {
+    return {
+      detail: `Input was dispatched to ${destinationName(result.destination)} without submission. Attachment could not be verified; the image remains on your clipboard.`,
+      title: "Staged — unverified",
+    };
+  }
+  if (result.status === "staged-verified") {
+    return {
+      detail: `${destinationName(result.destination)} verified the staged input without submitting it.`,
+      title: "Stage verified",
+    };
+  }
+  return {
+    detail: `${destinationName(result.destination)} verified the submitted turn.`,
+    title: "Send verified",
+  };
 }
 
 function phaseCopy(snapshot: WorkflowSnapshot): UiCopy {
@@ -226,11 +247,19 @@ function phaseCopy(snapshot: WorkflowSnapshot): UiCopy {
       return { detail: "Drag across the frozen screen. Escape cancels.", title: "Select an area" };
     case "editing":
       return {
-        detail: "Review the exact pixels before they leave ScreenFling.",
-        title: "Ready to copy",
+        detail:
+          "Review the exact pixels, add optional context, then choose Copy or one exact target.",
+        title: "Ready to hand off",
       };
+    case "target-selected":
+      return { detail: "Locking the selected route for this operation.", title: "Target selected" };
     case "writing-clipboard":
       return { detail: "Writing and checking the image clipboard.", title: "Verifying copy" };
+    case "staging":
+      return {
+        detail: "Dispatching once to the selected exact pane without Enter or focus changes.",
+        title: "Staging input",
+      };
     case "result":
       return resultCopy(snapshot.result);
     default:
@@ -272,8 +301,13 @@ function ScreenFlingApp() {
   const [snapshot, setSnapshot] = useState<WorkflowSnapshot | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [draft, setDraft] = useState<CaptureDraft | null>(null);
+  const [destinations, setDestinations] = useState<readonly Destination[]>([]);
+  const [destinationsLoading, setDestinationsLoading] = useState(false);
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
+  const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const discoverySequence = useRef(0);
 
   useEffect(() => {
     if (bridge === undefined) return;
@@ -296,14 +330,19 @@ function ScreenFlingApp() {
     };
   }, [bridge]);
 
+  const editingOperationId = snapshot?.phase === "editing" ? snapshot.operationId : null;
+  const focusResultAction = useCallback((button: HTMLButtonElement | null) => {
+    button?.focus();
+  }, []);
+
   useEffect(() => {
-    if (bridge === undefined || snapshot?.phase !== "editing") {
+    if (bridge === undefined || editingOperationId === null) {
       setDraft(null);
       return;
     }
     let current = true;
     void bridge
-      .getCaptureDraft({ operationId: snapshot.operationId })
+      .getCaptureDraft({ operationId: editingOperationId })
       .then((nextDraft) => {
         if (current) setDraft(nextDraft);
       })
@@ -313,7 +352,42 @@ function ScreenFlingApp() {
     return () => {
       current = false;
     };
-  }, [bridge, snapshot]);
+  }, [bridge, editingOperationId]);
+
+  const discoverDestinations = useCallback(() => {
+    if (bridge === undefined || editingOperationId === null) return;
+    const sequence = ++discoverySequence.current;
+    setDestinationsLoading(true);
+    setError(null);
+    void bridge
+      .discoverDestinations({ operationId: editingOperationId })
+      .then((nextDestinations) => {
+        if (discoverySequence.current !== sequence) return;
+        setDestinations(nextDestinations);
+        setSelectedDestinationId((selected) => {
+          return nextDestinations.some((destination) => destination.id === selected)
+            ? selected
+            : null;
+        });
+      })
+      .catch(() => {
+        if (discoverySequence.current !== sequence) return;
+        setDestinations([]);
+        setSelectedDestinationId(null);
+        setError("Destinations could not be refreshed. Copy remains available.");
+      })
+      .finally(() => {
+        if (discoverySequence.current === sequence) setDestinationsLoading(false);
+      });
+  }, [bridge, editingOperationId]);
+
+  useEffect(() => {
+    discoverySequence.current += 1;
+    setDestinations([]);
+    setSelectedDestinationId(null);
+    setNote("");
+    if (editingOperationId !== null) discoverDestinations();
+  }, [discoverDestinations, editingOperationId]);
 
   if (bridge === undefined) {
     return <RendererFailure message="The secure ScreenFling bridge is unavailable." />;
@@ -326,7 +400,11 @@ function ScreenFlingApp() {
   const copy = phaseCopy(snapshot);
   const operationId = operationIdOf(snapshot);
   const isActive = snapshot.phase !== "idle" && snapshot.phase !== "result";
-  const canCancel = isActive && snapshot.phase !== "writing-clipboard";
+  const canCancel =
+    isActive &&
+    snapshot.phase !== "target-selected" &&
+    snapshot.phase !== "writing-clipboard" &&
+    snapshot.phase !== "staging";
 
   const runAction = (action: () => Promise<WorkflowSnapshot>) => {
     if (pending) return;
@@ -356,14 +434,103 @@ function ScreenFlingApp() {
         <ShortcutHint status={shortcut} />
       </header>
 
-      <section className="workspace" aria-live="polite">
-        <div className="workspace__copy">
-          <p className="eyebrow">Screen → clipboard</p>
+      <section className="workspace">
+        <div className="workspace__copy" aria-atomic="true" aria-live="polite">
+          <p className="eyebrow">Local visual handoff</p>
           <h1>{copy.title}</h1>
           <p className="summary">{copy.detail}</p>
         </div>
 
-        {snapshot.phase === "editing" && draft !== null ? <CapturePreview draft={draft} /> : null}
+        {snapshot.phase === "editing" ? (
+          <div className="review-layout">
+            {draft === null ? (
+              <div
+                className="preview preview--loading"
+                aria-label="Loading capture preview"
+                role="status"
+              />
+            ) : (
+              <CapturePreview draft={draft} />
+            )}
+            <div className="handoff">
+              <DestinationPicker
+                destinations={destinations}
+                loading={destinationsLoading}
+                onRefresh={discoverDestinations}
+                onSelect={setSelectedDestinationId}
+                selectedId={selectedDestinationId}
+              />
+              <label className="note-field">
+                <span className="field-heading">
+                  <span>Optional note</span>
+                  <span id="note-counter">
+                    {Array.from(note).length}/{MAX_NOTE_LENGTH}
+                  </span>
+                </span>
+                <input
+                  aria-describedby="note-counter"
+                  autoComplete="off"
+                  name="note"
+                  onChange={(event) => {
+                    const nextNote = event.currentTarget.value;
+                    if (Array.from(nextNote).length <= MAX_NOTE_LENGTH) setNote(nextNote);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.preventDefault();
+                  }}
+                  placeholder="What should the agent notice?"
+                  spellCheck
+                  type="text"
+                  value={note}
+                />
+              </label>
+              <div className="actions actions--review">
+                <button
+                  className="button button--primary"
+                  disabled={
+                    pending ||
+                    destinationsLoading ||
+                    draft === null ||
+                    selectedDestinationId === null
+                  }
+                  onClick={() => {
+                    if (selectedDestinationId === null) return;
+                    runAction(() =>
+                      bridge.stageCapture({
+                        operationId: snapshot.operationId,
+                        destinationId: selectedDestinationId,
+                        note: note.length === 0 ? null : note,
+                      }),
+                    );
+                  }}
+                  type="button"
+                >
+                  Stage, don’t send
+                </button>
+                <button
+                  className="button button--secondary"
+                  disabled={pending || draft === null}
+                  onClick={() =>
+                    runAction(() => bridge.copyCapture({ operationId: snapshot.operationId }))
+                  }
+                  type="button"
+                >
+                  Copy only
+                </button>
+                <button
+                  className="text-button text-button--cancel"
+                  disabled={pending}
+                  onClick={() =>
+                    runAction(() => bridge.cancelOperation({ operationId: snapshot.operationId }))
+                  }
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {snapshot.phase === "idle" ? (
           <button
@@ -375,27 +542,6 @@ function ScreenFlingApp() {
             <span>Capture region</span>
             <span aria-hidden="true">↗</span>
           </button>
-        ) : null}
-
-        {snapshot.phase === "editing" && operationId !== null ? (
-          <div className="actions">
-            <button
-              className="button button--primary"
-              disabled={pending || draft === null}
-              onClick={() => runAction(() => bridge.copyCapture({ operationId }))}
-              type="button"
-            >
-              Copy image
-            </button>
-            <button
-              className="button button--secondary"
-              disabled={pending}
-              onClick={() => runAction(() => bridge.cancelOperation({ operationId }))}
-              type="button"
-            >
-              Cancel
-            </button>
-          </div>
         ) : null}
 
         {canCancel && operationId !== null && snapshot.phase !== "editing" ? (
@@ -415,6 +561,7 @@ function ScreenFlingApp() {
               className="button button--primary"
               disabled={pending}
               onClick={dismiss}
+              ref={focusResultAction}
               type="button"
             >
               Done
@@ -422,12 +569,20 @@ function ScreenFlingApp() {
           </div>
         ) : null}
 
-        {error === null ? null : <p className="error">{error}</p>}
+        {error === null ? null : (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
       </section>
 
       <footer className="app__footer">
         <span className={`status-dot ${isActive ? "status-dot--active" : ""}`} />
-        <span>{isActive ? "Operation in progress" : "Nothing is sent automatically"}</span>
+        <span>
+          {isActive
+            ? "Operation in progress · no automatic submission"
+            : "Nothing is sent automatically"}
+        </span>
       </footer>
     </main>
   );

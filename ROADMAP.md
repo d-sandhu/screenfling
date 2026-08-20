@@ -12,8 +12,8 @@ forward only when its exit criteria are met.
 
 | Horizon | Outcome |
 | --- | --- |
-| **Now** | Prove capture quality and exact destination staging independently. |
-| **Next** | Ship one narrow macOS alpha that performs the complete handoff. |
+| **Now** | Finish native acceptance for the joined capture-to-Stage workflow. |
+| **Next** | Harden and ship one narrow macOS alpha. |
 | **Then** | Harden the macOS release and add a second destination surface. |
 | **After that** | Deliver the same core product contract on Windows. |
 | **Demand-driven** | Managed agent sessions, browser context, remote delivery, and multi-capture tasks. |
@@ -152,6 +152,14 @@ add a fallback automation path. See
 [ADR 0001](docs/adr/0001-wezterm-first-stage-adapter.md), the
 [Phase 3 results](research/phase-3-feasibility-results.md), and the
 [Phase 6 results](research/phase-6-wezterm-adapter-results.md).
+
+The joined product path now exposes operation-scoped discovery, explicit exact
+destination selection, an optional bounded one-line note, verified clipboard
+fallback before one-shot Stage, and honest unverified results. The renderer sends
+only a destination ID; executable and mux configuration remain in the main
+process. The adapter is available only through a complete opt-in macOS developer
+configuration while trusted-path and real-agent acceptance remain open. See the
+[Phase 7 results](research/phase-7-joined-flow-results.md).
 
 ### Milestone 0 deliverables
 
@@ -402,16 +410,20 @@ These items are not on the committed roadmap:
 
 ## Immediate implementation sequence
 
-The capture-to-Copy path and production WezTerm adapter primitive are now in the
-main implementation. The next work should be issue-sized and land in this order:
+The capture-to-Copy path, production WezTerm adapter primitive, and joined
+developer workflow are now in the main implementation. This does not close Gate
+A, Gate B, or the macOS alpha milestone. The next work should be issue-sized and
+land in this order:
 
-1. Join capture, optional note, exact destination choice, Copy, and Stage through
-   the main-owned workflow state machine without Enter or focus changes.
-2. Run the missing Gate A hardware/lifecycle matrix and Gate B visible real-agent
-   acceptance rows; record exact supported versions rather than broad claims.
-3. Add recoverable permission, stale-target, unsupported, and clipboard-fallback
-   UI, then complete the 200-workflow soak and packaged dogfooding evidence.
-4. Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
+1. [x] Join capture, optional note, exact destination choice, Copy, and Stage
+   through the main-owned workflow state machine without Enter or focus changes.
+2. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
+   real-agent acceptance rows; record exact supported versions rather than broad
+   claims.
+3. [ ] Add recoverable permission, stale-target, unsupported, and
+   clipboard-fallback UI, then complete the 200-workflow soak and packaged
+   dogfooding evidence.
+4. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 
 The first implementation branch should not contain remote support, browser

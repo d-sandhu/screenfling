@@ -8,6 +8,8 @@ import { registerAppProtocol } from "./app-protocol";
 import { CaptureController } from "./capture-controller";
 import { CaptureOverlayWindow } from "./capture-overlay-window";
 import { CaptureSession } from "./capture-session";
+import { createConfiguredAdapters } from "./configured-adapters";
+import { DestinationRegistry } from "./destination-registry";
 import { ElectronCaptureBackend, ElectronImageClipboard } from "./electron-capture-backend";
 import { registerWorkflowIpc } from "./ipc";
 import { createMainWindowOptions } from "./window-options";
@@ -88,9 +90,13 @@ void app.whenReady().then(() => {
     controller.overlayClosedUnexpectedly();
   });
   const capture = new CaptureSession(new ElectronCaptureBackend(), new ElectronImageClipboard());
+  const destinations = new DestinationRegistry(
+    createConfiguredAdapters(process.env, process.platform),
+  );
   controller = new CaptureController(
     workflow,
     capture,
+    destinations,
     overlay,
     {
       hideForCapture: hideMainWindowForCapture,

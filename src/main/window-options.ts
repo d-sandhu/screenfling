@@ -4,9 +4,9 @@ import type { CaptureDisplay } from "./capture-session";
 export function createMainWindowOptions(preload: string): BrowserWindowConstructorOptions {
   return {
     backgroundColor: "#101114",
-    height: 560,
-    minHeight: 480,
-    minWidth: 640,
+    height: 720,
+    minHeight: 640,
+    minWidth: 760,
     show: false,
     useContentSize: true,
     webPreferences: {
@@ -15,7 +15,7 @@ export function createMainWindowOptions(preload: string): BrowserWindowConstruct
       preload,
       sandbox: true,
     },
-    width: 760,
+    width: 920,
   };
 }
 

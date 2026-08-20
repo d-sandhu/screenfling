@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { MAX_NOTE_LENGTH, destinationSchema, parseDestination, parseNote } from "./domain";
+import {
+  MAX_NOTE_LENGTH,
+  destinationSchema,
+  parseDestination,
+  parseNote,
+  receiptForDestination,
+} from "./domain";
 
 import type { DestinationInput } from "./domain";
 
@@ -59,6 +65,14 @@ describe("destination contract", () => {
     const destination = parseDestination(validDestination);
     expect(destination.capabilities.actions).toEqual(["copy", "stage"]);
     expect(Object.isFrozen(destination)).toBe(true);
+  });
+
+  it("reduces a result destination to its exact display identity", () => {
+    expect(receiptForDestination(parseDestination(validDestination))).toEqual({
+      id: validDestination.id,
+      adapter: validDestination.adapter,
+      surface: validDestination.surface,
+    });
   });
 
   it("rejects best-effort automation", () => {

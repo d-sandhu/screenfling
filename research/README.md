@@ -103,6 +103,12 @@ Records the production-tree adapter boundary, automated conformance results,
 fail-closed behavior, and the security, visible native, and real-agent rows that
 remain open.
 
+### [Phase 7 joined-flow results](phase-7-joined-flow-results.md)
+
+Records the operation-scoped destination registry, narrow Stage IPC boundary,
+joined Capture/Copy/Stage UI, automated and visual validation, experimental
+configuration boundary, and acceptance work that remains release-blocking.
+
 ## Research standard
 
 New reports should:

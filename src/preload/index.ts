@@ -6,6 +6,7 @@ import {
   IPC_CHANNELS,
   operationRequestSchema,
   shortcutStatusSchema,
+  stageCaptureRequestSchema,
 } from "../shared/bridge";
 import {
   captureDraftSchema,
@@ -13,12 +14,14 @@ import {
   captureSelectionRequestSchema,
 } from "../shared/capture";
 import { LatestValueRelay } from "../shared/latest-value-relay";
+import { destinationListSchema } from "../shared/domain";
 import { workflowSnapshotSchema } from "../shared/workflow";
 
 import type {
   CaptureOverlayBridge,
   OperationRequest,
   ScreenFlingBridge,
+  StageCaptureRequest,
   ShortcutStatus,
   Unsubscribe,
 } from "../shared/bridge";
@@ -28,6 +31,7 @@ import type {
   CaptureSelectionRequest,
 } from "../shared/capture";
 import type { WorkflowSnapshot } from "../shared/workflow";
+import type { Destination } from "../shared/domain";
 
 type OperationWorkflowChannel =
   | typeof IPC_CHANNELS.cancelOperation
@@ -62,6 +66,20 @@ async function getShortcutStatus(): Promise<ShortcutStatus> {
   return shortcutStatusSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.getShortcutStatus));
 }
 
+async function discoverDestinations(request: OperationRequest): Promise<readonly Destination[]> {
+  const validatedRequest = operationRequestSchema.parse(request);
+  return destinationListSchema.parse(
+    await ipcRenderer.invoke(IPC_CHANNELS.discoverDestinations, validatedRequest),
+  );
+}
+
+async function stageCapture(request: StageCaptureRequest): Promise<WorkflowSnapshot> {
+  const validatedRequest = stageCaptureRequestSchema.parse(request);
+  return workflowSnapshotSchema.parse(
+    await ipcRenderer.invoke(IPC_CHANNELS.stageCapture, validatedRequest),
+  );
+}
+
 function onWorkflowSnapshot(listener: (snapshot: WorkflowSnapshot) => void): Unsubscribe {
   const receive = (_event: Electron.IpcRendererEvent, payload: WorkflowSnapshot) => {
     listener(workflowSnapshotSchema.parse(payload));
@@ -75,11 +93,13 @@ const mainBridge: ScreenFlingBridge = Object.freeze({
   cancelOperation: (request) => invokeOperationWorkflow(IPC_CHANNELS.cancelOperation, request),
   copyCapture: (request) => invokeOperationWorkflow(IPC_CHANNELS.copyCapture, request),
   dismissResult: (request) => invokeOperationWorkflow(IPC_CHANNELS.dismissResult, request),
+  discoverDestinations,
   getCaptureDraft,
   getShortcutStatus,
   getSnapshot: () => invokeNoPayloadWorkflow(IPC_CHANNELS.getSnapshot),
   onWorkflowSnapshot,
   startCapture: () => invokeNoPayloadWorkflow(IPC_CHANNELS.startCapture),
+  stageCapture,
 });
 
 async function invokeOverlayOperation(

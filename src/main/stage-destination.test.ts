@@ -28,6 +28,11 @@ const selected = parseDestination({
     actions: ["copy", "stage"],
   },
 });
+const destinationReceipt = {
+  id: selected.id,
+  adapter: selected.adapter,
+  surface: selected.surface,
+};
 
 function createAdapter(
   stageResult: AdapterStageResult,
@@ -50,6 +55,7 @@ describe("destination staging orchestration", () => {
 
     await expect(stageDestination(adapter, selected, parseNote("literal note"))).resolves.toEqual({
       status: "dispatched-unverified",
+      destination: destinationReceipt,
     });
     expect(stageRequests).toEqual([{ destination: selected, note: "literal note" }]);
   });
@@ -100,7 +106,7 @@ describe("destination staging orchestration", () => {
         selected,
         null,
       ),
-    ).resolves.toEqual({ status: "dispatched-unverified" });
+    ).resolves.toEqual({ status: "dispatched-unverified", destination: destinationReceipt });
     await expect(
       stageDestination(createAdapter({ status: "failed" }, failedRequests), selected, null),
     ).resolves.toEqual({ status: "failed", reason: "dispatch-failed" });
@@ -193,7 +199,7 @@ describe("destination staging orchestration", () => {
         verifiable,
         null,
       ),
-    ).resolves.toEqual({ status: "staged-verified" });
+    ).resolves.toEqual({ status: "staged-verified", destination: destinationReceipt });
   });
 
   it("maps thrown adapter failures without retrying", async () => {

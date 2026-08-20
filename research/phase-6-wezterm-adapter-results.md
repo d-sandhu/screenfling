@@ -96,8 +96,10 @@ also completed successfully with Electron 43.4.1.
   socket, or parent directory is trusted. Platform ownership, Unix mode,
   Windows ACL, symlink/replacement, and executable-discovery policy must pass
   native security acceptance before the adapter is exposed in the picker.
-- The adapter is not yet exposed through the renderer destination picker or
-  joined to the capture/clipboard workflow.
+- At the end of Phase 6, the adapter was not exposed through the renderer picker
+  or joined to capture and clipboard. Phase 7 subsequently added that wiring
+  behind an explicit developer-only configuration; release acceptance remains
+  open.
 
 ## Decision
 

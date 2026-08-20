@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { operationRequestSchema, shortcutStatusSchema } from "./bridge";
+import { operationRequestSchema, shortcutStatusSchema, stageCaptureRequestSchema } from "./bridge";
 
 const OPERATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -17,6 +17,37 @@ describe("workflow IPC request contract", () => {
       expect(operationRequestSchema.safeParse(payload).success).toBe(false);
     },
   );
+});
+
+describe("Stage IPC request contract", () => {
+  it("accepts only an operation-bound destination ID and a valid optional note", () => {
+    expect(
+      stageCaptureRequestSchema.parse({
+        operationId: OPERATION_ID,
+        destinationId: "wezterm:generation:7",
+        note: "literal context",
+      }),
+    ).toEqual({
+      operationId: OPERATION_ID,
+      destinationId: "wezterm:generation:7",
+      note: "literal context",
+    });
+    expect(
+      stageCaptureRequestSchema.safeParse({
+        operationId: OPERATION_ID,
+        destinationId: "wezterm:generation:7",
+        note: "two\nlines",
+      }).success,
+    ).toBe(false);
+    expect(
+      stageCaptureRequestSchema.safeParse({
+        operationId: OPERATION_ID,
+        destinationId: "wezterm:generation:7",
+        note: null,
+        executable: "/untrusted/renderer/path",
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("shortcut status contract", () => {
