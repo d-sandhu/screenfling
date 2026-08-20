@@ -76,6 +76,13 @@ Records the packaged capture measurements, native macOS/Windows routing results,
 permanent decisions, explicit remaining acceptance gaps, and the conditional
 go/no-go decision for alpha implementation.
 
+### [Production capture implementation evidence](production-capture-implementation-current-evidence.md)
+
+Documents current Electron 43 capture, display, overlay, clipboard, shortcut,
+and macOS permission APIs plus implementation guidance for the production path.
+It separates those API facts from the packaged hardware checks that remain
+release-blocking.
+
 ## Research standard
 
 New reports should:

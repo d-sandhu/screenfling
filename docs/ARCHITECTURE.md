@@ -179,12 +179,13 @@ idle
 -> snapshotting
 -> selecting
 -> editing
--> target-selected
--> revalidating
--> writing-clipboard
--> staging-image
--> staging-note
--> result
+   |-> writing-clipboard -> result(copied)
+   |-> target-selected
+       -> revalidating
+       -> writing-clipboard
+       -> staging-image
+       -> staging-note
+       -> result(dispatched-unverified | staged-verified)
 -> idle
 
 any active state
@@ -205,6 +206,13 @@ be reported only after image staging begins. Although `sent-verified` is part of
 the durable result vocabulary, the current state machine cannot produce it; a
 future verified Send implementation must add its own explicit phase and evidence
 gate.
+
+The production capture core keeps the lossless `NativeImage` behind a
+main-process capture session. It exposes only bounded JPEG previews, validates
+the operation and display-local selection, maps against the returned image size,
+and encodes PNG only for an explicit clipboard write. Overlay/shortcut wiring
+must preserve those boundaries and invalidate a draft when its display metrics
+or generation changes.
 
 ## Destination model
 

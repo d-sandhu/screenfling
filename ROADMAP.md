@@ -91,6 +91,13 @@ origin hardware, rotation, reconnect, sleep/wake, permission denial/revocation,
 and native Windows capture. See the
 [Phase 3 results](research/phase-3-feasibility-results.md).
 
+The production capture core now implements exact display-source selection,
+bounded renderer previews, measured-geometry cropping, explicit image-clipboard
+writes with pixel read-back verification, post-capture geometry revalidation,
+and a display-change invalidation hook. It is not yet wired to display events,
+the overlay, or the shortcut, so this implementation does not close any
+remaining Gate A row.
+
 ### Gate B: exact-routing harness
 
 Build a separate developer harness around the destination contract in
