@@ -27,6 +27,7 @@
     "package": "node tools/package.cjs",
     "package:mac": "npm run build && electron-builder --dir --mac --config.mac.identity=- --config.mac.hardenedRuntime=false",
     "package:win": "npm run build && electron-builder --dir --win --x64",
+    "prototype:routing": "node tools/prototypes/wezterm-routing-gate-b/run.cjs",
     "make": "npm run build && electron-builder",
     "lint": "oxlint --type-aware",
     "format": "prettier --write \".github/**/*.{yml,yaml}\" \"src/**/*.{ts,tsx,css,html}\" \"tools/**/*.cjs\" \"*.{json,ts,mts}\"",
