@@ -26,6 +26,12 @@ The exact tuple an adapter uses to address a destination: adapter, endpoint scop
 endpoint instance, surface kind, and surface locator. Descriptive context never
 substitutes for this tuple.
 
+## Instance generation
+
+The lifetime of one addressable adapter endpoint, such as a terminal process or
+multiplexer server. Restarting the endpoint creates a new generation even if it
+reuses the same socket path or numeric surface locator.
+
 ## Context evidence
 
 Observed labels such as working directory, repository, worktree, revision, or
@@ -37,6 +43,17 @@ address it.
 The adapter's check, immediately before dispatch, that the selected routing
 identity still names the same live destination and supports the requested action.
 Failure never falls back to the active or similarly named surface.
+
+## Surface adapter
+
+An adapter that addresses an existing user-visible input surface. It can offer
+Stage only to an exact live surface and reports verification according to the
+surface's real read-back capability.
+
+## Managed adapter
+
+An adapter for a ScreenFling-owned or provider-managed agent session. Starting a
+turn through this adapter is Send, not passive Stage into an existing composer.
 
 ## Copy
 

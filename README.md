@@ -10,11 +10,13 @@ and never submitting work unexpectedly.
 
 ## Status
 
-ScreenFling is **pre-alpha**. The product direction and technical feasibility
-have been researched, and the application scaffold plus automated quality gates
-are in place. The main-owned workflow state machine, destination data contract,
-runtime validation, and narrow preload bridge are also implemented. Capture and
-destination adapters are not implemented yet.
+ScreenFling is **pre-alpha**. The application scaffold, automated quality gates,
+main-owned workflow state machine, runtime-validated destination contract,
+narrow preload bridge, measured capture geometry, and fail-closed Stage
+orchestration are in place. Disposable capture and cross-platform exact-routing
+prototypes have validated the core primitives; production capture and destination
+adapters are not implemented yet, and the remaining hardware/real-agent
+acceptance rows still block an alpha claim.
 
 The first reference implementation will be built on macOS, followed by Windows.
 Both are Tier 1 product targets. Linux is optional and may be explored later
@@ -73,6 +75,12 @@ Electron provides the capture, display, clipboard, shortcut, and window
 primitives required by the core workflow. The architecture keeps capture and
 destination adapters behind narrow contracts so an implementation can be
 replaced without rewriting the application.
+
+The first exact surface-adapter implementation targets WezTerm because its
+instance-and-pane routing primitive passed on native macOS and Windows. WezTerm
+is an optional integration, not the identity or runtime foundation of
+ScreenFling. Copy remains available without it; real-agent support is not claimed
+until the roadmap's observed trials pass.
 
 ## Project documents
 

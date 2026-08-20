@@ -2,7 +2,7 @@
 
 Status: Active pre-alpha plan
 
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-20
 
 This roadmap turns ScreenFling's [product direction](docs/PRODUCT.md) into
 testable releases. It intentionally has no calendar promises. A milestone moves
@@ -81,21 +81,33 @@ Compare Electron's full-resolution source-thumbnail path with a first-frame
 display-media path only if necessary. Native ScreenCaptureKit is considered only
 if both practical Electron paths fail the agreed quality or latency target.
 
+**Current evidence:** the packaged macOS prototype passed the single-display
+Retina path on Electron 43.4.1: 20/20 non-empty captures, p95 overlay readiness
+124.73 ms, p95 crop 0.0571 ms, p95 clipboard write 23.63 ms, and a 200-cycle
+cancel run with unchanged clipboard and no monotonic RSS growth. The permanent
+fixture grid covers measured independent ratios and fractional crop edges. Gate
+A remains open for end-to-end selection-release timing, mixed-scale/negative
+origin hardware, rotation, reconnect, sleep/wake, permission denial/revocation,
+and native Windows capture. See the
+[Phase 3 results](research/phase-3-feasibility-results.md).
+
 ### Gate B: exact-routing harness
 
 Build a separate developer harness around the destination contract in
 [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Evaluate one documented terminal control surface that provides an exact stable
-locator and targeted input. Ghostty, tmux, and WezTerm are current candidates.
-The choice must be based on target safety, supported input, verification,
-maintainability, and contributor reach—not on which terminal is currently
-focused or installed on one developer's computer.
+locator and targeted input. Ghostty, tmux, and WezTerm were evaluated; WezTerm
+is selected for the first production adapter. The choice is based on target
+safety, supported input, verification, maintainability, and contributor reach—not
+on which terminal is currently focused or installed on one developer's computer.
 
 Gate B passes when:
 
 - 100 alternating dispatches across two instrumented targets produce zero
   wrong-target events;
+- an interleaving test replaces or restarts the selected endpoint at the final
+  side-effect boundary and sends zero bytes to the replacement;
 - no test sends Enter or changes an unselected target;
 - dispatch does not steal focus;
 - a target closed or replaced after selection is rejected as stale;
@@ -110,6 +122,16 @@ Run at least 30 observed Stage trials for each agent/version combination propose
 for support. Record attachment behavior honestly. A surface without read-back may
 pass as **dispatched-unverified**; it cannot claim verified staging.
 
+**Current evidence:** the checksum-pinned WezTerm stable routing primitive passed
+100 alternating two-pane dispatches on both native macOS and Windows with exact
+bytes, zero wrong-target writes, zero Enter bytes, stale refusal before send, and
+no active-pane or activation command. Gate B remains open for visible no-focus
+trials and 30 actual attachment trials on every terminal/agent/version combination
+proposed for support. WezTerm has no macOS Automation/TCC dependency; ScreenFling
+must not add a fallback automation path. See
+[ADR 0001](docs/adr/0001-wezterm-first-stage-adapter.md) and the
+[Phase 3 results](research/phase-3-feasibility-results.md).
+
 ### Milestone 0 deliverables
 
 - [x] minimal Electron/TypeScript project scaffold;
@@ -117,11 +139,17 @@ pass as **dispatched-unverified**; it cannot claim verified staging.
   generic anti-slop rules enabled at error severity;
 - [x] main-owned workflow state machine, runtime-validated destination contract,
   and sender-validated narrow IPC bridge;
-- [ ] capture benchmark harness and fixture grid;
-- [ ] destination adapter contract and routing harness;
-- [ ] recorded results with hardware, OS, terminal, and agent versions;
-- [ ] an architecture decision naming the first supported adapter;
-- [ ] a go/no-go decision for the alpha.
+- [x] disposable capture benchmark retained on its prototype branch, plus a
+  permanent coordinate fixture grid in the production tree;
+- [x] destination adapter contract in the production tree and disposable
+  cross-platform routing harness retained on its prototype branch;
+- [x] recorded primitive results with hardware, OS, and terminal versions, plus
+  explicit missing agent-version evidence;
+- [x] an architecture decision selecting WezTerm as the first Stage adapter
+  implementation, conditional on compatibility acceptance;
+- [x] a conditional go/no-go decision: proceed with production adapter work, but
+  do not claim or release the alpha until the remaining Gate A and Gate B
+  acceptance rows pass.
 
 Do not build settings, history, remote transfer, browser integration, native
 helpers, or a public plugin system during these spikes.
@@ -148,7 +176,8 @@ global shortcut
 Scope:
 
 - background application lifecycle and configurable global shortcut;
-- macOS Screen Recording and destination-automation permission onboarding;
+- macOS Screen Recording onboarding and adapter-specific permission diagnostics;
+  the WezTerm CLI itself does not require macOS Automation/TCC access;
 - accurate one-display region selection;
 - image clipboard output with no permanent file by default;
 - optional sanitized single-line note;
@@ -269,7 +298,8 @@ Goal: improve identity or verification where real users need it.
 
 Candidate work:
 
-- tmux or WezTerm adapters with pane-level addressability and read-back;
+- a tmux adapter with pane-level addressability/read-back or deeper WezTerm
+  verification and compatibility hardening;
 - a managed Codex adapter using exact thread IDs and structured local-image input;
 - cooperative registration from agent sessions;
 - richer confidence-bearing repository and worktree labels;
@@ -351,15 +381,18 @@ These items are not on the committed roadmap:
 
 The next work should be issue-sized and land in this order:
 
-1. Scaffold the single Electron application with strict TypeScript, choose and
-   record its package manager, install Oxlint plus the generic anti-slop plugin,
-   and add packaged smoke tests.
-2. Define the capture result, destination, adapter capability, and workflow-state
-   contracts.
-3. Build the physical-pixel capture benchmark harness.
-4. Build the exact-routing harness and select the first adapter by its gate.
-5. Record both spike results and make the alpha go/no-go decision.
-6. Implement the macOS alpha as vertical slices from shortcut through Stage.
+1. Implement the production capture service and frozen one-display selection,
+   retaining measured returned-image geometry.
+2. Implement WezTerm discovery and one-shot `stageIfCurrent` routing behind the
+   adapter contract, including version and stale-instance preflight.
+3. Join capture, optional note, exact destination choice, Copy, and Stage through
+   the main-owned workflow state machine without Enter or focus changes.
+4. Run the missing Gate A hardware/lifecycle matrix and Gate B visible real-agent
+   acceptance rows; record exact supported versions rather than broad claims.
+5. Add recoverable permission, stale-target, unsupported, and clipboard-fallback
+   UI, then complete the 200-workflow soak and packaged dogfooding evidence.
+6. Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
+   criterion has direct evidence.
 
 The first implementation branch should not contain remote support, browser
 integration, Linux work, a native helper, history, or automatic submission.
