@@ -1,29 +1,97 @@
 import { ipcMain } from "electron";
 
-import { IPC_CHANNELS } from "../shared/bridge";
+import { CAPTURE_OVERLAY_CHANNELS, IPC_CHANNELS } from "../shared/bridge";
+import { captureSelectionRequestSchema } from "../shared/capture";
 import { assertTrustedIpcSender } from "./ipc-sender";
-import { createValidatedOperationHandler } from "./validated-operation-handler";
+import {
+  createAuthorizedNoPayloadHandler,
+  createValidatedOperationHandler,
+} from "./validated-operation-handler";
 
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import type { WorkflowStore } from "./workflow-store";
+import type { ShortcutStatus } from "../shared/bridge";
+import type { CaptureController } from "./capture-controller";
+import type { SerializedIpcValue } from "./validated-operation-handler";
 
-type MainWebContentsProvider = () => WebContents | null;
+type WebContentsProvider = () => WebContents | null;
+type ShortcutStatusProvider = () => ShortcutStatus;
 
 export function registerWorkflowIpc(
-  mainWebContents: MainWebContentsProvider,
-  devRendererUrl: string | null,
-  workflow: WorkflowStore,
+  mainWebContents: WebContentsProvider,
+  overlayWebContents: WebContentsProvider,
+  mainRendererUrl: string,
+  overlayRendererUrl: string,
+  controller: CaptureController,
+  shortcutStatus: ShortcutStatusProvider,
 ): void {
-  const authorize = (event: IpcMainInvokeEvent) => {
-    assertTrustedIpcSender(event, mainWebContents(), devRendererUrl);
+  const authorizeMain = (event: IpcMainInvokeEvent) => {
+    assertTrustedIpcSender(event, mainWebContents(), mainRendererUrl);
   };
-  const cancelOperation = createValidatedOperationHandler(authorize, (operationId) =>
-    workflow.cancel(operationId),
+  const authorizeOverlay = (event: IpcMainInvokeEvent) => {
+    assertTrustedIpcSender(event, overlayWebContents(), overlayRendererUrl);
+  };
+
+  ipcMain.handle(
+    IPC_CHANNELS.getSnapshot,
+    createAuthorizedNoPayloadHandler(authorizeMain, () => controller.snapshot),
   );
-  const dismissResult = createValidatedOperationHandler(authorize, (operationId) =>
-    workflow.dismissResult(operationId),
+  ipcMain.handle(
+    IPC_CHANNELS.getShortcutStatus,
+    createAuthorizedNoPayloadHandler(authorizeMain, shortcutStatus),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.startCapture,
+    createAuthorizedNoPayloadHandler(authorizeMain, () => controller.startCapture()),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.getCaptureDraft,
+    createValidatedOperationHandler(authorizeMain, (operationId) =>
+      controller.getDraft(operationId),
+    ),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.copyCapture,
+    createValidatedOperationHandler(authorizeMain, (operationId) =>
+      controller.copyCapture(operationId),
+    ),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.cancelOperation,
+    createValidatedOperationHandler(authorizeMain, (operationId) => controller.cancel(operationId)),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.dismissResult,
+    createValidatedOperationHandler(authorizeMain, (operationId) =>
+      controller.dismissResult(operationId),
+    ),
   );
 
-  ipcMain.handle(IPC_CHANNELS.cancelOperation, cancelOperation);
-  ipcMain.handle(IPC_CHANNELS.dismissResult, dismissResult);
+  ipcMain.handle(
+    CAPTURE_OVERLAY_CHANNELS.ready,
+    createValidatedOperationHandler(authorizeOverlay, (operationId) =>
+      controller.overlayReady(operationId),
+    ),
+  );
+  ipcMain.handle(
+    CAPTURE_OVERLAY_CHANNELS.cancel,
+    createValidatedOperationHandler(authorizeOverlay, (operationId) =>
+      controller.cancel(operationId),
+    ),
+  );
+  ipcMain.handle(
+    CAPTURE_OVERLAY_CHANNELS.failed,
+    createValidatedOperationHandler(authorizeOverlay, (operationId) =>
+      controller.overlayFailed(operationId),
+    ),
+  );
+  ipcMain.handle(
+    CAPTURE_OVERLAY_CHANNELS.completeSelection,
+    (event: IpcMainInvokeEvent, ...payloads: SerializedIpcValue[]) => {
+      authorizeOverlay(event);
+      if (payloads.length !== 1) throw new Error("Invalid capture selection request.");
+      const request = captureSelectionRequestSchema.safeParse(payloads[0]);
+      if (!request.success) throw new Error("Invalid capture selection request.");
+      return controller.completeSelection(request.data.operationId, request.data.selection);
+    },
+  );
 }

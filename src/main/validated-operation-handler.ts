@@ -1,7 +1,5 @@
 import { operationRequestSchema } from "../shared/bridge";
 
-import type { WorkflowSnapshot } from "../shared/workflow";
-
 type SerializedIpcRecord = {
   readonly [key: string]: SerializedIpcValue;
 };
@@ -10,16 +8,16 @@ export type SerializedIpcValue =
   null | boolean | number | string | readonly SerializedIpcValue[] | SerializedIpcRecord;
 
 type OperationAuthorizer<Event> = (event: Event) => void;
-type OperationAction = (operationId: string) => WorkflowSnapshot;
-type ValidatedOperationHandler<Event> = (
+type OperationAction<Result> = (operationId: string) => Result;
+type ValidatedOperationHandler<Event, Result> = (
   event: Event,
   ...payloads: SerializedIpcValue[]
-) => WorkflowSnapshot;
+) => Result;
 
-export function createValidatedOperationHandler<Event>(
+export function createValidatedOperationHandler<Event, Result>(
   authorize: OperationAuthorizer<Event>,
-  action: OperationAction,
-): ValidatedOperationHandler<Event> {
+  action: OperationAction<Result>,
+): ValidatedOperationHandler<Event, Result> {
   return (event, ...payloads) => {
     authorize(event);
     if (payloads.length !== 1) throw new Error("Invalid workflow request.");
@@ -27,5 +25,22 @@ export function createValidatedOperationHandler<Event>(
     const request = operationRequestSchema.safeParse(payloads[0]);
     if (!request.success) throw new Error("Invalid workflow request.");
     return action(request.data.operationId);
+  };
+}
+
+type NoPayloadAction<Result> = () => Result;
+type AuthorizedNoPayloadHandler<Event, Result> = (
+  event: Event,
+  ...payloads: SerializedIpcValue[]
+) => Result;
+
+export function createAuthorizedNoPayloadHandler<Event, Result>(
+  authorize: OperationAuthorizer<Event>,
+  action: NoPayloadAction<Result>,
+): AuthorizedNoPayloadHandler<Event, Result> {
+  return (event, ...payloads) => {
+    authorize(event);
+    if (payloads.length !== 0) throw new Error("Invalid empty workflow request.");
+    return action();
   };
 }

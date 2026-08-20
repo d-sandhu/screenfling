@@ -4,6 +4,7 @@ import {
   MAX_CAPTURE_PREVIEW_BYTES,
   captureDraftSchema,
   captureOverlaySnapshotSchema,
+  captureSelectionRequestSchema,
   dipSelectionSchema,
 } from "./capture";
 
@@ -13,7 +14,15 @@ describe("capture IPC contracts", () => {
   it("accepts a bounded snapshot with measured geometry", () => {
     const snapshot = captureOverlaySnapshotSchema.parse({
       operationId: OPERATION_ID,
-      display: { id: "1", width: 1512, height: 982, scaleFactor: 2, rotation: 0 },
+      display: {
+        id: "1",
+        x: -1512,
+        y: 0,
+        width: 1512,
+        height: 982,
+        scaleFactor: 2,
+        rotation: 0,
+      },
       returnedPixels: { width: 3024, height: 1964 },
       preview: Uint8Array.from([1, 2, 3]),
     });
@@ -27,7 +36,7 @@ describe("capture IPC contracts", () => {
       expect(
         captureOverlaySnapshotSchema.safeParse({
           operationId: OPERATION_ID,
-          display: { id: "1", width: 100, height: 100, scaleFactor: 1, rotation: 0 },
+          display: { id: "1", x: 0, y: 0, width: 100, height: 100, scaleFactor: 1, rotation: 0 },
           returnedPixels: { width: 100, height: 100 },
           preview,
         }).success,
@@ -46,6 +55,25 @@ describe("capture IPC contracts", () => {
         pixels: { width: 20, height: 20 },
         preview: Uint8Array.from([1]),
         path: "/not-allowed.png",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("binds an overlay selection to one strict operation request", () => {
+    expect(
+      captureSelectionRequestSchema.parse({
+        operationId: OPERATION_ID,
+        selection: { x: 1, y: 2, width: 3, height: 4 },
+      }),
+    ).toEqual({
+      operationId: OPERATION_ID,
+      selection: { x: 1, y: 2, width: 3, height: 4 },
+    });
+    expect(
+      captureSelectionRequestSchema.safeParse({
+        operationId: OPERATION_ID,
+        selection: { x: 1, y: 2, width: 3, height: 4 },
+        displayId: "replacement",
       }).success,
     ).toBe(false);
   });

@@ -1,7 +1,8 @@
-import type { ScreenFlingBridge } from "./shared/bridge";
+import type { CaptureOverlayBridge, ScreenFlingBridge } from "./shared/bridge";
 
 declare global {
   interface Window {
-    readonly screenFling: ScreenFlingBridge;
+    readonly captureOverlay?: CaptureOverlayBridge;
+    readonly screenFling?: ScreenFlingBridge;
   }
 }

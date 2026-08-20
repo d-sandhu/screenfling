@@ -1,4 +1,16 @@
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]", "localhost"]);
+const PACKAGED_RENDERER_URL = "screenfling://bundle/index.html";
+
+export type RendererSurface = "main" | "capture";
+
+export function rendererDocumentUrl(
+  devRendererUrl: string | null,
+  surface: RendererSurface,
+): string {
+  const url = new URL(devRendererUrl ?? PACKAGED_RENDERER_URL);
+  if (surface === "capture") url.searchParams.set("surface", "capture");
+  return url.href;
+}
 
 export function readDevRendererUrl(value: string | undefined): string | null {
   if (!value) return null;

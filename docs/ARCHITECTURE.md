@@ -117,6 +117,10 @@ disabled at package time.
 The region overlay receives only the frozen image and display-local data needed
 to draw a selection. Destination automation never runs in a renderer.
 
+The main and capture surfaces have separate preload bridges, IPC channel sets,
+exact document URLs, and authorized `WebContents`. A renderer cannot invoke the
+other surface's capabilities merely by constructing a channel name.
+
 ## Core modules
 
 ```text
@@ -150,11 +154,14 @@ Diagnostics
 The capture sequence is intentionally snapshot-first:
 
 ```text
-shortcut
--> identify display under pointer
+shortcut or explicit Capture action
+-> hide the main window
+-> identify the display under the pointer
+-> preload a hidden overlay for that display
 -> capture that display at physical resolution
 -> record actual returned image dimensions
--> show frozen snapshot in overlay
+-> load the frozen snapshot in the hidden overlay
+-> show the overlay only after the image is ready
 -> select in display-local coordinates
 -> map selection using measured width/height ratios
 -> crop in main process
@@ -162,9 +169,11 @@ shortcut
 -> write image clipboard
 ```
 
-The overlay is not transparent over the live desktop. It displays the frozen
-snapshot captured before the overlay exists. This avoids capturing ScreenFling's
-own UI and reduces dependence on platform-specific click-through behavior.
+The overlay is not transparent over the live desktop. It displays a frozen
+snapshot captured while both ScreenFling surfaces are hidden. The overlay window
+is preloaded before capture to reduce post-snapshot latency, but is never shown
+until the frozen image has loaded. This avoids capturing ScreenFling's own UI and
+reduces dependence on platform-specific click-through behavior.
 
 The first implementation allows selection within one display. Cross-display
 selection is deferred because mixed scaling, rotation, and coordinate origins
@@ -210,9 +219,11 @@ gate.
 The production capture core keeps the lossless `NativeImage` behind a
 main-process capture session. It exposes only bounded JPEG previews, validates
 the operation and display-local selection, maps against the returned image size,
-and encodes PNG only for an explicit clipboard write. Overlay/shortcut wiring
-must preserve those boundaries and invalidate a draft when its display metrics
-or generation changes.
+and encodes PNG only for an explicit clipboard write. `CaptureController` owns
+the workflow, hidden overlay lifecycle, shortcut entry point, display-event
+invalidation, cancellation, and main-window recovery. Fast pointer gestures are
+tracked synchronously at the renderer event boundary so selection correctness
+does not depend on a React render occurring between pointer events.
 
 ## Destination model
 

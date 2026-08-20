@@ -1,23 +1,14 @@
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 
-const PACKAGED_RENDERER_URL = "screenfling://bundle/index.html";
-
 export type IpcSenderEvidence = {
   readonly webContentsMatches: boolean;
   readonly mainFrameMatches: boolean;
   readonly frameUrl: string | null;
 };
 
-export function isTrustedRendererFrameUrl(
-  frameUrl: string,
-  devRendererUrl: string | null,
-): boolean {
+export function isTrustedRendererFrameUrl(frameUrl: string, expectedRendererUrl: string): boolean {
   try {
-    const parsedFrameUrl = new URL(frameUrl);
-    if (devRendererUrl !== null) {
-      return parsedFrameUrl.href === new URL(devRendererUrl).href;
-    }
-    return parsedFrameUrl.href === PACKAGED_RENDERER_URL;
+    return new URL(frameUrl).href === new URL(expectedRendererUrl).href;
   } catch {
     return false;
   }
@@ -25,20 +16,20 @@ export function isTrustedRendererFrameUrl(
 
 export function isTrustedIpcSenderEvidence(
   evidence: IpcSenderEvidence,
-  devRendererUrl: string | null,
+  expectedRendererUrl: string,
 ): boolean {
   return (
     evidence.webContentsMatches &&
     evidence.mainFrameMatches &&
     evidence.frameUrl !== null &&
-    isTrustedRendererFrameUrl(evidence.frameUrl, devRendererUrl)
+    isTrustedRendererFrameUrl(evidence.frameUrl, expectedRendererUrl)
   );
 }
 
 export function assertTrustedIpcSender(
   event: IpcMainInvokeEvent,
   expectedWebContents: WebContents | null,
-  devRendererUrl: string | null,
+  expectedRendererUrl: string,
 ): void {
   const senderFrame = event.senderFrame;
   const evidence: IpcSenderEvidence = {
@@ -47,7 +38,7 @@ export function assertTrustedIpcSender(
     frameUrl: senderFrame?.url ?? null,
   };
 
-  if (!isTrustedIpcSenderEvidence(evidence, devRendererUrl)) {
+  if (!isTrustedIpcSenderEvidence(evidence, expectedRendererUrl)) {
     throw new Error("Rejected IPC from an untrusted renderer.");
   }
 }

@@ -41,6 +41,8 @@ describe("Electron display capture selection", () => {
     expect(
       requestedCaptureSize({
         id: "1",
+        x: 0,
+        y: 0,
         width: 1512,
         height: 982,
         scaleFactor: 2,
@@ -50,10 +52,19 @@ describe("Electron display capture selection", () => {
   });
 
   it("treats display geometry as part of the capture generation", () => {
-    const selected = { id: "1", width: 1512, height: 982, scaleFactor: 2, rotation: 0 };
+    const selected = {
+      id: "1",
+      x: -1512,
+      y: 0,
+      width: 1512,
+      height: 982,
+      scaleFactor: 2,
+      rotation: 0,
+    };
     expect(isSameCaptureDisplay(selected, selected)).toBe(true);
     expect(isSameCaptureDisplay(selected, { ...selected, scaleFactor: 1 })).toBe(false);
     expect(isSameCaptureDisplay(selected, { ...selected, rotation: 90 })).toBe(false);
+    expect(isSameCaptureDisplay(selected, { ...selected, x: 0 })).toBe(false);
     expect(isSameCaptureDisplay(selected, { ...selected, width: 982, height: 1512 })).toBe(false);
   });
 
@@ -83,6 +94,8 @@ describe("Electron display capture selection", () => {
     expect(() =>
       requestedCaptureSize({
         id: "1",
+        x: 0,
+        y: 0,
         width: Number.MAX_VALUE,
         height: 100,
         scaleFactor: 2,

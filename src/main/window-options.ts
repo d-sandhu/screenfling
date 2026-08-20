@@ -1,4 +1,5 @@
 import type { BrowserWindowConstructorOptions } from "electron";
+import type { CaptureDisplay } from "./capture-session";
 
 export function createMainWindowOptions(preload: string): BrowserWindowConstructorOptions {
   return {
@@ -15,5 +16,36 @@ export function createMainWindowOptions(preload: string): BrowserWindowConstruct
       sandbox: true,
     },
     width: 760,
+  };
+}
+
+export function createCaptureWindowOptions(
+  preload: string,
+  display: CaptureDisplay,
+): BrowserWindowConstructorOptions {
+  return {
+    alwaysOnTop: true,
+    backgroundColor: "#000000",
+    frame: false,
+    fullscreenable: false,
+    hasShadow: false,
+    height: display.height,
+    maximizable: false,
+    minimizable: false,
+    movable: false,
+    resizable: false,
+    show: false,
+    skipTaskbar: true,
+    useContentSize: true,
+    webPreferences: {
+      additionalArguments: ["--screenfling-surface=capture"],
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload,
+      sandbox: true,
+    },
+    width: display.width,
+    x: display.x,
+    y: display.y,
   };
 }

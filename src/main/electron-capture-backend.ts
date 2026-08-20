@@ -20,6 +20,8 @@ type ScreenSource = {
 function toCaptureDisplay(display: Display): CaptureDisplay {
   return {
     id: String(display.id),
+    x: display.bounds.x,
+    y: display.bounds.y,
     width: display.bounds.width,
     height: display.bounds.height,
     scaleFactor: display.scaleFactor,
@@ -30,6 +32,8 @@ function toCaptureDisplay(display: Display): CaptureDisplay {
 export function isSameCaptureDisplay(selected: CaptureDisplay, current: CaptureDisplay): boolean {
   return (
     selected.id === current.id &&
+    selected.x === current.x &&
+    selected.y === current.y &&
     selected.width === current.width &&
     selected.height === current.height &&
     selected.scaleFactor === current.scaleFactor &&
@@ -69,9 +73,19 @@ function toScreenSource(source: DesktopCapturerSource): ScreenSource {
 }
 
 export class ElectronCaptureBackend implements CaptureBackend {
-  async captureDisplayAtPointer(): Promise<CapturedDisplay> {
+  getDisplayAtPointer(): CaptureDisplay {
+    return toCaptureDisplay(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()));
+  }
+
+  async captureDisplay(display: CaptureDisplay): Promise<CapturedDisplay> {
     if (isPermissionBlocked()) throw new CapturePermissionBlockedError();
-    const display = toCaptureDisplay(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()));
+    const beforeCapture = screen
+      .getAllDisplays()
+      .map(toCaptureDisplay)
+      .find((candidate) => candidate.id === display.id);
+    if (beforeCapture === undefined || !isSameCaptureDisplay(display, beforeCapture)) {
+      throw new CaptureUnavailableError("Display geometry changed before capture.");
+    }
     let sources: DesktopCapturerSource[];
     try {
       sources = await desktopCapturer.getSources({

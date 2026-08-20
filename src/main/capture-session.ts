@@ -1,4 +1,5 @@
 import {
+  captureDisplaySchema,
   captureDraftSchema,
   captureOverlaySnapshotSchema,
   dipSelectionSchema,
@@ -6,7 +7,12 @@ import {
 import { mapDipSelectionToPixelCrop } from "../shared/capture-geometry";
 import { operationIdSchema } from "../shared/domain";
 
-import type { CaptureDraft, CaptureOverlaySnapshot, DipSelectionInput } from "../shared/capture";
+import type {
+  CaptureDisplayInput,
+  CaptureDraft,
+  CaptureOverlaySnapshot,
+  DipSelectionInput,
+} from "../shared/capture";
 import type { PixelCrop, PixelSize } from "../shared/capture-geometry";
 
 const OVERLAY_JPEG_QUALITY = 90;
@@ -14,6 +20,8 @@ const DRAFT_JPEG_QUALITY = 86;
 
 export type CaptureDisplay = {
   readonly id: string;
+  readonly x: number;
+  readonly y: number;
   readonly width: number;
   readonly height: number;
   readonly scaleFactor: number;
@@ -35,7 +43,8 @@ export type CapturedDisplay = {
 };
 
 export type CaptureBackend = {
-  readonly captureDisplayAtPointer: () => Promise<CapturedDisplay>;
+  readonly captureDisplay: (display: CaptureDisplay) => Promise<CapturedDisplay>;
+  readonly getDisplayAtPointer: () => CaptureDisplay;
 };
 
 export type ClipboardImageEvidence = {
@@ -130,15 +139,24 @@ export class CaptureSession {
     return this.#active?.display.id ?? null;
   }
 
-  async begin(operationId: string): Promise<CaptureOverlaySnapshot> {
+  getDisplayAtPointer(): CaptureDisplay {
+    return captureDisplaySchema.parse(this.#backend.getDisplayAtPointer());
+  }
+
+  async begin(
+    operationId: string,
+    displayInput: CaptureDisplayInput,
+  ): Promise<CaptureOverlaySnapshot> {
     if (this.#active !== null || this.#pendingOperationId !== null) {
       throw new CaptureSessionStateError();
     }
     const safeOperationId = operationIdSchema.parse(operationId);
+    const display = captureDisplaySchema.parse(displayInput);
     this.#pendingOperationId = safeOperationId;
     try {
-      const captured = await this.#backend.captureDisplayAtPointer();
+      const captured = await this.#backend.captureDisplay(display);
       if (this.#pendingOperationId !== safeOperationId) throw new CaptureSessionStateError();
+      if (captured.display.id !== display.id) throw new CaptureUnavailableError();
       if (captured.image.isEmpty()) throw new CaptureUnavailableError("Display capture was empty.");
 
       const returnedPixels = captured.image.getSize();
