@@ -18,8 +18,11 @@ hides its main window, captures the exact display under the pointer, presents a
 frozen region overlay, reviews the crop, and writes and verifies the image
 clipboard only after an explicit Copy or Stage action. Stage requires an explicit
 destination choice, accepts an optional one-line note, never sends Enter, and
-reports unverified dispatch honestly. The global shortcut and display-change
-invalidation are wired through the main-owned controller.
+reports unverified dispatch honestly. The global shortcut plus display, suspend,
+and resume invalidation are wired through the main-owned controller. A packaged
+acceptance runner can repeat the production selection-completion, verified Copy,
+cancellation, window-cleanup, and working-set checks without logging captured
+pixels or clipboard content.
 
 The WezTerm integration remains an opt-in macOS developer experiment. Discovery
 and one-shot exact-pane staging fail closed on unsupported versions, malformed

@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
-import { app, BrowserWindow, globalShortcut, screen } from "electron";
+import { app, BrowserWindow, globalShortcut, powerMonitor, screen } from "electron";
 
 import { IPC_CHANNELS } from "../shared/bridge";
 import { registerAppProtocol } from "./app-protocol";
+import { registerCaptureLifecycle } from "./capture-lifecycle";
 import { CaptureController } from "./capture-controller";
 import { CaptureOverlayWindow } from "./capture-overlay-window";
 import { CaptureSession } from "./capture-session";
@@ -123,15 +124,26 @@ void app.whenReady().then(() => {
     shortcutRegistered = false;
   }
 
-  screen.on("display-added", (_event, display) => {
-    controller.displayChanged(String(display.id));
-  });
-  screen.on("display-removed", (_event, display) => {
-    controller.displayChanged(String(display.id));
-  });
-  screen.on("display-metrics-changed", (_event, display) => {
-    controller.displayChanged(String(display.id));
-  });
+  registerCaptureLifecycle(
+    {
+      displayAdded: (listener) => {
+        screen.on("display-added", (_event, display) => listener(String(display.id)));
+      },
+      displayMetricsChanged: (listener) => {
+        screen.on("display-metrics-changed", (_event, display) => listener(String(display.id)));
+      },
+      displayRemoved: (listener) => {
+        screen.on("display-removed", (_event, display) => listener(String(display.id)));
+      },
+      resumed: (listener) => {
+        powerMonitor.on("resume", listener);
+      },
+      suspended: (listener) => {
+        powerMonitor.on("suspend", listener);
+      },
+    },
+    controller,
+  );
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

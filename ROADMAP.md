@@ -2,7 +2,7 @@
 
 Status: Active pre-alpha plan
 
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-21
 
 This roadmap turns ScreenFling's [product direction](docs/PRODUCT.md) into
 testable releases. It intentionally has no calendar promises. A milestone moves
@@ -100,6 +100,23 @@ review, verified Copy, and Escape cancellation with clean renderer diagnostics.
 This closes the implementation gap, but not the remaining Gate A hardware,
 latency, permission, or soak rows. See the
 [Phase 5 packaged dogfood record](research/phase-5-packaged-capture-dogfood.md).
+
+Phase 8 added fail-closed suspend/resume handling and a repeatable packaged
+production runner. On the reference arm64 Mac, a pre-hardening 20-workflow run
+without operator selection measured p95 18.24 ms from validated selection
+completion to review and p95 106.51 ms through verified image-clipboard
+completion. Those timings are provisional until repeated with the hardened
+runner. A separate 200-cancel run returned `cancelled` every cycle, retained
+exactly one window after each cancel, and cooled from 638,112 KiB at its first
+sample to 546,288 KiB after two minutes. The runner now compares packaged
+`Info.plist` identity with expected ScreenFling metadata, verifies `app.asar`, the
+internal application URL, and requested/returned capture dimensions. Missing
+overlays and rejected or hung overlay actions fail and terminate the packaged
+process; any operator-assisted run is discarded.
+The runner does not automate the physical drag, real global shortcut, direct
+cancel-clipboard fingerprint, hardware/lifecycle matrix, stable signing, or
+Windows, so Gate A remains open. See the
+[Phase 8 results](research/phase-8-capture-lifecycle-results.md).
 
 ### Gate B: exact-routing harness
 
@@ -419,7 +436,9 @@ land in this order:
    through the main-owned workflow state machine without Enter or focus changes.
 2. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
    real-agent acceptance rows; record exact supported versions rather than broad
-   claims.
+   claims. The repeatable one-display packaged runner and suspend/resume
+   fail-closed implementation are in place; real sleep/wake, display hardware,
+   stable-identity permission changes, and visible real-agent evidence remain.
 3. [ ] Add recoverable permission, stale-target, unsupported, and
    clipboard-fallback UI, then complete the 200-workflow soak and packaged
    dogfooding evidence.

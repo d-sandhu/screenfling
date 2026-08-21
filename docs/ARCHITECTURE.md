@@ -384,6 +384,12 @@ macOS and Windows can differ internally while satisfying the same observable
 contract. Platform parity is defined by the release acceptance criteria, not by
 using identical APIs.
 
+Display changes and operating-system suspend/resume events fail any capture that
+has not crossed the destination side-effect boundary. The controller releases
+the retained image, closes the overlay, clears operation-scoped destinations,
+and restores the main surface. A late lifecycle event cannot relabel or retry an
+already-started clipboard or destination transaction.
+
 ## Native-code gate
 
 Do not add Rust, Swift, C++, or another native helper because it may be useful.
@@ -427,6 +433,17 @@ wrong-target tolerance.
 
 Development-mode success does not qualify a release. Permissions, signing,
 notarization, paths, and desktop identity must be tested in packaged builds.
+The repository's packaged capture runner drives the existing validated overlay
+and main bridges, verifies production workflow results, and emits only sanitized
+timing/window/resource evidence. It deliberately keeps physical pointer input,
+the global shortcut, permission changes, sleep/wake, and display-hardware rows
+outside that automated claim.
+
+The runner bounds overlay creation/readiness, awaits overlay bridge results, and
+treats rejection as failure unless the page has already closed. A bounded action
+deadline closes the browser and packaged process on a missing overlay or hung
+bridge, so unattended validation cannot depend on an operator dismissing an
+overlay.
 
 ## Type-safety and lint policy
 
