@@ -2,6 +2,7 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { CaptureDragTracker, selectionFromDrag } from "./capture-drag";
+import { failureCopy } from "./delivery-copy";
 import { DestinationPicker, destinationName } from "./destination-picker";
 import "./styles.css";
 
@@ -11,12 +12,8 @@ import type { CaptureDraft, CaptureOverlaySnapshot } from "../../shared/capture"
 import type { Destination } from "../../shared/domain";
 import type { DeliveryResult, WorkflowSnapshot } from "../../shared/workflow";
 import type { CaptureDrag, CapturePoint } from "./capture-drag";
+import type { UiCopy } from "./delivery-copy";
 import { MAX_NOTE_LENGTH } from "../../shared/domain";
-
-type UiCopy = {
-  readonly detail: string;
-  readonly title: string;
-};
 
 function useJpegUrl(bytes: Uint8Array | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -201,21 +198,7 @@ function resultCopy(result: DeliveryResult): UiCopy {
   if (result.status === "cancelled") {
     return { detail: "Nothing was copied or sent.", title: "Capture cancelled" };
   }
-  if (result.status === "failed") {
-    const details = {
-      "capture-failed": "The display changed or ScreenFling could not read its pixels.",
-      "clipboard-failed":
-        "ScreenFling could not verify the image on the clipboard, so Stage stopped.",
-      "dispatch-failed":
-        "ScreenFling could not confirm the destination operation. The image remains on your clipboard.",
-      "permission-blocked":
-        "Allow Screen Recording for ScreenFling in system settings, then retry.",
-      "target-stale":
-        "The selected destination changed before Stage. The image remains on your clipboard.",
-      unexpected: "ScreenFling stopped safely before delivering anything.",
-    } as const;
-    return { detail: details[result.reason], title: "Capture stopped" };
-  }
+  if (result.status === "failed") return failureCopy(result.reason);
   if (result.status === "dispatched-unverified") {
     return {
       detail: `Input was dispatched to ${destinationName(result.destination)} without submission. Attachment could not be verified; the image remains on your clipboard.`,

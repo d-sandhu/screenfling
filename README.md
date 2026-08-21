@@ -24,6 +24,13 @@ acceptance runner can repeat the production selection-completion, verified Copy,
 cancellation, window-cleanup, and working-set checks without logging captured
 pixels or clipboard content.
 
+On macOS, documented Screen Recording denial or restriction stops before source
+enumeration and produces recoverable guidance for the exact Privacy & Security
+pane plus the required application restart. An unknown or not-yet-determined
+status still attempts real capture instead of pretending permission is granted
+or denied. Native grant, denial, revocation, and restart evidence remains a
+packaged human-operated acceptance row.
+
 The WezTerm integration remains an opt-in macOS developer experiment. Discovery
 and one-shot exact-pane staging fail closed on unsupported versions, malformed
 data, ambiguous identities, unsafe selector ownership or mode, and stale

@@ -1,6 +1,7 @@
 import { clipboard, desktopCapturer, nativeImage, screen, systemPreferences } from "electron";
 
 import { CapturePermissionBlockedError, CaptureUnavailableError } from "./capture-session";
+import { screenCapturePermissionPolicy } from "./screen-capture-permission";
 
 import type { DesktopCapturerSource, Display } from "electron";
 import type {
@@ -65,7 +66,7 @@ export function selectExactScreenSource(
 function isPermissionBlocked(): boolean {
   if (process.platform !== "darwin") return false;
   const status = systemPreferences.getMediaAccessStatus("screen");
-  return status === "denied" || status === "restricted";
+  return screenCapturePermissionPolicy(status, process.platform) === "blocked";
 }
 
 function toScreenSource(source: DesktopCapturerSource): ScreenSource {

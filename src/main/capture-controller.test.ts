@@ -347,7 +347,7 @@ describe("capture workflow controller", () => {
   });
 
   it("maps macOS permission denial without opening the overlay", async () => {
-    const { backend, controller, mainSurface, overlay } = createHarness();
+    const { backend, clipboard, controller, mainSurface, overlay, session } = createHarness();
     backend.error = new CapturePermissionBlockedError();
 
     await expect(controller.startCapture()).resolves.toMatchObject({
@@ -355,7 +355,10 @@ describe("capture workflow controller", () => {
       result: { status: "failed", reason: "permission-blocked" },
     });
     expect(overlay.showCalls).toBe(0);
+    expect(overlay.closeCalls).toBe(1);
     expect(mainSurface.showCalls).toBe(1);
+    expect(session.activeOperationId).toBeNull();
+    expect(clipboard.writes).toBe(0);
   });
 
   it("recovers the main surface when the hidden overlay cannot render", async () => {
