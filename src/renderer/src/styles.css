@@ -513,6 +513,18 @@ h1 {
   font-size: 12px;
 }
 
+.result-feedback {
+  max-width: 620px;
+  margin: 16px 0 0;
+  color: var(--mist);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.result-feedback strong {
+  color: #dbe0e1;
+}
+
 .app__footer {
   justify-content: flex-start;
   gap: 8px;

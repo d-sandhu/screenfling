@@ -60,16 +60,20 @@ function success(text: string): BoundedProcessResult {
 
 class FakeWezTermRunner {
   readonly requests: BoundedProcessRequest[] = [];
+  readonly spawnedRevealRequests: BoundedProcessRequest[] = [];
   readonly spawnedRequests: BoundedProcessRequest[] = [];
   readonly spawnedSendRequests: BoundedProcessRequest[] = [];
   versionResult: BoundedProcessResult = success(VERSION_TEXT);
   listResult: BoundedProcessResult = success(JSON.stringify([paneFixture(7)]));
+  revealResult: BoundedProcessResult = success("");
   sendResult: BoundedProcessResult = success("");
   beforeProcessGuard: ((request: BoundedProcessRequest) => void) | null = null;
+  beforeRevealGuard: (() => void) | null = null;
   beforeSendGuard: (() => void) | null = null;
 
   readonly run: BoundedProcessRunner = async (request) => {
     this.requests.push(request);
+    if (request.arguments.includes("activate-pane")) this.beforeRevealGuard?.();
     if (request.arguments.includes("send-text")) this.beforeSendGuard?.();
     this.beforeProcessGuard?.(request);
     if (request.beforeSpawn !== undefined && !(await request.beforeSpawn())) {
@@ -80,6 +84,10 @@ class FakeWezTermRunner {
       return this.versionResult;
     }
     if (request.arguments.includes("list")) return this.listResult;
+    if (request.arguments.includes("activate-pane")) {
+      this.spawnedRevealRequests.push(request);
+      return this.revealResult;
+    }
     if (!request.arguments.includes("send-text")) {
       return { status: "failed", reason: "spawn" };
     }
@@ -136,6 +144,18 @@ function sendArguments(paneId: number): readonly string[] {
   ];
 }
 
+function revealArguments(paneId: number): readonly string[] {
+  return [
+    "--config-file",
+    CONFIG_PATH,
+    "cli",
+    "--no-auto-start",
+    "activate-pane",
+    "--pane-id",
+    String(paneId),
+  ];
+}
+
 describe("WezTerm destination adapter", () => {
   it("discovers exact generation-bound panes through the pinned instance", async () => {
     const runner = new FakeWezTermRunner();
@@ -160,7 +180,7 @@ describe("WezTerm destination adapter", () => {
         textInput: "paste",
         readBack: "none",
         verification: ["target-live"],
-        actions: ["copy", "stage"],
+        actions: ["copy", "stage", "reveal"],
       },
     });
     expect(destinations[1]?.context).toEqual({
@@ -286,6 +306,69 @@ describe("WezTerm destination adapter", () => {
     );
     expect(sendRequest?.input?.includes(10)).toBe(false);
     expect(sendRequest?.input?.includes(13)).toBe(false);
+  });
+
+  it("reveals one exact pane without input, fallback selection, or Stage retry", async () => {
+    const runner = new FakeWezTermRunner();
+    const adapter = createAdapter(runner);
+    const destination = await firstDestination(adapter);
+
+    await expect(adapter.revealIfCurrent({ destination })).resolves.toEqual({
+      status: "revealed",
+    });
+
+    expect(runner.spawnedRevealRequests).toHaveLength(1);
+    const request = runner.spawnedRevealRequests[0];
+    expect(request?.arguments).toEqual(revealArguments(7));
+    expect(request?.input).toBeNull();
+    expect(request?.environment.WEZTERM_PANE).toBeUndefined();
+    expect(runner.spawnedSendRequests).toEqual([]);
+  });
+
+  it("returns stale without activation when the retained Reveal pane disappears", async () => {
+    const runner = new FakeWezTermRunner();
+    const adapter = createAdapter(runner);
+    const destination = await firstDestination(adapter);
+    runner.listResult = success("[]");
+
+    await expect(adapter.revealIfCurrent({ destination })).resolves.toEqual({ status: "stale" });
+    expect(runner.spawnedRevealRequests).toEqual([]);
+  });
+
+  it("guards the final Reveal spawn and never retries a failed activation", async () => {
+    const guardedRunner = new FakeWezTermRunner();
+    let generation = GENERATION_A;
+    const guardedAdapter = createAdapter(guardedRunner, async () => generation);
+    const guardedDestination = await firstDestination(guardedAdapter);
+    guardedRunner.beforeRevealGuard = () => {
+      generation = GENERATION_B;
+    };
+
+    await expect(
+      guardedAdapter.revealIfCurrent({ destination: guardedDestination }),
+    ).resolves.toEqual({ status: "stale" });
+    expect(guardedRunner.spawnedRevealRequests).toEqual([]);
+
+    const failedRunner = new FakeWezTermRunner();
+    failedRunner.revealResult = { status: "failed", reason: "exit" };
+    const failedAdapter = createAdapter(failedRunner);
+    const failedDestination = await firstDestination(failedAdapter);
+    await expect(
+      failedAdapter.revealIfCurrent({ destination: failedDestination }),
+    ).resolves.toEqual({ status: "failed" });
+    expect(failedRunner.spawnedRevealRequests).toHaveLength(1);
+  });
+
+  it("distinguishes an unavailable Reveal executable without retrying", async () => {
+    const runner = new FakeWezTermRunner();
+    runner.revealResult = { status: "failed", reason: "spawn" };
+    const adapter = createAdapter(runner);
+    const destination = await firstDestination(adapter);
+
+    await expect(adapter.revealIfCurrent({ destination })).resolves.toEqual({
+      status: "unavailable",
+    });
+    expect(runner.spawnedRevealRequests).toHaveLength(1);
   });
 
   it("routes 100 alternating operations without crossing similar panes", async () => {

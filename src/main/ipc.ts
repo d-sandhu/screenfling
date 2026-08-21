@@ -76,6 +76,12 @@ export function registerWorkflowIpc(
     ),
   );
   ipcMain.handle(
+    IPC_CHANNELS.revealDestination,
+    createValidatedOperationHandler(authorizeMain, (operationId) =>
+      controller.revealDestination(operationId),
+    ),
+  );
+  ipcMain.handle(
     IPC_CHANNELS.stageCapture,
     (event: IpcMainInvokeEvent, ...payloads: SerializedIpcValue[]) => {
       authorizeMain(event);

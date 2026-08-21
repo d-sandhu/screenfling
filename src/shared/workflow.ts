@@ -42,6 +42,16 @@ export const deliveryResultSchema = z
   ])
   .readonly();
 
+export const revealResultSchema = z
+  .discriminatedUnion("status", [
+    z.strictObject({ status: z.literal("revealed") }),
+    z.strictObject({ status: z.literal("stale") }),
+    z.strictObject({ status: z.literal("unavailable") }),
+    z.strictObject({ status: z.literal("unsupported") }),
+    z.strictObject({ status: z.literal("failed") }),
+  ])
+  .readonly();
+
 const idleWorkflowSchema = z.strictObject({ phase: z.literal("idle") });
 const activeWorkflowSchema = z.strictObject({
   phase: activeWorkflowPhaseSchema,
@@ -59,6 +69,7 @@ export const workflowSnapshotSchema = z
 
 export type ActiveWorkflowPhase = z.infer<typeof activeWorkflowPhaseSchema>;
 export type DeliveryResult = z.infer<typeof deliveryResultSchema>;
+export type RevealResult = z.infer<typeof revealResultSchema>;
 export type WorkflowSnapshot = z.infer<typeof workflowSnapshotSchema>;
 
 export const IDLE_WORKFLOW: WorkflowSnapshot = workflowSnapshotSchema.parse({

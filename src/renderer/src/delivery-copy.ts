@@ -1,4 +1,4 @@
-import type { DeliveryResult } from "../../shared/workflow";
+import type { DeliveryResult, RevealResult } from "../../shared/workflow";
 import { destinationName } from "./destination-picker";
 
 export type UiCopy = {
@@ -50,4 +50,37 @@ export function deliveryCopy(result: DeliveryResult): UiCopy {
     detail: `${destinationName(result.destination)} verified the submitted turn.`,
     title: "Send verified",
   };
+}
+
+export function revealCopy(result: RevealResult): UiCopy {
+  switch (result.status) {
+    case "revealed":
+      return {
+        detail:
+          "WezTerm accepted the exact-pane activation request. ScreenFling cannot verify operating-system foreground or visibility.",
+        title: "Reveal requested",
+      };
+    case "stale":
+      return {
+        detail:
+          "The exact destination changed, so ScreenFling did not activate a fallback. Stage result is unchanged.",
+        title: "Reveal stopped",
+      };
+    case "unavailable":
+      return {
+        detail:
+          "The exact destination could not be reached, and no window fallback was attempted. Stage result is unchanged.",
+        title: "Reveal unavailable",
+      };
+    case "unsupported":
+      return {
+        detail: "This destination does not support exact Reveal. Stage result is unchanged.",
+        title: "Reveal unavailable",
+      };
+    case "failed":
+      return {
+        detail: "The activation request did not complete cleanly. Stage result is unchanged.",
+        title: "Reveal failed",
+      };
+  }
 }

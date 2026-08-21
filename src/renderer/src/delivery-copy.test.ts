@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveryCopy, failureCopy } from "./delivery-copy";
+import { deliveryCopy, failureCopy, revealCopy } from "./delivery-copy";
 
 import type { DeliveryResult } from "../../shared/workflow";
 
@@ -55,4 +55,23 @@ describe("delivery result copy", () => {
     });
     expect(copy.detail).not.toContain("remains on your clipboard");
   });
+});
+
+describe("Reveal result copy", () => {
+  it("describes activation honestly without claiming foreground or delivery", () => {
+    const copy = revealCopy({ status: "revealed" });
+    expect(copy).toEqual({
+      title: "Reveal requested",
+      detail:
+        "WezTerm accepted the exact-pane activation request. ScreenFling cannot verify operating-system foreground or visibility.",
+    });
+    expect(copy.detail).not.toMatch(/attached|sent|submitted/u);
+  });
+
+  it.each(["stale", "unavailable", "unsupported", "failed"] as const)(
+    "keeps the Stage result explicit after %s",
+    (status) => {
+      expect(revealCopy({ status }).detail).toContain("Stage result is unchanged");
+    },
+  );
 });

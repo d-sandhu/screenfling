@@ -6,6 +6,7 @@ import {
   parseDestination,
   parseNote,
   receiptForDestination,
+  supportsReveal,
   supportsStage,
 } from "./domain";
 
@@ -88,6 +89,37 @@ describe("destination contract", () => {
     expect(supportsStage(copyOnly, false)).toBe(false);
     expect(supportsStage(imageOnly, false)).toBe(true);
     expect(supportsStage(imageOnly, true)).toBe(false);
+  });
+
+  it("requires an exact live target before advertising Reveal", () => {
+    const revealable = parseDestination({
+      ...validDestination,
+      capabilities: {
+        ...validDestination.capabilities,
+        actions: ["copy", "stage", "reveal"],
+      },
+    });
+    const copyOnly = parseDestination({
+      ...validDestination,
+      capabilities: {
+        ...validDestination.capabilities,
+        actions: ["copy"],
+        verification: [],
+      },
+    });
+
+    expect(supportsReveal(revealable)).toBe(true);
+    expect(supportsReveal(copyOnly)).toBe(false);
+    expect(() =>
+      parseDestination({
+        ...validDestination,
+        capabilities: {
+          ...validDestination.capabilities,
+          actions: ["copy", "reveal"],
+          verification: [],
+        },
+      }),
+    ).toThrow();
   });
 
   it("reduces a result destination to its exact display identity", () => {

@@ -157,6 +157,18 @@ Records capability-gated Stage, the unsupported result contract, explicit
 manual clipboard fallback, automated evidence, and the exact Reveal/native rows
 that remain open.
 
+### [Phase 12 exact-destination Reveal plan](phase-12-exact-reveal-plan.md)
+
+Uses Context7 and first-party WezTerm and Electron documentation to define a
+main-owned, no-data exact-pane activation transaction, its honest evidence
+boundary, and the native foreground checks documentation cannot replace.
+
+### [Phase 12 exact-destination Reveal results](phase-12-exact-reveal-results.md)
+
+Records the main-owned result lease, operation-only bridge, no-data exact-pane
+activation, typed evidence boundary, headless verification, discarded
+operator-assisted GUI run, and native acceptance rows that remain open.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,

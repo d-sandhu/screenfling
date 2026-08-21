@@ -71,6 +71,12 @@ actually observe.
 Submit through a versioned destination adapter that can verify both the exact
 target and expected completion evidence. There is no generic press-Enter Send.
 
+## Reveal
+
+A user-triggered request to activate the exact destination retained from a
+completed Stage. Reveal does not change delivery evidence and does not imply
+that the operating system made the destination visible or frontmost.
+
 ## Delivery result
 
 The strongest evidence ScreenFling can report after an operation: copied,

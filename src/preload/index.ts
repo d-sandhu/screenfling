@@ -15,7 +15,7 @@ import {
 } from "../shared/capture";
 import { LatestValueRelay } from "../shared/latest-value-relay";
 import { destinationListSchema } from "../shared/domain";
-import { workflowSnapshotSchema } from "../shared/workflow";
+import { revealResultSchema, workflowSnapshotSchema } from "../shared/workflow";
 
 import type {
   CaptureOverlayBridge,
@@ -30,7 +30,7 @@ import type {
   CaptureOverlaySnapshot,
   CaptureSelectionRequest,
 } from "../shared/capture";
-import type { WorkflowSnapshot } from "../shared/workflow";
+import type { RevealResult, WorkflowSnapshot } from "../shared/workflow";
 import type { Destination } from "../shared/domain";
 
 type OperationWorkflowChannel =
@@ -80,6 +80,13 @@ async function stageCapture(request: StageCaptureRequest): Promise<WorkflowSnaps
   );
 }
 
+async function revealDestination(request: OperationRequest): Promise<RevealResult> {
+  const validatedRequest = operationRequestSchema.parse(request);
+  return revealResultSchema.parse(
+    await ipcRenderer.invoke(IPC_CHANNELS.revealDestination, validatedRequest),
+  );
+}
+
 function onWorkflowSnapshot(listener: (snapshot: WorkflowSnapshot) => void): Unsubscribe {
   const receive = (_event: Electron.IpcRendererEvent, payload: WorkflowSnapshot) => {
     listener(workflowSnapshotSchema.parse(payload));
@@ -98,6 +105,7 @@ const mainBridge: ScreenFlingBridge = Object.freeze({
   getShortcutStatus,
   getSnapshot: () => invokeNoPayloadWorkflow(IPC_CHANNELS.getSnapshot),
   onWorkflowSnapshot,
+  revealDestination,
   startCapture: () => invokeNoPayloadWorkflow(IPC_CHANNELS.startCapture),
   stageCapture,
 });

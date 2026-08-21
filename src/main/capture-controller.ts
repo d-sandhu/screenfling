@@ -4,7 +4,7 @@ import { InvalidWorkflowTransitionError, StaleWorkflowActionError } from "../sha
 import type { CaptureDisplay, CaptureSession } from "./capture-session";
 import type { CaptureDraft, CaptureOverlaySnapshot, DipSelectionInput } from "../shared/capture";
 import type { Destination, Note } from "../shared/domain";
-import type { DeliveryResult, WorkflowSnapshot } from "../shared/workflow";
+import type { DeliveryResult, RevealResult, WorkflowSnapshot } from "../shared/workflow";
 import type { DestinationRegistry } from "./destination-registry";
 import type { WorkflowStore } from "./workflow-store";
 
@@ -52,6 +52,7 @@ export class CaptureController {
   readonly #mainSurface: MainSurfacePort;
   readonly #overlay: CaptureOverlayPort;
   readonly #workflow: WorkflowStore;
+  #revealInFlight: string | null = null;
 
   constructor(
     workflow: WorkflowStore,
@@ -177,8 +178,30 @@ export class CaptureController {
     }
     if (!isActiveOperation(this.#workflow.snapshot, operationId)) return this.#workflow.snapshot;
     this.#capture.release(operationId);
-    this.#destinations.clear(operationId);
+    if (result.status === "failed") this.#destinations.clear(operationId);
     return this.#publish(this.#workflow.finish(operationId, result));
+  }
+
+  async revealDestination(operationId: string): Promise<RevealResult> {
+    const current = this.#workflow.snapshot;
+    if (current.phase !== "result" || current.operationId !== operationId) {
+      return { status: "stale" };
+    }
+    if (
+      current.result.status !== "dispatched-unverified" &&
+      current.result.status !== "staged-verified" &&
+      current.result.status !== "sent-verified"
+    ) {
+      return { status: "unsupported" };
+    }
+    if (this.#revealInFlight !== null) return { status: "stale" };
+
+    this.#revealInFlight = operationId;
+    try {
+      return await this.#destinations.reveal(operationId, current.result.destination.id);
+    } finally {
+      this.#revealInFlight = null;
+    }
   }
 
   cancel(operationId: string): WorkflowSnapshot {
@@ -202,7 +225,10 @@ export class CaptureController {
   }
 
   dismissResult(operationId: string): WorkflowSnapshot {
-    return this.#publish(this.#workflow.dismissResult(operationId));
+    if (this.#revealInFlight === operationId) throw new InvalidWorkflowTransitionError();
+    const snapshot = this.#workflow.dismissResult(operationId);
+    this.#destinations.clear(operationId);
+    return this.#publish(snapshot);
   }
 
   displayChanged(displayId: string): WorkflowSnapshot {

@@ -9,11 +9,13 @@ import { readTrustedWezTermSelectorEvidence } from "./trusted-wezterm-selectors"
 
 import type { BoundedProcessRequest, BoundedProcessRunner } from "./bounded-process";
 import type {
+  AdapterRevealRequest,
   AdapterStageRequest,
   AdapterStageResult,
   DestinationAdapter,
 } from "./destination-adapter";
 import type { Destination } from "../shared/domain";
+import type { RevealResult } from "../shared/workflow";
 
 export const WEZTERM_ADAPTER_ID = "wezterm";
 export const SUPPORTED_WEZTERM_VERSION = "20240203-110809-5046fc22";
@@ -95,6 +97,11 @@ type WezTermRoute = {
   readonly generation: string;
   readonly paneId: number;
 };
+
+type CurrentRouteResult =
+  | { readonly status: "ready"; readonly route: WezTermRoute }
+  | { readonly status: "stale" }
+  | { readonly status: "unavailable" };
 
 function decodeUtf8(bytes: Uint8Array): string | null {
   try {
@@ -239,7 +246,7 @@ export class WezTermAdapter implements DestinationAdapter {
           textInput: "paste",
           readBack: "none",
           verification: ["target-live"],
-          actions: ["copy", "stage"],
+          actions: ["copy", "stage", "reveal"],
         },
       });
       if (!destination.success) {
@@ -263,22 +270,47 @@ export class WezTermAdapter implements DestinationAdapter {
     if (!destination.success || (note !== null && !note.success)) {
       return { status: "failed" };
     }
-    const route = this.#routes.get(destination.data.id);
-    if (route === undefined || !sameRoute(destination.data, route)) {
-      return { status: "stale" };
-    }
+    const current = await this.#currentRoute(destination.data);
+    if (current.status === "stale") return current;
+    if (current.status === "unavailable") return { status: "failed" };
+
+    const safeNote = note === null ? null : note.data;
+    return this.#sendText(current.route, joinInput(this.#config.imagePasteInput, safeNote));
+  }
+
+  async revealIfCurrent(request: AdapterRevealRequest): Promise<RevealResult> {
+    const destination = destinationSchema.safeParse(request.destination);
+    if (!destination.success) return { status: "failed" };
+    const current = await this.#currentRoute(destination.data);
+    if (current.status !== "ready") return current;
+
+    const result = await this.#dependencies.runProcess(
+      this.#processRequest(
+        this.#cliArguments(["activate-pane", "--pane-id", String(current.route.paneId)]),
+        null,
+        MAX_PROCESS_OUTPUT_BYTES,
+        this.#generationGuard(current.route.generation),
+      ),
+    );
+    if (result.status === "success") return { status: "revealed" };
+    if (result.reason === "guard-rejected") return { status: "stale" };
+    return result.reason === "spawn" ? { status: "unavailable" } : { status: "failed" };
+  }
+
+  async #currentRoute(destination: Destination): Promise<CurrentRouteResult> {
+    const route = this.#routes.get(destination.id);
+    if (route === undefined || !sameRoute(destination, route)) return { status: "stale" };
 
     const snapshotResult = await this.#snapshot();
     if (snapshotResult.status === "generation-changed") return { status: "stale" };
-    if (snapshotResult.status === "unavailable") return { status: "failed" };
-    const { snapshot } = snapshotResult;
-    if (snapshot.generation !== route.generation) return { status: "stale" };
-    if (snapshot.panes.filter((pane) => pane.pane_id === route.paneId).length !== 1) {
+    if (snapshotResult.status === "unavailable") return { status: "unavailable" };
+    if (snapshotResult.snapshot.generation !== route.generation) return { status: "stale" };
+    if (
+      snapshotResult.snapshot.panes.filter((pane) => pane.pane_id === route.paneId).length !== 1
+    ) {
       return { status: "stale" };
     }
-
-    const safeNote = note === null ? null : note.data;
-    return this.#sendText(route, joinInput(this.#config.imagePasteInput, safeNote));
+    return { status: "ready", route };
   }
 
   async #snapshot(): Promise<WezTermSnapshotResult> {
