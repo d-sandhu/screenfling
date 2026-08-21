@@ -37,6 +37,14 @@ function assertEditingOperation(snapshot: WorkflowSnapshot, operationId: string)
   if (snapshot.phase !== "editing") throw new InvalidWorkflowTransitionError();
 }
 
+function hasCrossedCancellationBoundary(snapshot: WorkflowSnapshot): boolean {
+  return (
+    snapshot.phase === "target-selected" ||
+    snapshot.phase === "writing-clipboard" ||
+    snapshot.phase === "staging"
+  );
+}
+
 export class CaptureController {
   readonly #capture: CaptureSession;
   readonly #createOperationId: OperationIdFactory;
@@ -182,11 +190,7 @@ export class CaptureController {
     ) {
       throw new StaleWorkflowActionError();
     }
-    if (
-      current.phase === "writing-clipboard" ||
-      current.phase === "staging" ||
-      current.phase === "target-selected"
-    ) {
+    if (hasCrossedCancellationBoundary(current)) {
       throw new InvalidWorkflowTransitionError();
     }
     const snapshot = this.#workflow.cancel(operationId);
@@ -204,25 +208,10 @@ export class CaptureController {
   displayChanged(displayId: string): WorkflowSnapshot {
     const current = this.#workflow.snapshot;
     if (current.phase === "snapshotting") {
-      if (this.#capture.activeOperationId === current.operationId) {
-        this.#capture.release(current.operationId);
-      }
-      this.#overlay.close();
-      this.#destinations.clear(current.operationId);
-      this.#mainSurface.show();
-      return this.#publish(
-        this.#workflow.finish(current.operationId, {
-          status: "failed",
-          reason: "capture-failed",
-        }),
-      );
+      return this.captureEnvironmentChanged();
     }
 
-    if (
-      current.phase === "target-selected" ||
-      current.phase === "writing-clipboard" ||
-      current.phase === "staging"
-    ) {
+    if (hasCrossedCancellationBoundary(current)) {
       return current;
     }
 
@@ -230,12 +219,19 @@ export class CaptureController {
     if (operationId === null || !isActiveOperation(this.#workflow.snapshot, operationId)) {
       return this.#workflow.snapshot;
     }
-    this.#overlay.close();
-    this.#destinations.clear(operationId);
-    this.#mainSurface.show();
-    return this.#publish(
-      this.#workflow.finish(operationId, { status: "failed", reason: "capture-failed" }),
-    );
+    return this.#fail(operationId, "capture-failed");
+  }
+
+  captureEnvironmentChanged(): WorkflowSnapshot {
+    const current = this.#workflow.snapshot;
+    if (
+      current.phase === "idle" ||
+      current.phase === "result" ||
+      hasCrossedCancellationBoundary(current)
+    ) {
+      return current;
+    }
+    return this.#fail(current.operationId, "capture-failed");
   }
 
   overlayClosedUnexpectedly(): WorkflowSnapshot {

@@ -109,6 +109,24 @@ Records the operation-scoped destination registry, narrow Stage IPC boundary,
 joined Capture/Copy/Stage UI, automated and visual validation, experimental
 configuration boundary, and acceptance work that remains release-blocking.
 
+### [Phase 8 capture acceptance plan](phase-8-capture-acceptance-plan.md)
+
+Uses Context7 and first-party Electron, Apple, and Microsoft documentation to
+separate automatable production-capture evidence from native hardware,
+permission, signing, and human-observation rows.
+
+### [Phase 8 routing acceptance plan](phase-8-routing-acceptance-plan.md)
+
+Uses Context7 and first-party WezTerm documentation/source to define the pinned
+visible no-focus, real-agent, endpoint-replacement, and trusted-path work still
+required before the experimental adapter can claim compatibility.
+
+### [Phase 8 capture and lifecycle results](phase-8-capture-lifecycle-results.md)
+
+Records the packaged production runner, suspend/resume fail-closed behavior,
+sanitized timing and 200-cancel evidence, discarded flaky pointer automation,
+and every native Gate A/Gate B row that remains open.
+
 ## Research standard
 
 New reports should:

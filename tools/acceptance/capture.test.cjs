@@ -1,0 +1,159 @@
+const assert = require("node:assert/strict");
+const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs");
+const { afterEach, test } = require("node:test");
+const os = require("node:os");
+const path = require("node:path");
+
+const {
+  allowExpectedPageClose,
+  cancelOverlay,
+  completeOverlaySelection,
+  readArtifactEvidence,
+  startCapture,
+  waitForOverlay,
+} = require("./capture.cjs");
+const packageMetadata = require("../../package.json");
+
+const originalWindow = globalThis.window;
+const temporaryDirectories = [];
+
+afterEach(() => {
+  globalThis.window = originalWindow;
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+async function createMacArtifact(
+  bundleIdentifier,
+  bundleName = packageMetadata.productName,
+  version = packageMetadata.version,
+) {
+  const plist = await import("plist");
+  const root = mkdtempSync(path.join(os.tmpdir(), "screenfling-acceptance-"));
+  temporaryDirectories.push(root);
+  const contents = path.join(root, "ScreenFling.app", "Contents");
+  const executable = path.join(contents, "MacOS", "ScreenFling");
+  mkdirSync(path.dirname(executable), { recursive: true });
+  mkdirSync(path.join(contents, "Resources"), { recursive: true });
+  writeFileSync(executable, "");
+  writeFileSync(path.join(contents, "Resources", "app.asar"), "");
+  writeFileSync(
+    path.join(contents, "Info.plist"),
+    plist.build({
+      CFBundleIdentifier: bundleIdentifier,
+      CFBundleName: bundleName,
+      CFBundleShortVersionString: version,
+    }),
+  );
+  return executable;
+}
+
+void test("cancelOverlay reports a bridge failure while the overlay remains open", async () => {
+  const bridgeFailure = new Error("cancel bridge failed");
+  globalThis.window = {
+    captureOverlay: {
+      cancel: () => Promise.reject(bridgeFailure),
+    },
+  };
+  const overlay = {
+    evaluate: async (action, operationId) => action(operationId),
+    isClosed: () => false,
+  };
+
+  await assert.rejects(cancelOverlay(overlay, "operation-id"), bridgeFailure);
+});
+
+void test("completeOverlaySelection reports a bridge failure while the overlay remains open", async () => {
+  const bridgeFailure = new Error("selection bridge failed");
+  globalThis.window = {
+    captureOverlay: {
+      completeSelection: () => Promise.reject(bridgeFailure),
+    },
+  };
+  const overlay = {
+    evaluate: async (action, request) => action(request),
+    isClosed: () => false,
+  };
+
+  await assert.rejects(
+    completeOverlaySelection(overlay, { operationId: "operation-id", selection: {} }),
+    bridgeFailure,
+  );
+});
+
+void test("allowExpectedPageClose accepts a bridge race only after the overlay closes", async () => {
+  const closedPage = { isClosed: () => true };
+
+  await assert.doesNotReject(
+    allowExpectedPageClose(closedPage, () => Promise.reject(new Error("page closed"))),
+  );
+});
+
+void test("allowExpectedPageClose times out a bridge that never settles", async () => {
+  const openPage = { isClosed: () => false };
+
+  await assert.rejects(
+    allowExpectedPageClose(openPage, () => new Promise(() => undefined), 1),
+    /overlay-action-timeout/,
+  );
+});
+
+void test(
+  "readArtifactEvidence rejects a packaged macOS artifact with the wrong identity",
+  { skip: process.platform !== "darwin" },
+  async () => {
+    const wrongIdentities = [
+      ["com.example.not-screenfling", packageMetadata.productName, packageMetadata.version],
+      [packageMetadata.build.appId, "Not ScreenFling", packageMetadata.version],
+      [packageMetadata.build.appId, packageMetadata.productName, "999.0.0"],
+    ];
+    for (const identity of wrongIdentities) {
+      const executable = await createMacArtifact(...identity);
+      await assert.rejects(readArtifactEvidence(executable), /artifact-identity-mismatch/);
+    }
+  },
+);
+
+void test(
+  "readArtifactEvidence verifies the exact packaged macOS identity",
+  { skip: process.platform !== "darwin" },
+  async () => {
+    const executable = await createMacArtifact(packageMetadata.build.appId);
+
+    await assert.doesNotReject(readArtifactEvidence(executable));
+    assert.equal((await readArtifactEvidence(executable)).identityVerified, true);
+  },
+);
+
+void test("waitForOverlay rejects when no overlay page opens", async () => {
+  const context = { waitForEvent: () => new Promise(() => undefined) };
+  const externalDeadline = new Promise((_, rejectDeadline) => {
+    setTimeout(() => rejectDeadline(new Error("external-test-deadline")), 25);
+  });
+
+  await assert.rejects(
+    Promise.race([waitForOverlay(context, 1), externalDeadline]),
+    /overlay-open-timeout/,
+  );
+});
+
+void test("startCapture rejects when the overlay never reaches selecting", async () => {
+  const overlay = {
+    getByText: () => ({ waitFor: () => Promise.resolve() }),
+    waitForURL: () => Promise.resolve(),
+  };
+  const context = { waitForEvent: () => Promise.resolve(overlay) };
+  const mainWindow = {
+    evaluate: () => Promise.resolve({ phase: "snapshotting" }),
+    getByRole: () => ({ click: () => Promise.resolve() }),
+  };
+  const externalDeadline = new Promise((_, rejectDeadline) => {
+    setTimeout(() => rejectDeadline(new Error("external-test-deadline")), 25);
+  });
+
+  await assert.rejects(
+    Promise.race([startCapture(mainWindow, context, 1), externalDeadline]),
+    /overlay-ready-timeout/,
+  );
+});

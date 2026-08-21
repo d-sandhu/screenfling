@@ -113,6 +113,36 @@ current host. Local macOS directory packages use an explicit ad-hoc signature so
 they can be launched without a Developer ID; release artifacts still require the
 signed and notarized path tracked in Milestone 2.
 
+### Packaged capture acceptance
+
+Native capture evidence is intentionally separate from `check:all` because it
+requires a foreground desktop session, Screen Recording permission, and real OS
+clipboard access. The default command packages the current tree, performs three
+warm Copy workflows, measures 20 more, runs 200 cancellations, waits two minutes
+for a working-set cooldown, and prints sanitized JSON:
+
+```bash
+npm run acceptance:capture:package
+```
+
+Measured Copy runs replace the current image clipboard contents. The report
+contains only versions, display/window geometry, phase durations, result counts,
+and resource samples. It does not contain pixels, clipboard data, paths, titles,
+or notes. A quick harness smoke can reduce the counts and cooldown:
+
+```bash
+npm run acceptance:capture -- --capture-runs=1 --cancel-runs=1 --cooldown-ms=0
+```
+
+The runner invokes selection completion through the validated overlay bridge; it
+does not claim to automate physical pointer input or the operating-system global
+shortcut. Those remain separate native acceptance rows.
+
+The run is unattended. Do not drag, click, or press Escape in its capture
+surfaces; any manual input invalidates the evidence. Overlay readiness and bridge
+actions are awaited and bounded to five seconds, after which the runner fails and
+terminates the packaged application rather than requiring operator cleanup.
+
 ## Documentation
 
 Update the canonical document affected by a behavior change:

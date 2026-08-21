@@ -303,6 +303,49 @@ describe("capture workflow controller", () => {
     expect(session.activeOperationId).toBeNull();
   });
 
+  it("fails a pending snapshot when the capture environment changes", async () => {
+    const { backend, controller, mainSurface, overlay, session } = createHarness();
+    backend.waitForFinish = true;
+    const pending = controller.startCapture();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(controller.captureEnvironmentChanged()).toMatchObject({
+      phase: "result",
+      result: { status: "failed", reason: "capture-failed" },
+    });
+    backend.finish();
+    await expect(pending).resolves.toMatchObject({
+      phase: "result",
+      result: { status: "failed", reason: "capture-failed" },
+    });
+    expect(session.activeOperationId).toBeNull();
+    expect(overlay.closeCalls).toBe(1);
+    expect(mainSurface.showCalls).toBe(1);
+  });
+
+  it("fails selection and review safely when the capture environment changes", async () => {
+    const selecting = createHarness();
+    await selecting.controller.startCapture();
+    selecting.controller.overlayReady(OPERATION_ID);
+
+    expect(selecting.controller.captureEnvironmentChanged()).toMatchObject({
+      phase: "result",
+      result: { status: "failed", reason: "capture-failed" },
+    });
+    expect(selecting.session.activeOperationId).toBeNull();
+    expect(selecting.clipboard.writes).toBe(0);
+
+    const editing = createHarness();
+    await prepareEditingCapture(editing);
+    expect(editing.controller.captureEnvironmentChanged()).toMatchObject({
+      phase: "result",
+      result: { status: "failed", reason: "capture-failed" },
+    });
+    expect(editing.session.activeOperationId).toBeNull();
+    expect(editing.clipboard.writes).toBe(0);
+  });
+
   it("maps macOS permission denial without opening the overlay", async () => {
     const { backend, controller, mainSurface, overlay } = createHarness();
     backend.error = new CapturePermissionBlockedError();
@@ -399,6 +442,7 @@ describe("capture workflow controller", () => {
     expect(harness.controller.snapshot).toMatchObject({ phase: "staging" });
     expect(() => harness.controller.cancel(OPERATION_ID)).toThrow(InvalidWorkflowTransitionError);
     expect(harness.controller.displayChanged(DISPLAY.id)).toMatchObject({ phase: "staging" });
+    expect(harness.controller.captureEnvironmentChanged()).toMatchObject({ phase: "staging" });
     await expect(
       harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, null),
     ).rejects.toThrow(InvalidWorkflowTransitionError);
