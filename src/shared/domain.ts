@@ -63,7 +63,7 @@ const destinationContextSchema = z
   })
   .readonly();
 
-const actionSchema = z.enum(["copy", "stage", "send"]);
+const actionSchema = z.enum(["copy", "stage", "send", "reveal"]);
 const verificationSchema = z.enum([
   "target-live",
   "composer-ready",
@@ -123,13 +123,15 @@ const capabilitiesSchema = z
       });
     }
     if (
-      capabilities.actions.some((action) => action === "stage" || action === "send") &&
+      capabilities.actions.some(
+        (action) => action === "stage" || action === "send" || action === "reveal",
+      ) &&
       !capabilities.verification.includes("target-live")
     ) {
       context.addIssue({
         code: "custom",
         path: ["verification"],
-        message: "Stage and Send require live-target verification.",
+        message: "Stage, Send, and Reveal require live-target verification.",
       });
     }
     if (
@@ -183,6 +185,14 @@ export function supportsStage(destination: Destination, includesNote: boolean): 
     destination.capabilities.actions.includes("stage") &&
     destination.capabilities.verification.includes("target-live") &&
     (!includesNote || destination.capabilities.textInput !== "none")
+  );
+}
+
+export function supportsReveal(destination: Destination): boolean {
+  return (
+    destination.capabilities.address === "exact" &&
+    destination.capabilities.actions.includes("reveal") &&
+    destination.capabilities.verification.includes("target-live")
   );
 }
 

@@ -2,15 +2,16 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { CaptureDragTracker, selectionFromDrag } from "./capture-drag";
-import { deliveryCopy } from "./delivery-copy";
+import { deliveryCopy, revealCopy } from "./delivery-copy";
 import { DestinationPicker } from "./destination-picker";
+import { revealDestinationForResult } from "./reveal-result";
 import "./styles.css";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { ShortcutStatus } from "../../shared/bridge";
 import type { CaptureDraft, CaptureOverlaySnapshot } from "../../shared/capture";
 import type { Destination } from "../../shared/domain";
-import type { WorkflowSnapshot } from "../../shared/workflow";
+import type { RevealResult, WorkflowSnapshot } from "../../shared/workflow";
 import type { CaptureDrag, CapturePoint } from "./capture-drag";
 import type { UiCopy } from "./delivery-copy";
 import { MAX_NOTE_LENGTH, supportsStage } from "../../shared/domain";
@@ -261,6 +262,8 @@ function ScreenFlingApp() {
   const [destinations, setDestinations] = useState<readonly Destination[]>([]);
   const [destinationsLoading, setDestinationsLoading] = useState(false);
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
+  const [stagedDestination, setStagedDestination] = useState<Destination | null>(null);
+  const [revealResult, setRevealResult] = useState<RevealResult | null>(null);
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -343,8 +346,18 @@ function ScreenFlingApp() {
     setDestinations([]);
     setSelectedDestinationId(null);
     setNote("");
-    if (editingOperationId !== null) discoverDestinations();
+    if (editingOperationId !== null) {
+      setStagedDestination(null);
+      setRevealResult(null);
+      discoverDestinations();
+    }
   }, [discoverDestinations, editingOperationId]);
+
+  useEffect(() => {
+    if (snapshot?.phase !== "idle") return;
+    setStagedDestination(null);
+    setRevealResult(null);
+  }, [snapshot?.phase]);
 
   if (bridge === undefined) {
     return <RendererFailure message="The secure ScreenFling bridge is unavailable." />;
@@ -362,6 +375,8 @@ function ScreenFlingApp() {
   );
   const stageSupported =
     selectedDestination !== undefined && supportsStage(selectedDestination, note.length > 0);
+  const revealTarget = revealDestinationForResult(snapshot, stagedDestination);
+  const revealStatusCopy = revealResult === null ? null : revealCopy(revealResult);
   const canCancel =
     isActive &&
     snapshot.phase !== "target-selected" &&
@@ -381,6 +396,19 @@ function ScreenFlingApp() {
   const dismiss = () => {
     if (snapshot.phase !== "result") return;
     runAction(() => bridge.dismissResult({ operationId: snapshot.operationId }));
+  };
+
+  const reveal = () => {
+    if (snapshot.phase !== "result" || revealTarget === null || revealResult !== null || pending) {
+      return;
+    }
+    setPending(true);
+    setError(null);
+    void bridge
+      .revealDestination({ operationId: snapshot.operationId })
+      .then(setRevealResult)
+      .catch(() => setError("The exact destination could not be revealed safely."))
+      .finally(() => setPending(false));
   };
 
   return (
@@ -451,11 +479,13 @@ function ScreenFlingApp() {
                   className="button button--primary"
                   disabled={pending || destinationsLoading || draft === null || !stageSupported}
                   onClick={() => {
-                    if (selectedDestinationId === null) return;
+                    if (selectedDestination === undefined) return;
+                    setStagedDestination(selectedDestination);
+                    setRevealResult(null);
                     runAction(() =>
                       bridge.stageCapture({
                         operationId: snapshot.operationId,
-                        destinationId: selectedDestinationId,
+                        destinationId: selectedDestination.id,
                         note: note.length === 0 ? null : note,
                       }),
                     );
@@ -515,17 +545,34 @@ function ScreenFlingApp() {
         ) : null}
 
         {snapshot.phase === "result" ? (
-          <div className="actions">
-            <button
-              className="button button--primary"
-              disabled={pending}
-              onClick={dismiss}
-              ref={focusResultAction}
-              type="button"
-            >
-              Done
-            </button>
-          </div>
+          <>
+            <div className="actions">
+              {revealTarget === null ? null : (
+                <button
+                  className="button button--secondary"
+                  disabled={pending || revealResult !== null}
+                  onClick={reveal}
+                  type="button"
+                >
+                  {revealResult === null ? "Reveal destination" : "Reveal attempted"}
+                </button>
+              )}
+              <button
+                className="button button--primary"
+                disabled={pending}
+                onClick={dismiss}
+                ref={focusResultAction}
+                type="button"
+              >
+                Done
+              </button>
+            </div>
+            {revealStatusCopy === null ? null : (
+              <p className="result-feedback" role="status">
+                <strong>{revealStatusCopy.title}.</strong> {revealStatusCopy.detail}
+              </p>
+            )}
+          </>
         ) : null}
 
         {error === null ? null : (

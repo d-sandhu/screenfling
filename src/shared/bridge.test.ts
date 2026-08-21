@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { operationRequestSchema, shortcutStatusSchema, stageCaptureRequestSchema } from "./bridge";
+import {
+  BRIDGE_VERSION,
+  IPC_CHANNELS,
+  operationRequestSchema,
+  shortcutStatusSchema,
+  stageCaptureRequestSchema,
+} from "./bridge";
 
 const OPERATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -17,6 +23,19 @@ describe("workflow IPC request contract", () => {
       expect(operationRequestSchema.safeParse(payload).success).toBe(false);
     },
   );
+});
+
+describe("Reveal IPC contract", () => {
+  it("uses the strict operation request without renderer-selected routing data", () => {
+    expect(BRIDGE_VERSION).toBe(5);
+    expect(IPC_CHANNELS.revealDestination).toBe("workflow:reveal-destination");
+    expect(
+      operationRequestSchema.safeParse({
+        operationId: OPERATION_ID,
+        destinationId: "renderer-chosen-target",
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("Stage IPC request contract", () => {

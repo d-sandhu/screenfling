@@ -4,16 +4,18 @@ import { parseDestination } from "../shared/domain";
 import { DestinationRegistry } from "./destination-registry";
 
 import type {
+  AdapterRevealRequest,
   AdapterStageRequest,
   AdapterStageResult,
   DestinationAdapter,
 } from "./destination-adapter";
 import type { Destination } from "../shared/domain";
+import type { RevealResult } from "../shared/workflow";
 
 const OPERATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const OTHER_OPERATION_ID = "a6f35ec1-15d7-4c64-9843-0b97a10d20ef";
 
-function destination(id: string, adapter = "instrumented"): Destination {
+function destination(id: string, adapter = "instrumented", reveal = false): Destination {
   return parseDestination({
     id,
     adapter,
@@ -26,7 +28,7 @@ function destination(id: string, adapter = "instrumented"): Destination {
       textInput: "paste",
       readBack: "none",
       verification: ["target-live"],
-      actions: ["copy", "stage"],
+      actions: reveal ? ["copy", "stage", "reveal"] : ["copy", "stage"],
     },
   });
 }
@@ -34,7 +36,9 @@ function destination(id: string, adapter = "instrumented"): Destination {
 class InstrumentedAdapter implements DestinationAdapter {
   readonly id: string;
   discovered: readonly Destination[];
+  readonly revealed: AdapterRevealRequest[] = [];
   readonly staged: AdapterStageRequest[] = [];
+  revealResult: RevealResult = { status: "revealed" };
   stageResult: AdapterStageResult = { status: "dispatched-unverified" };
 
   constructor(id = "instrumented", discovered: readonly Destination[] = [destination("pane-7")]) {
@@ -49,6 +53,11 @@ class InstrumentedAdapter implements DestinationAdapter {
   async stageIfCurrent(request: AdapterStageRequest): Promise<AdapterStageResult> {
     this.staged.push(request);
     return this.stageResult;
+  }
+
+  async revealIfCurrent(request: AdapterRevealRequest): Promise<RevealResult> {
+    this.revealed.push(request);
+    return this.revealResult;
   }
 }
 
@@ -96,6 +105,78 @@ describe("destination registry", () => {
       reason: "target-stale",
     });
     expect(adapter.staged).toHaveLength(1);
+  });
+
+  it("reveals only the exact destination retained by a successful Stage", async () => {
+    const selected = destination("pane-7", "instrumented", true);
+    const adapter = new InstrumentedAdapter("instrumented", [selected]);
+    const registry = new DestinationRegistry([adapter]);
+    await registry.discover(OPERATION_ID);
+    await registry.stage(OPERATION_ID, selected.id, null);
+
+    await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({
+      status: "revealed",
+    });
+    expect(adapter.revealed).toEqual([{ destination: selected }]);
+    expect(adapter.staged).toHaveLength(1);
+    await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({ status: "stale" });
+  });
+
+  it("keeps the Reveal lease scoped to its operation and explicit capability", async () => {
+    const selected = destination("pane-7", "instrumented", true);
+    const adapter = new InstrumentedAdapter("instrumented", [selected]);
+    const registry = new DestinationRegistry([adapter]);
+    await registry.discover(OPERATION_ID);
+    await registry.stage(OPERATION_ID, selected.id, null);
+
+    await expect(registry.reveal(OTHER_OPERATION_ID, selected.id)).resolves.toEqual({
+      status: "stale",
+    });
+    expect(adapter.revealed).toHaveLength(0);
+    await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({
+      status: "revealed",
+    });
+
+    const stageOnly = destination("pane-stage-only");
+    adapter.discovered = [stageOnly];
+    await registry.discover(OTHER_OPERATION_ID);
+    await registry.stage(OTHER_OPERATION_ID, stageOnly.id, null);
+    await expect(registry.reveal(OTHER_OPERATION_ID, stageOnly.id)).resolves.toEqual({
+      status: "unsupported",
+    });
+    expect(adapter.revealed).toHaveLength(1);
+  });
+
+  it("returns unsupported when a destination adapter has no Reveal transaction", async () => {
+    const selected = destination("pane-7", "instrumented", true);
+    const adapter: DestinationAdapter = {
+      id: "instrumented",
+      discover: async () => [selected],
+      stageIfCurrent: async () => ({ status: "dispatched-unverified" }),
+    };
+    const registry = new DestinationRegistry([adapter]);
+    await registry.discover(OPERATION_ID);
+    await registry.stage(OPERATION_ID, selected.id, null);
+
+    await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({
+      status: "unsupported",
+    });
+  });
+
+  it("invalidates a retained Reveal destination on clear or new discovery", async () => {
+    const selected = destination("pane-7", "instrumented", true);
+    const adapter = new InstrumentedAdapter("instrumented", [selected]);
+    const registry = new DestinationRegistry([adapter]);
+    await registry.discover(OPERATION_ID);
+    await registry.stage(OPERATION_ID, selected.id, null);
+    registry.clear(OPERATION_ID);
+    await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({ status: "stale" });
+
+    await registry.discover(OPERATION_ID);
+    await registry.stage(OPERATION_ID, selected.id, null);
+    await registry.discover(OTHER_OPERATION_ID);
+    await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({ status: "stale" });
+    expect(adapter.revealed).toHaveLength(0);
   });
 
   it("rejects a destination discovered for another workflow", async () => {

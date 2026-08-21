@@ -7,6 +7,7 @@ import {
   advanceWorkflow,
   cancelWorkflow,
   finishWorkflow,
+  revealResultSchema,
   resetWorkflow,
   startWorkflow,
 } from "./workflow";
@@ -170,5 +171,20 @@ describe("workflow state machine", () => {
         destination: DESTINATION_RECEIPT,
       }),
     ).toThrow(InvalidWorkflowTransitionError);
+  });
+});
+
+describe("Reveal result contract", () => {
+  it.each(["revealed", "stale", "unavailable", "unsupported", "failed"] as const)(
+    "accepts the bounded %s outcome",
+    (status) => {
+      expect(revealResultSchema.parse({ status })).toEqual({ status });
+    },
+  );
+
+  it("rejects expanded Reveal claims", () => {
+    expect(
+      revealResultSchema.safeParse({ status: "revealed", foregroundVerified: true }).success,
+    ).toBe(false);
   });
 });

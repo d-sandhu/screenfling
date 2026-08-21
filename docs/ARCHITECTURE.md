@@ -2,7 +2,7 @@
 
 Status: Accepted pre-alpha direction
 
-Last reviewed: 2026-08-20
+Last reviewed: 2026-08-21
 
 ## Decision
 
@@ -257,7 +257,7 @@ type Destination = {
     verification: Array<
       "target-live" | "composer-ready" | "image-attached" | "turn-completed"
     >;
-    actions: Array<"copy" | "stage" | "send">;
+    actions: Array<"copy" | "stage" | "send" | "reveal">;
   };
 };
 ```
@@ -278,6 +278,14 @@ before invoking Stage, so duplicate requests and cross-operation selections fail
 as stale. Malformed results are omitted; duplicate, ambiguous, or aggregate
 over-limit discovery fails the operation closed.
 
+After a destination-bearing Stage result, the registry retains one short-lived
+route lease for that operation. Reveal crosses the bridge with only the current
+operation ID; the controller derives the destination receipt from the current
+result, and the registry resolves the full main-owned route. The lease is
+consumed by the first Reveal attempt and invalidated by result dismissal or a
+new discovery. A result cannot be dismissed while its Reveal transaction is in
+flight.
+
 An endpoint instance ID is generation-scoped. A restarted terminal or mux server
 is a new endpoint even when it reuses the same socket path or numeric pane ID.
 
@@ -296,6 +304,12 @@ to its side effect or return `stale`; this avoids a check/use gap. Context label
 may refresh during that transaction, but the endpoint or surface locator may not
 silently change. An uncertain accepted operation maps to
 `dispatched-unverified` and is never retried automatically.
+
+Reveal is a separate optional adapter transaction. It is offered only for an
+exact destination that declares `reveal` plus `target-live`; it never calls
+Stage and never changes the existing delivery result. The adapter revalidates
+the retained route immediately before activation and returns a separate typed
+outcome: `revealed`, `stale`, `unavailable`, `unsupported`, or `failed`.
 
 The interface expresses this obligation but cannot prove an implementation is
 atomic. Every production adapter therefore needs an interleaving conformance test
@@ -335,6 +349,14 @@ share one stdin payload; neither shell interpolation nor a second partially
 successful note process exists. A timeout or post-spawn failure is reported as
 `dispatched-unverified` and is never retried.
 
+WezTerm Reveal uses the same pinned selectors, fresh pane list, and final
+generation guard, then invokes one explicit
+`activate-pane --pane-id <selected-pane>` process with null stdin. It removes
+inherited `WEZTERM_PANE`, never selects the active pane, never sends image or
+note bytes, and never falls back to Electron window focus. Process success means
+the selected endpoint accepted activation; it does not prove host-window
+foreground or visibility.
+
 WezTerm does not provide an atomic compare-and-send operation. The generation
 guard narrows but cannot remove the final endpoint replacement race, so visible
 native acceptance remains release-blocking and Copy remains available. The
@@ -368,6 +390,11 @@ Runtime status must describe evidence, not optimism:
 The UI never describes `dispatched-unverified` as delivered or verified.
 Automatic retries are disabled for uncertain operations because they can create
 duplicate attachments.
+
+Reveal outcomes are displayed beside the unchanged Stage result. `revealed`
+means only that the exact endpoint accepted the activation request. Stale,
+unavailable, unsupported, and failed Reveal outcomes do not weaken or relabel
+the original Stage evidence.
 
 `failed/unsupported` is distinct from `failed/dispatch-failed`: unsupported means
 the selected destination's declared capabilities cannot satisfy the requested

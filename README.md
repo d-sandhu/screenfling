@@ -45,6 +45,15 @@ stale, failed, or uncertain after verified clipboard output, the result states
 that the image remains available for manual paste without retrying or guessing a
 different target.
 
+After a destination-bearing Stage result, a Reveal-capable target offers one
+explicit **Reveal destination** action. The renderer sends only the current
+operation ID; the main process resolves and consumes the retained exact route,
+revalidates its endpoint generation and pane, and requests activation without
+image, note, clipboard, Enter, active-pane fallback, or a Stage retry. A
+successful CLI response is reported as an activation request, not proof that
+the operating system made the WezTerm window visible or frontmost. Native macOS
+and Windows foreground behavior remains an acceptance row.
+
 The first reference implementation will be built on macOS, followed by Windows.
 Both are Tier 1 product targets. Linux is optional and may be explored later
 without a promise of feature parity.
@@ -57,6 +66,7 @@ global shortcut
 -> optionally add a short note
 -> choose an exact destination
 -> copy or stage
+-> optionally reveal the staged destination
 -> review in the destination
 ```
 
@@ -65,6 +75,8 @@ ScreenFling distinguishes three actions:
 - **Copy** puts the capture on the image clipboard.
 - **Stage** places the capture and note in a selected destination without
   submitting.
+- **Reveal** asks a capable adapter to activate the exact destination from the
+  completed Stage without changing its delivery result.
 - **Send** submits only through a versioned adapter that can verify the target
   and submission behavior. It is not part of the first release.
 
@@ -80,6 +92,7 @@ The first useful alpha will provide:
 - an optional single-line note;
 - explicit selection of one addressable local coding-agent destination;
 - Stage without Enter, submission, or focus theft;
+- one explicit, exact-target Reveal after Stage, with no foreground claim;
 - honest delivery status and a manual clipboard fallback;
 - local processing with no ScreenFling account or hosted backend.
 

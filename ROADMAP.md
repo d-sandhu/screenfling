@@ -213,6 +213,18 @@ request. Exact user-triggered Reveal remains a separate adapter-specific slice
 and native acceptance row. See the
 [Phase 11 results](research/phase-11-routing-recovery-results.md).
 
+Phase 12 adds exact, user-triggered Reveal as a transaction separate from Stage.
+The renderer sends only the current operation ID; the main process consumes the
+retained selected route, revalidates the endpoint generation and pane, and asks
+WezTerm to activate that explicit pane with no input bytes, Enter, Stage retry,
+active-pane fallback, or generic window focus. The Stage result remains
+unchanged. Repository tests cover routing, lifetime, command shape, typed
+outcomes, and no-data behavior. Packaged macOS/Windows foreground, minimized-
+window, pinned-flag, exit-status, and endpoint-race observations remain native
+acceptance rows. See the [Phase 12 plan](research/phase-12-exact-reveal-plan.md).
+Repository results are recorded in the
+[Phase 12 results](research/phase-12-exact-reveal-results.md).
+
 ### Milestone 0 deliverables
 
 - [x] minimal Electron/TypeScript project scaffold;
@@ -480,8 +492,9 @@ land in this order:
    clipboard-fallback UI, then complete the 200-workflow soak and packaged
    dogfooding evidence. Permission recovery, typed stale/unsupported results,
    capability-gated Stage, and explicit clipboard-fallback guidance are
-   implemented. Exact Reveal, native TCC acceptance, the complete-workflow soak,
-   and packaged dogfooding evidence remain.
+   implemented. Exact Reveal is implemented at repository-testable seams;
+   native Reveal foreground behavior, native TCC acceptance, the complete-
+   workflow soak, and packaged dogfooding evidence remain.
 4. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 

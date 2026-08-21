@@ -9,6 +9,7 @@ import { WorkflowStore } from "./workflow-store";
 
 import type { CaptureOverlayPort, MainSurfacePort } from "./capture-controller";
 import type {
+  AdapterRevealRequest,
   AdapterStageRequest,
   AdapterStageResult,
   DestinationAdapter,
@@ -23,7 +24,7 @@ import type {
 } from "./capture-session";
 import type { CaptureOverlaySnapshot } from "../shared/capture";
 import type { PixelCrop, PixelSize } from "../shared/capture-geometry";
-import type { WorkflowSnapshot } from "../shared/workflow";
+import type { RevealResult, WorkflowSnapshot } from "../shared/workflow";
 
 const OPERATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const DISPLAY: CaptureDisplay = {
@@ -47,7 +48,7 @@ const DESTINATION = parseDestination({
     textInput: "paste",
     readBack: "none",
     verification: ["target-live"],
-    actions: ["copy", "stage"],
+    actions: ["copy", "stage", "reveal"],
   },
 });
 
@@ -173,8 +174,11 @@ class ControllerMainSurface implements MainSurfacePort {
 
 class ControllerDestinationAdapter implements DestinationAdapter {
   readonly id = "instrumented";
+  readonly revealed: AdapterRevealRequest[] = [];
   readonly staged: AdapterStageRequest[] = [];
+  revealWaitForFinish = false;
   waitForFinish = false;
+  #finishReveal: ((result: RevealResult) => void) | null = null;
   #finish: ((result: AdapterStageResult) => void) | null = null;
 
   async discover() {
@@ -189,8 +193,20 @@ class ControllerDestinationAdapter implements DestinationAdapter {
     });
   }
 
+  async revealIfCurrent(request: AdapterRevealRequest): Promise<RevealResult> {
+    this.revealed.push(request);
+    if (!this.revealWaitForFinish) return { status: "revealed" };
+    return new Promise((resolve) => {
+      this.#finishReveal = resolve;
+    });
+  }
+
   finish(result: AdapterStageResult): void {
     this.#finish?.(result);
+  }
+
+  finishReveal(result: RevealResult): void {
+    this.#finishReveal?.(result);
   }
 }
 
@@ -430,6 +446,55 @@ describe("capture workflow controller", () => {
       "staging",
       "result",
     ]);
+  });
+
+  it("reveals the retained Stage destination without changing its result or clipboard", async () => {
+    const adapter = new ControllerDestinationAdapter();
+    const harness = createHarness(adapter);
+    await prepareEditingCapture(harness);
+    await harness.controller.discoverDestinations(OPERATION_ID);
+    await harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, null);
+    const resultSnapshot = harness.controller.snapshot;
+    const publishedCount = harness.mainSurface.published.length;
+
+    await expect(harness.controller.revealDestination(OPERATION_ID)).resolves.toEqual({
+      status: "revealed",
+    });
+    expect(adapter.revealed).toEqual([{ destination: DESTINATION }]);
+    expect(adapter.staged).toHaveLength(1);
+    expect(harness.clipboard.writes).toBe(1);
+    expect(harness.controller.snapshot).toBe(resultSnapshot);
+    expect(harness.mainSurface.published).toHaveLength(publishedCount);
+  });
+
+  it("returns bounded Reveal outcomes for stale and unsupported results", async () => {
+    const copied = createHarness();
+    await prepareEditingCapture(copied);
+    copied.controller.copyCapture(OPERATION_ID);
+    await expect(copied.controller.revealDestination(OPERATION_ID)).resolves.toEqual({
+      status: "unsupported",
+    });
+    await expect(
+      copied.controller.revealDestination("a6f35ec1-15d7-4c64-9843-0b97a10d20ef"),
+    ).resolves.toEqual({ status: "stale" });
+  });
+
+  it("does not dismiss a result while its one Reveal request is in flight", async () => {
+    const adapter = new ControllerDestinationAdapter();
+    adapter.revealWaitForFinish = true;
+    const harness = createHarness(adapter);
+    await prepareEditingCapture(harness);
+    await harness.controller.discoverDestinations(OPERATION_ID);
+    await harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, null);
+
+    const pending = harness.controller.revealDestination(OPERATION_ID);
+    await Promise.resolve();
+    expect(() => harness.controller.dismissResult(OPERATION_ID)).toThrow(
+      InvalidWorkflowTransitionError,
+    );
+    adapter.finishReveal({ status: "revealed" });
+    await expect(pending).resolves.toEqual({ status: "revealed" });
+    expect(harness.controller.dismissResult(OPERATION_ID)).toEqual({ phase: "idle" });
   });
 
   it("preserves verified clipboard fallback when the selected Stage action is unsupported", async () => {

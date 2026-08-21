@@ -3,15 +3,23 @@ import {
   destinationListSchema,
   operationIdSchema,
   noteSchema,
+  supportsReveal,
 } from "../shared/domain";
+import { revealResultSchema } from "../shared/workflow";
 import { stageDestination } from "./stage-destination";
 
 import type { Destination, Note } from "../shared/domain";
 import type { DestinationAdapter } from "./destination-adapter";
 import type { StageDeliveryResult } from "./stage-destination";
+import type { RevealResult } from "../shared/workflow";
 
 type DiscoverySnapshot = {
   readonly destinations: ReadonlyMap<string, Destination>;
+  readonly operationId: string;
+};
+
+type RevealLease = {
+  readonly destination: Destination;
   readonly operationId: string;
 };
 
@@ -24,6 +32,7 @@ export class DestinationRegistry {
   readonly #adapters: ReadonlyMap<string, DestinationAdapter>;
   #discovery: DiscoverySnapshot | null = null;
   #pendingOperationId: string | null = null;
+  #revealLease: RevealLease | null = null;
   #revision = 0;
 
   constructor(adapters: readonly DestinationAdapter[]) {
@@ -39,6 +48,7 @@ export class DestinationRegistry {
     const revision = ++this.#revision;
     this.#discovery = null;
     this.#pendingOperationId = safeOperationId;
+    this.#revealLease = null;
     const discovered: Destination[] = [];
     const destinationIds = new Set<string>();
 
@@ -94,8 +104,10 @@ export class DestinationRegistry {
     const safeNote = note === null ? null : noteSchema.parse(note);
     const discovery = this.#discovery;
     this.#revision += 1;
+    const revision = this.#revision;
     this.#discovery = null;
     this.#pendingOperationId = null;
+    this.#revealLease = null;
     if (discovery === null || discovery.operationId !== safeOperationId) {
       return { status: "failed", reason: "target-stale" };
     }
@@ -103,19 +115,54 @@ export class DestinationRegistry {
     if (destination === undefined) return { status: "failed", reason: "target-stale" };
     const adapter = this.#adapters.get(destination.adapter);
     if (adapter === undefined) return { status: "failed", reason: "dispatch-failed" };
-    return stageDestination(adapter, destination, safeNote);
+    this.#pendingOperationId = safeOperationId;
+    const result = await stageDestination(adapter, destination, safeNote);
+    if (this.#revision === revision) {
+      this.#pendingOperationId = null;
+      if (result.status === "dispatched-unverified" || result.status === "staged-verified") {
+        this.#revealLease = { destination, operationId: safeOperationId };
+      }
+    }
+    return result;
+  }
+
+  async reveal(operationId: string, destinationId: string): Promise<RevealResult> {
+    const safeOperationId = operationIdSchema.parse(operationId);
+    const safeDestinationId = destinationIdSchema.parse(destinationId);
+    const lease = this.#revealLease;
+    if (
+      lease === null ||
+      lease.operationId !== safeOperationId ||
+      lease.destination.id !== safeDestinationId
+    ) {
+      return { status: "stale" };
+    }
+    this.#revealLease = null;
+    if (!supportsReveal(lease.destination)) return { status: "unsupported" };
+    const adapter = this.#adapters.get(lease.destination.adapter);
+    if (adapter?.revealIfCurrent === undefined) return { status: "unsupported" };
+    try {
+      const result = revealResultSchema.safeParse(
+        await adapter.revealIfCurrent({ destination: lease.destination }),
+      );
+      return result.success ? result.data : { status: "failed" };
+    } catch {
+      return { status: "failed" };
+    }
   }
 
   clear(operationId: string): void {
     const safeOperationId = operationIdSchema.parse(operationId);
     if (
       this.#discovery?.operationId !== safeOperationId &&
-      this.#pendingOperationId !== safeOperationId
+      this.#pendingOperationId !== safeOperationId &&
+      this.#revealLease?.operationId !== safeOperationId
     ) {
       return;
     }
     this.#revision += 1;
     this.#discovery = null;
     this.#pendingOperationId = null;
+    this.#revealLease = null;
   }
 }
