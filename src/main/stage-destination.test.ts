@@ -114,7 +114,7 @@ describe("destination staging orchestration", () => {
     expect(failedRequests).toHaveLength(1);
   });
 
-  it("requires advertised note input before passing note data to an adapter", async () => {
+  it("reports an unsupported Stage request before passing note data to an adapter", async () => {
     const noText = parseDestination({
       ...selected,
       capabilities: { ...selected.capabilities, textInput: "none" },
@@ -127,7 +127,7 @@ describe("destination staging orchestration", () => {
         noText,
         parseNote("not allowed"),
       ),
-    ).resolves.toEqual({ status: "failed", reason: "dispatch-failed" });
+    ).resolves.toEqual({ status: "failed", reason: "unsupported" });
     expect(stageRequests).toHaveLength(0);
   });
 

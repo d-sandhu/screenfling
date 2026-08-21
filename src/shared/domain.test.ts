@@ -6,6 +6,7 @@ import {
   parseDestination,
   parseNote,
   receiptForDestination,
+  supportsStage,
 } from "./domain";
 
 import type { DestinationInput } from "./domain";
@@ -65,6 +66,28 @@ describe("destination contract", () => {
     const destination = parseDestination(validDestination);
     expect(destination.capabilities.actions).toEqual(["copy", "stage"]);
     expect(Object.isFrozen(destination)).toBe(true);
+  });
+
+  it("reports whether the destination supports the requested Stage capability", () => {
+    const destination = parseDestination(validDestination);
+    const copyOnly = parseDestination({
+      ...validDestination,
+      capabilities: {
+        ...validDestination.capabilities,
+        actions: ["copy"],
+        verification: [],
+      },
+    });
+    const imageOnly = parseDestination({
+      ...validDestination,
+      capabilities: { ...validDestination.capabilities, textInput: "none" },
+    });
+
+    expect(supportsStage(destination, false)).toBe(true);
+    expect(supportsStage(destination, true)).toBe(true);
+    expect(supportsStage(copyOnly, false)).toBe(false);
+    expect(supportsStage(imageOnly, false)).toBe(true);
+    expect(supportsStage(imageOnly, true)).toBe(false);
   });
 
   it("reduces a result destination to its exact display identity", () => {

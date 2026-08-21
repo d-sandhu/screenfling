@@ -432,6 +432,40 @@ describe("capture workflow controller", () => {
     ]);
   });
 
+  it("preserves verified clipboard fallback when the selected Stage action is unsupported", async () => {
+    const copyOnly = parseDestination({
+      ...DESTINATION,
+      id: "instrumented:generation-a:copy-only",
+      capabilities: {
+        ...DESTINATION.capabilities,
+        actions: ["copy"],
+        verification: [],
+      },
+    });
+    let adapterCalls = 0;
+    const adapter: DestinationAdapter = {
+      id: "instrumented",
+      discover: async () => [copyOnly],
+      stageIfCurrent: async () => {
+        adapterCalls += 1;
+        return { status: "dispatched-unverified" };
+      },
+    };
+    const harness = createHarness(adapter);
+    await prepareEditingCapture(harness);
+    await harness.controller.discoverDestinations(OPERATION_ID);
+
+    await expect(
+      harness.controller.stageCapture(OPERATION_ID, copyOnly.id, null),
+    ).resolves.toMatchObject({
+      phase: "result",
+      result: { status: "failed", reason: "unsupported" },
+    });
+    expect(harness.clipboard.writes).toBe(1);
+    expect(adapterCalls).toBe(0);
+    expect(harness.session.activeOperationId).toBeNull();
+  });
+
   it("does not cancel or invalidate a workflow after destination dispatch begins", async () => {
     const adapter = new ControllerDestinationAdapter();
     adapter.waitForFinish = true;

@@ -1,4 +1,5 @@
 import type { Destination, DestinationReceipt } from "../../shared/domain";
+import { supportsStage } from "../../shared/domain";
 
 export function destinationName(destination: Destination | DestinationReceipt): string {
   const adapter = destination.adapter === "wezterm" ? "WezTerm" : destination.adapter;
@@ -15,6 +16,7 @@ function destinationContext(destination: Destination): string {
 }
 
 function destinationEvidence(destination: Destination): string {
+  if (!supportsStage(destination, false)) return "Copy only";
   return destination.capabilities.verification.includes("image-attached")
     ? "Verifiable"
     : "Unverified";
@@ -43,7 +45,7 @@ export function DestinationPicker({
         <p className="empty-state">
           {loading
             ? "Looking for configured exact panes…"
-            : "No exact destination is available. Copy still works."}
+            : "No supported exact destination is available. Copy only still works."}
         </p>
       ) : (
         <div className="destination-list">

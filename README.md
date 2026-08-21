@@ -38,6 +38,13 @@ generations. Missing hardware/lifecycle coverage, macOS ACL and configuration-
 semantics acceptance, visible no-focus trials, and real-agent attachment trials
 still block any alpha or compatibility claim.
 
+Destination capabilities now control the visible action: a Copy-only target is
+labeled as such and cannot enable Stage. An empty or unsupported discovery keeps
+Copy only available. If an already-selected Stage request becomes unsupported,
+stale, failed, or uncertain after verified clipboard output, the result states
+that the image remains available for manual paste without retrying or guessing a
+different target.
+
 The first reference implementation will be built on macOS, followed by Windows.
 Both are Tier 1 product targets. Linux is optional and may be explored later
 without a promise of feature parity.

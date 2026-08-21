@@ -5,7 +5,12 @@ import type {
   AdapterStageResult,
   DestinationAdapter,
 } from "./destination-adapter";
-import { destinationSchema, noteSchema, receiptForDestination } from "../shared/domain";
+import {
+  destinationSchema,
+  noteSchema,
+  receiptForDestination,
+  supportsStage,
+} from "../shared/domain";
 
 import type { Destination, Note } from "../shared/domain";
 import type { DeliveryResult } from "../shared/workflow";
@@ -16,15 +21,6 @@ export type StageDeliveryResult = Extract<
   | { readonly status: "staged-verified" }
   | { readonly status: "failed" }
 >;
-
-function cannotStage(destination: Destination, note: Note | null): boolean {
-  return (
-    destination.capabilities.address !== "exact" ||
-    !destination.capabilities.actions.includes("stage") ||
-    !destination.capabilities.verification.includes("target-live") ||
-    (note !== null && destination.capabilities.textInput === "none")
-  );
-}
 
 function mapAdapterResult(
   result: AdapterStageResult,
@@ -64,8 +60,11 @@ export async function stageDestination(
 
   const destination = parsedDestination.data;
   const safeNote = parsedNote === null ? null : parsedNote.data;
-  if (destination.adapter !== adapter.id || cannotStage(destination, safeNote)) {
+  if (destination.adapter !== adapter.id) {
     return { status: "failed", reason: "dispatch-failed" };
+  }
+  if (!supportsStage(destination, safeNote !== null)) {
+    return { status: "failed", reason: "unsupported" };
   }
 
   const request: AdapterStageRequest = { destination, note: safeNote };

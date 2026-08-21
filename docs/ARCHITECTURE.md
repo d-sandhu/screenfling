@@ -369,6 +369,15 @@ The UI never describes `dispatched-unverified` as delivered or verified.
 Automatic retries are disabled for uncertain operations because they can create
 duplicate attachments.
 
+`failed/unsupported` is distinct from `failed/dispatch-failed`: unsupported means
+the selected destination's declared capabilities cannot satisfy the requested
+Stage action, so the adapter transaction is not invoked. The same shared
+capability policy controls whether the renderer enables Stage. A Copy-only or
+unavailable destination keeps the explicit Copy path visible. When Stage has
+already written and verified the clipboard, unsupported, stale, failed, and
+unverified results say that the image remains available for manual paste. A
+clipboard verification failure never makes that claim.
+
 ## Platform services
 
 Shared product behavior sits above platform-specific services:

@@ -145,6 +145,18 @@ Records the pure cross-platform status policy, macOS denied/restricted recovery
 copy and cleanup contract, Context7 verification, automated evidence, and the
 packaged TCC rows that remain human-operated.
 
+### [Phase 11 routing-recovery plan](phase-11-routing-recovery-plan.md)
+
+Uses Context7 and first-party Electron and WezTerm documentation to separate
+typed repository recovery behavior from exact Reveal and native desktop
+acceptance.
+
+### [Phase 11 routing-recovery results](phase-11-routing-recovery-results.md)
+
+Records capability-gated Stage, the unsupported result contract, explicit
+manual clipboard fallback, automated evidence, and the exact Reveal/native rows
+that remain open.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,
