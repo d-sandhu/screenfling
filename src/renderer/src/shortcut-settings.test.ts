@@ -76,6 +76,14 @@ describe("shortcut update feedback", () => {
       "The shortcut could not be saved. The previous shortcut is still active.",
     ],
     [
+      {
+        outcome: "rejected",
+        reason: "persistence-failed",
+        status: { ...REGISTERED_STATUS, registered: false },
+      },
+      "The shortcut could not be saved. No global shortcut is active; Capture region still works.",
+    ],
+    [
       { outcome: "rejected", reason: "busy", status: REGISTERED_STATUS },
       "Another shortcut change is still finishing. Try again.",
     ],

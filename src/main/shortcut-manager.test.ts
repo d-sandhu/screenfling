@@ -36,6 +36,7 @@ class MemoryRegistrar implements ShortcutRegistrar {
   readonly callbacks = new Map<string, () => void>();
   readonly calls: string[] = [];
   readonly stubborn = new Set<string>();
+  readonly throwAfterRegister = new Set<string>();
   readonly unavailable = new Set<string>();
   events: string[] | null = null;
   throwOnRegister = false;
@@ -53,6 +54,7 @@ class MemoryRegistrar implements ShortcutRegistrar {
     if (this.unavailable.has(accelerator)) return false;
     this.active.add(accelerator);
     this.callbacks.set(accelerator, callback);
+    if (this.throwAfterRegister.has(accelerator)) throw new Error("registration failed after bind");
     return true;
   }
 
@@ -229,6 +231,22 @@ describe("shortcut manager updates", () => {
     expect(registrar.active).toEqual(new Set(["CommandOrControl+Shift+9"]));
   });
 
+  it("cleans up a candidate when registration throws after creating the binding", async () => {
+    const registrar = new MemoryRegistrar();
+    registrar.throwAfterRegister.add("CommandOrControl+Alt+L");
+    const manager = new ShortcutManager(registrar, new MemoryPreferences(), () => undefined);
+    await manager.initialize();
+
+    await expect(
+      manager.set({ key: "L", modifiers: "CommandOrControl+Alt" }),
+    ).resolves.toMatchObject({
+      outcome: "rejected",
+      reason: "unavailable",
+      status: { cleanupRequired: false, registered: true },
+    });
+    expect(registrar.active).toEqual(new Set(["CommandOrControl+Shift+9"]));
+  });
+
   it("reports cleanup-required if Electron does not release the old registration", async () => {
     const registrar = new MemoryRegistrar();
     const manager = new ShortcutManager(registrar, new MemoryPreferences(), () => undefined);
@@ -248,6 +266,23 @@ describe("shortcut manager updates", () => {
     expect(registrar.active).toEqual(
       new Set(["CommandOrControl+Shift+9", "CommandOrControl+Alt+H"]),
     );
+  });
+
+  it("clears cleanup-required after a stale registration is released on retry", async () => {
+    const registrar = new MemoryRegistrar();
+    const manager = new ShortcutManager(registrar, new MemoryPreferences(), () => undefined);
+    await manager.initialize();
+    registrar.stubborn.add("CommandOrControl+Shift+9");
+    await manager.set({ key: "M", modifiers: "CommandOrControl+Alt" });
+    registrar.stubborn.delete("CommandOrControl+Shift+9");
+
+    await expect(
+      manager.set({ key: "M", modifiers: "CommandOrControl+Alt" }),
+    ).resolves.toMatchObject({
+      outcome: "unchanged",
+      status: { cleanupRequired: false, registered: true },
+    });
+    expect(registrar.active).toEqual(new Set(["CommandOrControl+Alt+M"]));
   });
 
   it("resets a saved shortcut to the portable default", async () => {

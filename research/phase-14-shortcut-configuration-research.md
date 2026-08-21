@@ -36,6 +36,14 @@ between the planned macOS and Windows implementations. The persisted versioned
 shape stores `{ modifiers, key }`; main derives the canonical Electron
 accelerator.
 
+The adopted result contract likewise reflects what the APIs can prove. It uses
+`unavailable` for a false/throwing registration because Electron does not expose
+a conflict owner or distinguish ownership from every platform failure. Startup
+configuration validity is a separate `default`/`saved`/`invalid`/`unreadable`
+state, while an unverified rollback sets `cleanupRequired`. Malformed or
+expanded IPC is rejected as a trust-boundary violation before it reaches the
+manager rather than being presented as a selectable invalid chord.
+
 ## Current repository evidence
 
 - `package.json` pins Electron `43.4.1` and Node `>=24 <25` (`package.json:27-31,

@@ -142,7 +142,10 @@ while the current binding remains active, commits the versioned preference, and
 only then unregisters the old accelerator. Registration or persistence failure
 rejects the candidate and retains the last working binding. An unverifiable
 cleanup is reported explicitly and final disposal retries every registration
-the manager may still own.
+the manager may still own. A later change retries outstanding cleanup and clears
+the warning after successful release. The manager also treats a thrown register
+call conservatively because the native side effect may have occurred before the
+exception reached JavaScript.
 
 The one durable preference is stored below Electron's application-specific
 `userData` directory. The store writes a private, uniquely named sibling,

@@ -22,7 +22,6 @@ export type ShortcutOperations = {
 export class ShortcutManager {
   #busy = false;
   readonly #capture: () => void;
-  #cleanupRequired = false;
   readonly #ownedAccelerators = new Set<string>();
   readonly #preferences: ShortcutPreferences;
   readonly #registrar: ShortcutRegistrar;
@@ -50,18 +49,15 @@ export class ShortcutManager {
     }
     this.#status = {
       ...this.#status,
-      cleanupRequired: this.#cleanupRequired,
+      cleanupRequired: this.#ownedAccelerators.size > 0,
       registered: this.#ownedAccelerators.has(this.#status.accelerator),
     };
   }
 
   #tryRegister(accelerator: string): boolean {
-    let accepted = false;
     try {
-      accepted = this.#registrar.register(accelerator, () => {
-        if (this.#status.registered && this.#status.accelerator === accelerator) {
-          this.#capture();
-        }
+      const accepted = this.#registrar.register(accelerator, () => {
+        if (this.#status.registered && this.#status.accelerator === accelerator) this.#capture();
       });
       if (!accepted) return false;
       this.#ownedAccelerators.add(accelerator);
@@ -69,7 +65,8 @@ export class ShortcutManager {
       this.#tryUnregister(accelerator);
       return false;
     } catch {
-      if (accepted) this.#tryUnregister(accelerator);
+      this.#ownedAccelerators.add(accelerator);
+      this.#tryUnregister(accelerator);
       return false;
     }
   }
@@ -77,21 +74,33 @@ export class ShortcutManager {
   #tryUnregister(accelerator: string): boolean {
     try {
       this.#registrar.unregister(accelerator);
-      if (this.#registrar.isRegistered(accelerator)) {
-        this.#cleanupRequired = true;
-        return false;
-      }
+      if (this.#registrar.isRegistered(accelerator)) return false;
       this.#ownedAccelerators.delete(accelerator);
       return true;
     } catch {
-      this.#cleanupRequired = true;
       return false;
     }
   }
 
+  #cleanupIsRequired(): boolean {
+    for (const accelerator of this.#ownedAccelerators) {
+      if (!this.#status.registered || accelerator !== this.#status.accelerator) return true;
+    }
+    return false;
+  }
+
   #refreshCleanupStatus(): void {
-    if (this.#status.cleanupRequired === this.#cleanupRequired) return;
-    this.#status = { ...this.#status, cleanupRequired: this.#cleanupRequired };
+    const cleanupRequired = this.#cleanupIsRequired();
+    if (this.#status.cleanupRequired === cleanupRequired) return;
+    this.#status = { ...this.#status, cleanupRequired };
+  }
+
+  #retryUnexpectedRegistrations(): void {
+    for (const accelerator of this.#ownedAccelerators) {
+      const isCurrent = this.#status.registered && accelerator === this.#status.accelerator;
+      if (!isCurrent) this.#tryUnregister(accelerator);
+    }
+    this.#refreshCleanupStatus();
   }
 
   async initialize(): Promise<ShortcutStatus> {
@@ -104,11 +113,12 @@ export class ShortcutManager {
     const registered = this.#tryRegister(accelerator);
     this.#status = {
       accelerator,
-      cleanupRequired: this.#cleanupRequired,
+      cleanupRequired: false,
       configuration,
       configurationState,
       registered,
     };
+    this.#refreshCleanupStatus();
     return this.#status;
   }
 
@@ -127,6 +137,7 @@ export class ShortcutManager {
   }
 
   async #apply(configuration: ShortcutConfiguration): Promise<ShortcutUpdateResult> {
+    this.#retryUnexpectedRegistrations();
     const accelerator = toShortcutAccelerator(configuration);
     const sameAccelerator = accelerator === this.#status.accelerator;
     const alreadySaved = sameAccelerator && this.#status.configurationState === "saved";
@@ -153,11 +164,12 @@ export class ShortcutManager {
     }
     this.#status = {
       accelerator,
-      cleanupRequired: this.#cleanupRequired,
+      cleanupRequired: false,
       configuration,
       configurationState: "saved",
       registered: true,
     };
+    this.#refreshCleanupStatus();
     return { outcome: "updated", status: this.#status };
   }
 }

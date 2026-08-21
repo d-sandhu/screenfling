@@ -42,7 +42,10 @@ A false/throwing registration rejects the candidate without a write. A failed
 write unregisters the candidate and retains the previous status. Concurrent
 changes are rejected as busy rather than queued behind a stale choice. If final
 cleanup cannot be verified, status reports `cleanupRequired` and disposal
-retries every accelerator the manager may still own.
+retries every accelerator the manager may still own. A later set/reset request
+also retries stale cleanup and clears the warning once no unexpected binding
+remains. Registration cleanup is attempted conservatively even if Electron
+throws after creating a native binding but before returning.
 
 The capture callback is never renderer-selected. It remains the existing
 main-owned `controller.startCapture("shortcut")` entry point.
@@ -86,8 +89,10 @@ validates request and response schemas and exposes no Electron module,
 The existing header shortcut becomes a native `<details>` settings affordance
 with labeled selects, a 40-pixel summary hit area, explicit Save and Reset
 buttons, focus-visible styling, platform-neutral Command/Control labels, and
-honest unavailable/persistence/busy feedback. The Capture button remains usable
-when shortcut registration is unavailable.
+honest unavailable/persistence/busy feedback. Feedback reflects whether the
+returned status actually has an active previous shortcut, and focus returns to
+the settings summary when an asynchronous change completes. The Capture button
+remains usable when shortcut registration is unavailable.
 
 ## Automated evidence
 
@@ -97,7 +102,7 @@ when shortcut registration is unavailable.
 - type-aware Oxlint, including all vendored generic anti-slop rules at error
   severity: passed with no findings;
 - TypeScript: passed;
-- Vitest: 32 files, 260 tests passed;
+- Vitest: 32 files, 263 tests passed;
 - acceptance-helper Node tests: 12 passed;
 - electron-vite main, preload, and renderer production builds: passed;
 - unpacked Electron 43.4.1 macOS arm64 package with production fuses: passed.

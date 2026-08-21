@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   DEFAULT_SHORTCUT_CONFIGURATION,
@@ -65,7 +65,9 @@ export function shortcutUpdateMessage(result: ShortcutUpdateResult): string {
     case "busy":
       return "Another shortcut change is still finishing. Try again.";
     case "persistence-failed":
-      return "The shortcut could not be saved. The previous shortcut is still active.";
+      return result.status.registered
+        ? "The shortcut could not be saved. The previous shortcut is still active."
+        : "The shortcut could not be saved. No global shortcut is active; Capture region still works.";
     case "unavailable":
       return "ScreenFling could not register that shortcut. It may already be in use.";
   }
@@ -91,10 +93,22 @@ export function ShortcutSettings({
   const [draft, setDraft] = useState<ShortcutConfiguration>(
     status?.configuration ?? DEFAULT_SHORTCUT_CONFIGURATION,
   );
+  const summary = useRef<HTMLElement>(null);
+  const wasPending = useRef(false);
 
   useEffect(() => {
     if (status !== null) setDraft(status.configuration);
   }, [status]);
+
+  useEffect(() => {
+    if (pending) {
+      wasPending.current = true;
+      return;
+    }
+    if (!wasPending.current) return;
+    wasPending.current = false;
+    summary.current?.focus();
+  }, [pending]);
 
   if (status === null) return <span className="shortcut">Checking shortcut…</span>;
 
@@ -109,7 +123,7 @@ export function ShortcutSettings({
 
   return (
     <details className="shortcut-settings">
-      <summary aria-label="Configure global capture shortcut">
+      <summary aria-label="Configure global capture shortcut" ref={summary}>
         {status.registered ? (
           <ShortcutKeys configuration={status.configuration} />
         ) : (

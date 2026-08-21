@@ -105,24 +105,28 @@ transaction:
 
 At startup, load and validate the committed setting, then attempt registration.
 If the OS rejects it, keep the setting visible as unregistered with an
-actionable conflict status; do not silently substitute an unrelated shortcut.
+actionable unavailable status; do not silently substitute an unrelated shortcut.
 The default is used only when stored data is absent or invalid. On quit,
 unregister the manager's known binding; it should not erase the user's setting.
 
-The status/result vocabulary should distinguish at least `none`, `conflict`,
-`invalid`, `persistence-failed`, and `rollback-failed`. Keep the existing
-accelerator and registered fields, but extend the strict status schema so the
-UI can explain why a candidate was not committed. A set response should include
-whether the request was accepted and the committed status; it must not echo
-paths, exception text, keylogger data, or raw OS output.
+The adopted status separates configuration state (`default`, `saved`, `invalid`,
+or `unreadable`) from registration and cleanup booleans. Update rejection is
+typed as `unavailable`, `persistence-failed`, or `busy`; Electron's boolean API
+cannot prove that another application, rather than the platform, caused an
+unavailable candidate. A failed rollback is represented by
+`cleanupRequired: true` so the UI does not claim a clean state. Malformed or
+expanded IPC is a trust-boundary violation and is rejected before the manager;
+the structured picker cannot produce an invalid user choice. Responses must not
+echo paths, exception text, keylogger data, or raw OS output.
 
 ### Strict IPC
 
 Extend the existing bridge with one authorized request channel, for example:
 
 ```text
-setShortcut({ accelerator }) -> { accepted, status }
-getShortcutStatus()        -> status
+setShortcut({ modifiers, key }) -> typed result
+resetShortcut()                 -> typed result
+getShortcutStatus()             -> status
 ```
 
 `setShortcut` is app-scoped and therefore has no operation ID, but it must use
@@ -146,9 +150,10 @@ settings subsystem. It should:
 - choose one portable modifier set and one A–Z/0–9 key through native form
   controls;
 - send only the strict structured configuration through `setShortcut`;
-- keep the old binding visibly active when a conflict or persistence error is
-  rejected;
-- show actionable, content-free error copy and return focus predictably;
+- keep the old binding visibly active when the returned status confirms it, and
+  preserve the Capture button path when no global shortcut is active;
+- show actionable, content-free error copy and return focus to the settings
+  summary after an asynchronous change;
 - remain keyboard navigable and not rely on a global key logger.
 
 Put configuration-to-accelerator conversion in a pure shared helper so the
