@@ -4,8 +4,19 @@ Research date: 2026-08-21
 
 Target tree: `main`; Electron `43.4.1`; electron-builder `26.15.3`
 
-Status: proposed future issue-sized permission slice; this report does not close
-Gate A or expand the Phase 9 selector implementation.
+Status: repository policy and recovery copy implemented in Phase 10; native TCC
+acceptance remains open and Gate A is not closed.
+
+## Implementation status
+
+Phase 10 implemented the pure status policy, wired it into the existing
+pre-enumeration and post-failure checks, and added tested denied/restricted copy
+with the exact System Settings path and restart instruction. The existing
+main-owned controller proves prepared-overlay cleanup, image release,
+main-surface recovery, and zero clipboard writes. The acceptance runner still
+does not expose Screen Recording status through a weakened renderer boundary;
+the exact packaged denial, grant, revocation, Settings label, and restart rows
+below remain human-operated.
 
 ## Decision
 
@@ -29,11 +40,12 @@ continue to the real capture attempt; status alone is not pixel evidence.
 
 The UI contract for `permission-blocked` should say: “Screen Recording access is
 off for ScreenFling. Enable it in System Settings → Privacy & Security → Screen
-& System Audio Recording, then restart ScreenFling.” It must offer Copy/Done
-recovery and retain no image or clipboard data. Do not claim that a status query
-opened Settings or that permission was granted. Apple documents the user-managed
-toggle location, and its ScreenCaptureKit sample explicitly requires an app
-restart after granting access. ([Apple Support](https://support.apple.com/guide/mac-help/control-access-screen-system-audio-recording-mchld6aa7d23/mac),
+& System Audio Recording, then restart ScreenFling.” A pre-capture denial must
+offer Done recovery and retain no image or clipboard data; Copy remains available
+only when a capture exists. Do not claim that a status query opened Settings or
+that permission was granted. Apple documents the user-managed toggle location,
+and its ScreenCaptureKit sample explicitly requires an app restart after granting
+access. ([Apple Support](https://support.apple.com/guide/mac-help/control-access-screen-system-audio-recording-mchld6aa7d23/mac),
 [Apple ScreenCaptureKit sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos))
 
 ## Stable identity and lifecycle acceptance
@@ -57,19 +69,20 @@ the next capture's `permission-blocked`/capture failure; an already-returned
 image may finish its clipboard or Stage side effect under the existing workflow
 boundary. No claim is made here that Electron emits a permission-change event.
 
-## Proposed follow-up implementation issue
+## Implementation checklist
 
-1. Add a pure `screenCapturePermissionPolicy(status, platform)` function. On
+1. [x] Add a pure `screenCapturePermissionPolicy(status, platform)` function. On
    non-macOS it returns `allowed`; on macOS it returns `blocked` only for
    `denied`/`restricted`, and `attempt` for the remaining documented values.
-2. Use that function in `ElectronCaptureBackend`; preserve the second status
+2. [x] Use that function in `ElectronCaptureBackend`; preserve the second status
    check after `getSources()` and on empty-image failure.
-3. Add a user-facing, sanitized `permission-blocked` result copy with a restart
+3. [x] Add a user-facing, sanitized `permission-blocked` result copy with a restart
    instruction. Keep existing overlay/main-window cleanup and clipboard
    preservation.
-4. Extend the packaged acceptance output with status, bundle identity, and a
+4. [ ] Extend the packaged acceptance output with status, bundle identity, and a
    boolean indicating whether the result was permission-blocked. Never emit
-   user content or a permission database dump.
+   user content or a permission database dump. Keep this open until native
+   acceptance resumes; do not weaken the renderer boundary solely for automation.
 
 No product Settings screen is required for this issue. A future “Open System
 Settings” action may be evaluated separately; it is not needed to establish the

@@ -139,6 +139,12 @@ Uses Context7 plus Electron and Apple documentation to define a future pure
 Screen Recording permission-policy seam and the human-operated packaged checks
 that cannot be replaced by mocked permission state.
 
+### [Phase 10 permission recovery results](phase-10-permission-recovery-results.md)
+
+Records the pure cross-platform status policy, macOS denied/restricted recovery
+copy and cleanup contract, Context7 verification, automated evidence, and the
+packaged TCC rows that remain human-operated.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,

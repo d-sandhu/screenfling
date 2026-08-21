@@ -123,6 +123,16 @@ cancel-clipboard fingerprint, hardware/lifecycle matrix, stable signing, or
 Windows, so Gate A remains open. See the
 [Phase 8 results](research/phase-8-capture-lifecycle-results.md).
 
+Phase 10 extracted the macOS Screen Recording status policy from Electron and
+added actionable denied/restricted result copy. Denial closes the prepared
+overlay, releases capture state, restores the main surface, and performs no
+clipboard write. `not-determined`, `granted`, and `unknown` still attempt the
+real capture path; non-macOS platforms do not fabricate a macOS permission
+failure. Repository tests cover the policy and recovery contract, but stable-
+identity TCC denial, grant, revocation, Settings labeling, and restart behavior
+remain native human-operated rows. See the
+[Phase 10 results](research/phase-10-permission-recovery-results.md).
+
 ### Gate B: exact-routing harness
 
 Build a separate developer harness around the destination contract in
@@ -458,7 +468,9 @@ land in this order:
    evidence remain.
 3. [ ] Add recoverable permission, stale-target, unsupported, and
    clipboard-fallback UI, then complete the 200-workflow soak and packaged
-   dogfooding evidence.
+   dogfooding evidence. The pure Screen Recording policy and denied/restricted
+   recovery copy are implemented; native TCC acceptance plus stale-target,
+   unsupported-adapter, and explicit clipboard-fallback guidance remain.
 4. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 

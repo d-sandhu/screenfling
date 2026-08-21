@@ -397,6 +397,17 @@ the retained image, closes the overlay, clears operation-scoped destinations,
 and restores the main surface. A late lifecycle event cannot relabel or retry an
 already-started clipboard or destination transaction.
 
+On macOS, Screen Recording status is interpreted by a pure policy before source
+enumeration and checked again after enumeration or empty-image failure.
+`denied` and `restricted` are blocked; `not-determined`, `granted`, and `unknown`
+still attempt real capture because status alone is not pixel evidence. Other
+platforms do not inherit a fabricated macOS denial. Electron has no
+`askForMediaAccess("screen")` operation, so ScreenFling does not add a fake
+request path or native permission helper. A blocked result closes the prepared
+overlay, releases capture state, restores the main surface, writes nothing to
+the clipboard, and tells the user which System Settings pane and restart are
+required.
+
 ## Native-code gate
 
 Do not add Rust, Swift, C++, or another native helper because it may be useful.
