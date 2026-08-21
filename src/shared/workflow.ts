@@ -11,6 +11,16 @@ export const activeWorkflowPhaseSchema = z.enum([
   "staging",
 ]);
 
+export const deliveryFailureReasonSchema = z.enum([
+  "permission-blocked",
+  "capture-failed",
+  "clipboard-failed",
+  "target-stale",
+  "unsupported",
+  "dispatch-failed",
+  "unexpected",
+]);
+
 export const deliveryResultSchema = z
   .discriminatedUnion("status", [
     z.strictObject({ status: z.literal("copied") }),
@@ -28,15 +38,7 @@ export const deliveryResultSchema = z
     }),
     z.strictObject({
       status: z.literal("failed"),
-      reason: z.enum([
-        "permission-blocked",
-        "capture-failed",
-        "clipboard-failed",
-        "target-stale",
-        "unsupported",
-        "dispatch-failed",
-        "unexpected",
-      ]),
+      reason: deliveryFailureReasonSchema,
     }),
     z.strictObject({ status: z.literal("cancelled") }),
   ])

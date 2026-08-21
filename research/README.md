@@ -169,6 +169,18 @@ Records the main-owned result lease, operation-only bridge, no-data exact-pane
 activation, typed evidence boundary, headless verification, discarded
 operator-assisted GUI run, and native acceptance rows that remain open.
 
+### [Phase 13 next-slice audit](phase-13-next-slice-audit.md)
+
+Ranks the remaining repository-testable Milestone 1 gaps and selects bounded,
+main-owned workflow diagnostics ahead of shortcut settings or unverifiable
+adapter read-back work.
+
+### [Phase 13 sanitized diagnostics results](phase-13-sanitized-diagnostics-results.md)
+
+Records the strict content-free schema, monotonic bounded aggregation,
+controller lifecycle wiring, read-only bridge, acceptance-report integration,
+headless verification, and native evidence that remains open.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,

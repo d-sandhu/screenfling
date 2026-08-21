@@ -24,6 +24,14 @@ acceptance runner can repeat the production selection-completion, verified Copy,
 cancellation, window-cleanup, and working-set checks without logging captured
 pixels or clipboard content.
 
+The main process also maintains a bounded, in-memory diagnostics snapshot for
+button and shortcut starts, fixed delivery and Reveal result categories, and
+phase timing summaries. The snapshot is available to the local acceptance
+runner through a strict read-only bridge. It contains no operation or destination
+identities and no pixels, notes, clipboard content, paths, titles, terminal
+text, credentials, or raw adapter output. It is neither persisted nor sent as
+telemetry.
+
 On macOS, documented Screen Recording denial or restriction stops before source
 enumeration and produces recoverable guidance for the exact Privacy & Security
 pane plus the required application restart. An unknown or not-yet-determined
@@ -94,6 +102,7 @@ The first useful alpha will provide:
 - Stage without Enter, submission, or focus theft;
 - one explicit, exact-target Reveal after Stage, with no foreground claim;
 - honest delivery status and a manual clipboard fallback;
+- local, content-free workflow timing and result diagnostics;
 - local processing with no ScreenFling account or hosted backend.
 
 The first release will not include Linux support, remote transfer, browser

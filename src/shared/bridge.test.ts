@@ -27,7 +27,7 @@ describe("workflow IPC request contract", () => {
 
 describe("Reveal IPC contract", () => {
   it("uses the strict operation request without renderer-selected routing data", () => {
-    expect(BRIDGE_VERSION).toBe(5);
+    expect(BRIDGE_VERSION).toBe(6);
     expect(IPC_CHANNELS.revealDestination).toBe("workflow:reveal-destination");
     expect(
       operationRequestSchema.safeParse({
@@ -35,6 +35,12 @@ describe("Reveal IPC contract", () => {
         destinationId: "renderer-chosen-target",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("diagnostics IPC contract", () => {
+  it("exposes one read-only no-payload snapshot channel", () => {
+    expect(IPC_CHANNELS.getDiagnostics).toBe("workflow:get-diagnostics");
   });
 });
 

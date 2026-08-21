@@ -4,8 +4,10 @@ import { InvalidWorkflowTransitionError, StaleWorkflowActionError } from "../sha
 import type { CaptureDisplay, CaptureSession } from "./capture-session";
 import type { CaptureDraft, CaptureOverlaySnapshot, DipSelectionInput } from "../shared/capture";
 import type { Destination, Note } from "../shared/domain";
+import type { DiagnosticDeliveryOutcome, DiagnosticTrigger } from "../shared/diagnostics";
 import type { DeliveryResult, RevealResult, WorkflowSnapshot } from "../shared/workflow";
 import type { DestinationRegistry } from "./destination-registry";
+import type { WorkflowDiagnostics } from "./workflow-diagnostics";
 import type { WorkflowStore } from "./workflow-store";
 
 export type CaptureOverlayPort = {
@@ -45,10 +47,16 @@ function hasCrossedCancellationBoundary(snapshot: WorkflowSnapshot): boolean {
   );
 }
 
+function diagnosticOutcomeFor(result: DeliveryResult): DiagnosticDeliveryOutcome {
+  if (result.status === "failed") return { status: result.status, reason: result.reason };
+  return { status: result.status };
+}
+
 export class CaptureController {
   readonly #capture: CaptureSession;
   readonly #createOperationId: OperationIdFactory;
   readonly #destinations: DestinationRegistry;
+  readonly #diagnostics: WorkflowDiagnostics;
   readonly #mainSurface: MainSurfacePort;
   readonly #overlay: CaptureOverlayPort;
   readonly #workflow: WorkflowStore;
@@ -56,6 +64,7 @@ export class CaptureController {
 
   constructor(
     workflow: WorkflowStore,
+    diagnostics: WorkflowDiagnostics,
     capture: CaptureSession,
     destinations: DestinationRegistry,
     overlay: CaptureOverlayPort,
@@ -63,6 +72,7 @@ export class CaptureController {
     createOperationId: OperationIdFactory,
   ) {
     this.#workflow = workflow;
+    this.#diagnostics = diagnostics;
     this.#capture = capture;
     this.#destinations = destinations;
     this.#overlay = overlay;
@@ -74,11 +84,13 @@ export class CaptureController {
     return this.#workflow.snapshot;
   }
 
-  async startCapture(): Promise<WorkflowSnapshot> {
+  async startCapture(trigger: DiagnosticTrigger = "button"): Promise<WorkflowSnapshot> {
     if (this.#workflow.snapshot.phase !== "idle") return this.#workflow.snapshot;
 
     const operationId = this.#createOperationId();
-    this.#publish(this.#workflow.start(operationId));
+    const snapshot = this.#workflow.start(operationId);
+    this.#diagnostics.begin(operationId, trigger);
+    this.#publish(snapshot);
     try {
       await this.#mainSurface.hideForCapture();
       if (!isActiveOperation(this.#workflow.snapshot, operationId)) {
@@ -115,6 +127,7 @@ export class CaptureController {
   overlayReady(operationId: string): WorkflowSnapshot {
     const snapshot = this.#workflow.advance(operationId, "selecting");
     this.#overlay.show();
+    this.#diagnostics.mark(operationId, "selecting");
     return this.#publish(snapshot);
   }
 
@@ -123,11 +136,13 @@ export class CaptureController {
   }
 
   completeSelection(operationId: string, selection: DipSelectionInput): WorkflowSnapshot {
+    this.#diagnostics.mark(operationId, "selection-complete");
     try {
       this.#capture.complete(operationId, selection);
       const snapshot = this.#workflow.advance(operationId, "editing");
       this.#overlay.close();
       this.#mainSurface.show();
+      this.#diagnostics.mark(operationId, "editing");
       return this.#publish(snapshot);
     } catch {
       return this.#fail(operationId, "capture-failed");
@@ -198,7 +213,9 @@ export class CaptureController {
 
     this.#revealInFlight = operationId;
     try {
-      return await this.#destinations.reveal(operationId, current.result.destination.id);
+      const result = await this.#destinations.reveal(operationId, current.result.destination.id);
+      this.#diagnostics.recordReveal(result);
+      return result;
     } finally {
       this.#revealInFlight = null;
     }
@@ -286,6 +303,9 @@ export class CaptureController {
   }
 
   #publish(snapshot: WorkflowSnapshot): WorkflowSnapshot {
+    if (snapshot.phase === "result") {
+      this.#diagnostics.finish(snapshot.operationId, diagnosticOutcomeFor(snapshot.result));
+    }
     this.#mainSurface.publishWorkflow(snapshot);
     return snapshot;
   }

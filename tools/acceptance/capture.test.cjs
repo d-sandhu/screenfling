@@ -9,6 +9,7 @@ const {
   cancelOverlay,
   completeOverlaySelection,
   readArtifactEvidence,
+  readDiagnostics,
   startCapture,
   waitForOverlay,
 } = require("./capture.cjs");
@@ -105,6 +106,50 @@ void test("completeOverlaySelection closes an overlay that does not close itself
     /overlay-close-timeout/,
   );
   assert.equal(closed, true);
+});
+
+void test("readDiagnostics returns only the bridge-provided sanitized snapshot", async () => {
+  const diagnostics = {
+    version: 1,
+    starts: { button: 2, shortcut: 1 },
+    delivery: {
+      cancelled: 1,
+      copied: 1,
+      dispatchedUnverified: 0,
+      failures: {
+        captureFailed: 0,
+        clipboardFailed: 0,
+        dispatchFailed: 0,
+        permissionBlocked: 0,
+        targetStale: 0,
+        unexpected: 0,
+        unsupported: 0,
+      },
+      sentVerified: 0,
+      stagedVerified: 0,
+    },
+    reveal: { failed: 0, revealed: 0, stale: 0, unavailable: 0, unsupported: 0 },
+    timingsMs: {
+      buttonToSelecting: { count: 0, maximum: null, median: null, minimum: null, p95: null },
+      selectionToEditing: { count: 0, maximum: null, median: null, minimum: null, p95: null },
+      selectionToResult: { count: 0, maximum: null, median: null, minimum: null, p95: null },
+      shortcutToSelecting: { count: 0, maximum: null, median: null, minimum: null, p95: null },
+    },
+  };
+  globalThis.window = {
+    screenFling: { getDiagnostics: () => Promise.resolve(diagnostics) },
+  };
+  const mainWindow = { evaluate: async (action) => action() };
+
+  assert.deepEqual(await readDiagnostics(mainWindow), diagnostics);
+  assert.equal(JSON.stringify(await readDiagnostics(mainWindow)).includes("operationId"), false);
+});
+
+void test("readDiagnostics reports an unavailable bridge", async () => {
+  globalThis.window = {};
+  const mainWindow = { evaluate: async (action) => action() };
+
+  await assert.rejects(readDiagnostics(mainWindow), /Diagnostics bridge unavailable/);
 });
 
 void test("allowExpectedPageClose accepts a bridge race only after the overlay closes", async () => {
