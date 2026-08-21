@@ -89,8 +89,10 @@ type WezTermSnapshot = ReadyPreflight & {
 
 type WezTermSnapshotResult =
   | { readonly status: "ready"; readonly snapshot: WezTermSnapshot }
+  | { readonly status: "ambiguous" }
   | { readonly status: "generation-changed" }
-  | { readonly status: "unavailable" };
+  | { readonly status: "unavailable" }
+  | { readonly status: "unsupported" };
 
 type WezTermRoute = {
   readonly destination: Destination;
@@ -101,7 +103,13 @@ type WezTermRoute = {
 type CurrentRouteResult =
   | { readonly status: "ready"; readonly route: WezTermRoute }
   | { readonly status: "stale" }
-  | { readonly status: "unavailable" };
+  | { readonly status: "unavailable" }
+  | { readonly status: "unsupported" };
+
+type PaneListResult =
+  | { readonly status: "ready"; readonly panes: readonly WezTermPane[] }
+  | { readonly status: "ambiguous" }
+  | { readonly status: "invalid" };
 
 function decodeUtf8(bytes: Uint8Array): string | null {
   try {
@@ -111,17 +119,17 @@ function decodeUtf8(bytes: Uint8Array): string | null {
   }
 }
 
-function parsePaneList(bytes: Uint8Array): readonly WezTermPane[] | null {
+function parsePaneList(bytes: Uint8Array): PaneListResult {
   const text = decodeUtf8(bytes);
-  if (text === null) return null;
+  if (text === null) return { status: "invalid" };
   try {
     const parsed = wezTermPaneListSchema.safeParse(JSON.parse(text));
-    if (!parsed.success) return null;
+    if (!parsed.success) return { status: "invalid" };
     const paneIds = parsed.data.map((pane) => pane.pane_id);
-    if (new Set(paneIds).size !== paneIds.length) return null;
-    return parsed.data;
+    if (new Set(paneIds).size !== paneIds.length) return { status: "ambiguous" };
+    return { status: "ready", panes: parsed.data };
   } catch {
-    return null;
+    return { status: "invalid" };
   }
 }
 
@@ -272,7 +280,7 @@ export class WezTermAdapter implements DestinationAdapter {
     }
     const current = await this.#currentRoute(destination.data);
     if (current.status === "stale") return current;
-    if (current.status === "unavailable") return { status: "failed" };
+    if (current.status !== "ready") return { status: "failed" };
 
     const safeNote = note === null ? null : note.data;
     return this.#sendText(current.route, joinInput(this.#config.imagePasteInput, safeNote));
@@ -302,7 +310,10 @@ export class WezTermAdapter implements DestinationAdapter {
     if (route === undefined || !sameRoute(destination, route)) return { status: "stale" };
 
     const snapshotResult = await this.#snapshot();
-    if (snapshotResult.status === "generation-changed") return { status: "stale" };
+    if (snapshotResult.status === "ambiguous" || snapshotResult.status === "generation-changed") {
+      return { status: "stale" };
+    }
+    if (snapshotResult.status === "unsupported") return snapshotResult;
     if (snapshotResult.status === "unavailable") return { status: "unavailable" };
     if (snapshotResult.snapshot.generation !== route.generation) return { status: "stale" };
     if (
@@ -315,7 +326,11 @@ export class WezTermAdapter implements DestinationAdapter {
 
   async #snapshot(): Promise<WezTermSnapshotResult> {
     const preflight = await this.preflight();
-    if (preflight.status !== "ready") return { status: "unavailable" };
+    if (preflight.status !== "ready") {
+      return preflight.reason === "unsupported-version"
+        ? { status: "unsupported" }
+        : { status: "unavailable" };
+    }
     const listResult = await this.#dependencies.runProcess(
       this.#processRequest(
         this.#cliArguments(["list", "--format", "json"]),
@@ -329,8 +344,9 @@ export class WezTermAdapter implements DestinationAdapter {
         ? { status: "generation-changed" }
         : { status: "unavailable" };
     }
-    const panes = parsePaneList(listResult.stdout);
-    if (panes === null) return { status: "unavailable" };
+    const paneList = parsePaneList(listResult.stdout);
+    if (paneList.status === "ambiguous") return paneList;
+    if (paneList.status === "invalid") return { status: "unavailable" };
     try {
       const generationAfterList = await this.#dependencies.readGeneration(
         this.#config,
@@ -342,7 +358,7 @@ export class WezTermAdapter implements DestinationAdapter {
     } catch {
       return { status: "unavailable" };
     }
-    return { status: "ready", snapshot: { ...preflight, panes } };
+    return { status: "ready", snapshot: { ...preflight, panes: paneList.panes } };
   }
 
   async #sendText(route: WezTermRoute, input: Uint8Array): Promise<AdapterStageResult> {

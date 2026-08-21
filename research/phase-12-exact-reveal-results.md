@@ -60,15 +60,16 @@ and the [Phase 12 plan](phase-12-exact-reveal-plan.md).
   workflow publication, and no Stage-result mutation. They also fence the
   Reveal/dismiss race.
 - WezTerm tests prove the exact command, selected pane ID, explicit selector
-  environment, null stdin, no `send-text`, final generation guard, stale-pane
-  refusal, failure mapping, and no retry.
+  environment, null stdin, no `send-text`, final generation guard, missing or
+  ambiguous pane refusal, pinned-version classification, failure mapping, and
+  no retry.
 - Renderer tests prove Reveal availability requires the exact retained result
   receipt and advertised capability. Result copy avoids foreground, attachment,
   and submission claims.
 - Existing 100-alternating-pane Stage coverage, stale-generation refusal,
   literal input, no Enter, and no-retry behavior remain green.
 
-The Phase 12 branch passed `npm run check:all` with 218 Vitest tests across 26
+The Phase 12 branch passed `npm run check:all` with 220 Vitest tests across 26
 files, ten headless acceptance-runner helper tests, type-aware Oxlint with all 15
 generic anti-slop rules at error severity, strict TypeScript, the production
 build, and an ad-hoc signed macOS arm64 directory package.

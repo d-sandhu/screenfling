@@ -1,6 +1,7 @@
 # Phase 12 exact-destination Reveal plan
 
-Research date: 2026-08-21  
+Research date: 2026-08-21
+
 Scope: the first user-triggered Reveal transaction for the pinned WezTerm
 adapter. This report is repository research only: no production code, app
 launch, GUI test, or native acceptance was performed.
@@ -136,12 +137,13 @@ Add tests around the smallest seam:
 - lifetime: wrong operation ID, no Reveal-capable result, consumed lease,
   dismissed result, and a new workflow all fail closed without rediscovery or
   fallback to the active pane;
-- typed process outcomes: successful bounded process → `revealed`; missing
-  executable/socket/config or connection refusal → `unavailable`; unsupported
-  command/help or pinned-version mismatch → `unsupported`; timeout, signal,
-  non-zero exit, malformed output, and spawn failure → `failed` (or a
-  separately named `uncertain` only if the implementation can prove that
-  activation may have been accepted);
+- typed process outcomes: successful bounded activation → `revealed`; binary,
+  selector, endpoint, or list preflight failure → `unavailable`; pinned-version
+  mismatch → `unsupported`; final activation spawn failure → `unavailable`;
+  timeout, non-zero exit, input/output failure, or other post-spawn failure →
+  `failed`. Do not infer “unsupported command” or “connection refused” from
+  unstructured stderr; the pinned `--no-auto-start`/command fixture remains a
+  native compatibility row;
 - regression: existing 100 alternating Stage routes, literal payload bytes,
   no Enter, no Stage focus/activation, stale endpoint replacement, and no
   automatic retry remain unchanged.
@@ -193,4 +195,3 @@ endpoint-race rows as explicit native acceptance work.
 - [Electron BrowserWindow API](https://www.electronjs.org/docs/latest/api/browser-window)
 - [ScreenFling WezTerm adapter](../src/main/wezterm-adapter.ts)
 - [ScreenFling workflow/bridge/registry](../src/shared/workflow.ts)
-

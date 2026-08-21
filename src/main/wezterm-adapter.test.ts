@@ -335,6 +335,28 @@ describe("WezTerm destination adapter", () => {
     expect(runner.spawnedRevealRequests).toEqual([]);
   });
 
+  it("returns stale without activation when pane discovery becomes ambiguous", async () => {
+    const runner = new FakeWezTermRunner();
+    const adapter = createAdapter(runner);
+    const destination = await firstDestination(adapter);
+    runner.listResult = success(JSON.stringify([paneFixture(7), paneFixture(7)]));
+
+    await expect(adapter.revealIfCurrent({ destination })).resolves.toEqual({ status: "stale" });
+    expect(runner.spawnedRevealRequests).toEqual([]);
+  });
+
+  it("returns unsupported when the pinned WezTerm version no longer matches", async () => {
+    const runner = new FakeWezTermRunner();
+    const adapter = createAdapter(runner);
+    const destination = await firstDestination(adapter);
+    runner.versionResult = success("wezterm 20990101-000000-unknown\n");
+
+    await expect(adapter.revealIfCurrent({ destination })).resolves.toEqual({
+      status: "unsupported",
+    });
+    expect(runner.spawnedRevealRequests).toEqual([]);
+  });
+
   it("guards the final Reveal spawn and never retries a failed activation", async () => {
     const guardedRunner = new FakeWezTermRunner();
     let generation = GENERATION_A;
