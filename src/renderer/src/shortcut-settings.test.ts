@@ -29,6 +29,7 @@ describe("shortcut settings", () => {
 
     expect(markup).toContain('aria-label="Configure global capture shortcut"');
     expect(markup).toContain("⌘/Ctrl");
+    expect(markup).toContain("Edit");
     expect(markup).toContain("Modifiers");
     expect(markup).toContain("Key");
     expect(markup).toContain("Save shortcut");
@@ -49,6 +50,9 @@ describe("shortcut settings", () => {
 
     expect(markup).toContain("It may already be in use");
     expect(markup).not.toContain("is already in use");
+    expect(markup).toContain(
+      '<button class="button button--primary" type="submit">Save shortcut</button>',
+    );
   });
 });
 

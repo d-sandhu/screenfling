@@ -169,6 +169,13 @@ button {
   outline-offset: 2px;
 }
 
+.shortcut-settings__edit {
+  margin-left: 8px;
+  color: #727c7f;
+  font-size: 10px;
+  font-weight: 620;
+}
+
 .shortcut-settings__panel {
   position: absolute;
   z-index: 10;
@@ -254,6 +261,10 @@ button {
 }
 
 .shortcut-settings__actions .button {
+  min-height: 40px;
+}
+
+.shortcut-settings__actions .text-button {
   min-height: 40px;
 }
 

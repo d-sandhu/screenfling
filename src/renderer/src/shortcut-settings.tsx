@@ -39,7 +39,7 @@ function ShortcutKeys({ configuration }: { readonly configuration: ShortcutConfi
 function statusMessage(status: ShortcutStatus, message: string | null): string | null {
   if (message !== null) return message;
   if (status.cleanupRequired) {
-    return "The previous shortcut could not be released. Restart ScreenFling before relying on the change.";
+    return "ScreenFling could not verify shortcut cleanup. Restart ScreenFling before relying on a global shortcut.";
   }
   if (!status.registered) {
     return "ScreenFling could not register this shortcut. It may already be in use.";
@@ -100,7 +100,9 @@ export function ShortcutSettings({
 
   const feedback = statusMessage(status, message);
   const unchanged =
-    status.configurationState === "saved" && sameConfiguration(draft, status.configuration);
+    status.registered &&
+    status.configurationState === "saved" &&
+    sameConfiguration(draft, status.configuration);
   const alreadyDefault =
     status.configurationState === "saved" &&
     sameConfiguration(draft, DEFAULT_SHORTCUT_CONFIGURATION);
@@ -113,6 +115,7 @@ export function ShortcutSettings({
         ) : (
           <span className="shortcut shortcut--warning">Shortcut unavailable</span>
         )}
+        <span className="shortcut-settings__edit">Edit</span>
       </summary>
       <form
         className="shortcut-settings__panel"
