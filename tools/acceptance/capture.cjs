@@ -205,6 +205,14 @@ async function waitForWorkflowPhase(mainWindow, phase, timeoutMs = 30_000) {
   throw new Error("workflow-timeout");
 }
 
+async function readDiagnostics(mainWindow) {
+  return mainWindow.evaluate(() => {
+    const bridge = window.screenFling;
+    if (bridge === undefined) throw new Error("Diagnostics bridge unavailable.");
+    return bridge.getDiagnostics();
+  });
+}
+
 function mainPage(context) {
   const page = livePages(context).find((candidate) => !candidate.url().includes("surface=capture"));
   if (page === undefined) throw new Error("main-window-unavailable");
@@ -563,6 +571,7 @@ async function main() {
     }
     await delay(cooldownMs);
     const afterCooldown = workingSetKib(child.pid);
+    const diagnostics = await readDiagnostics(mainWindow);
 
     const captureActionTimes = captureSamples.map(
       (sample) => sample.captureActionToOverlayInteractiveMs,
@@ -596,6 +605,7 @@ async function main() {
         chrome: /Chrome\/([^ ]+)/.exec(userAgent)?.[1] ?? "unavailable",
       },
       displayObservations: captureSamples.length === 0 ? [] : [captureSamples[0].display],
+      diagnostics,
       captureWarmupRuns: captureRuns === 0 ? 0 : CAPTURE_WARMUP_RUNS,
       captureRuns,
       cancelRuns,
@@ -633,6 +643,7 @@ async function main() {
       },
       limitations: [
         "The capture action is a product button, not an operating-system global shortcut.",
+        "The product diagnostics snapshot covers the full process lifetime, including warmup workflows.",
         "Selection completion is invoked through the validated overlay bridge; pointer-drag behavior is a separate unit and human smoke check.",
         "Cancel results and window cleanup are observed; the runner cannot inspect the macOS image clipboard through the hardened renderer boundary.",
         "The runner does not simulate display hardware, sleep, permission changes, or Windows on macOS.",
@@ -660,6 +671,7 @@ module.exports = {
   cancelOverlay,
   completeOverlaySelection,
   readArtifactEvidence,
+  readDiagnostics,
   startCapture,
   waitForOverlay,
 };

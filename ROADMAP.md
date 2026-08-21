@@ -213,7 +213,7 @@ request. Exact user-triggered Reveal remains a separate adapter-specific slice
 and native acceptance row. See the
 [Phase 11 results](research/phase-11-routing-recovery-results.md).
 
-Phase 12 adds exact, user-triggered Reveal as a transaction separate from Stage.
+Phase 12 added exact, user-triggered Reveal as a transaction separate from Stage.
 The renderer sends only the current operation ID; the main process consumes the
 retained selected route, revalidates the endpoint generation and pane, and asks
 WezTerm to activate that explicit pane with no input bytes, Enter, Stage retry,
@@ -224,6 +224,16 @@ window, pinned-flag, exit-status, and endpoint-race observations remain native
 acceptance rows. See the [Phase 12 plan](research/phase-12-exact-reveal-plan.md).
 Repository results are recorded in the
 [Phase 12 results](research/phase-12-exact-reveal-results.md).
+
+Phase 13 adds main-owned, sanitized workflow diagnostics. The controller records
+button versus shortcut starts, bounded phase timings, fixed delivery/failure
+categories, and validated Reveal outcomes without retaining content, operation
+IDs, or destination identities in its snapshot. A strict read-only bridge lets
+the packaged acceptance runner include the in-memory snapshot in its local
+report; this phase adds no telemetry, persistence, history, or diagnostics UI.
+See the
+[Phase 13 audit](research/phase-13-next-slice-audit.md) and
+[Phase 13 results](research/phase-13-sanitized-diagnostics-results.md).
 
 ### Milestone 0 deliverables
 
@@ -282,7 +292,9 @@ Scope:
 - copied, dispatched-unverified, failed, and cancelled result states;
 - explicit Reveal action;
 - clipboard fallback after unsupported or failed Stage;
-- local timing and failure diagnostics that exclude user content;
+- local timing and failure diagnostics that exclude user content; the bounded
+  in-memory recorder and acceptance-report bridge are implemented, while
+  release measurements remain part of packaged acceptance;
 - packaged, signed development builds suitable for repeated dogfooding.
 
 Exit criteria:
@@ -479,23 +491,24 @@ developer workflow are now in the main implementation. This does not close Gate
 A, Gate B, or the macOS alpha milestone. The next work should be issue-sized and
 land in this order:
 
-1. [x] Join capture, optional note, exact destination choice, Copy, and Stage
-   through the main-owned workflow state machine without Enter or focus changes.
-2. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
+1. [x] Join capture, optional note, exact destination choice, Copy, Stage, and
+   explicit exact-route Reveal through the main-owned workflow without Enter,
+   automatic focus changes, retry, or fallback routing.
+2. [x] Add repository-testable recovery and measurement seams: permission
+   guidance, stale/unsupported/manual-paste outcomes, bounded content-free local
+   diagnostics, and a strict read-only acceptance-report snapshot.
+3. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
    real-agent acceptance rows; record exact supported versions rather than broad
    claims. The repeatable one-display packaged runner and suspend/resume
    fail-closed implementation plus the macOS WezTerm selector owner/mode/type
    policy are in place; real sleep/wake, display hardware, stable-identity
    permission changes, ACL/config-semantic checks, and visible real-agent
    evidence remain.
-3. [ ] Add recoverable permission, stale-target, unsupported, and
-   clipboard-fallback UI, then complete the 200-workflow soak and packaged
-   dogfooding evidence. Permission recovery, typed stale/unsupported results,
-   capability-gated Stage, and explicit clipboard-fallback guidance are
-   implemented. Exact Reveal is implemented at repository-testable seams;
-   native Reveal foreground behavior, native TCC acceptance, the complete-
-   workflow soak, and packaged dogfooding evidence remain.
-4. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
+4. [ ] Complete the 200-workflow soak and packaged dogfooding evidence using the
+   product-owned diagnostics snapshot. Native Reveal foreground behavior,
+   native TCC acceptance, the complete-workflow soak, and comparative product
+   value evidence remain open.
+5. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 
 The first implementation branch should not contain remote support, browser

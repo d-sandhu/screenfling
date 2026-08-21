@@ -5,6 +5,7 @@ import { CapturePermissionBlockedError, CaptureSession } from "./capture-session
 import { DestinationRegistry } from "./destination-registry";
 import { parseDestination } from "../shared/domain";
 import { InvalidWorkflowTransitionError, StaleWorkflowActionError } from "../shared/workflow";
+import { WorkflowDiagnostics } from "./workflow-diagnostics";
 import { WorkflowStore } from "./workflow-store";
 
 import type { CaptureOverlayPort, MainSurfacePort } from "./capture-controller";
@@ -211,21 +212,36 @@ class ControllerDestinationAdapter implements DestinationAdapter {
 }
 
 function createHarness(adapter: DestinationAdapter | null = null) {
+  let now = 0;
   const calls: string[] = [];
   const backend = new ControllerBackend(calls);
   const clipboard = new ControllerClipboard();
   const overlay = new ControllerOverlay(calls);
   const mainSurface = new ControllerMainSurface();
   const session = new CaptureSession(backend, clipboard);
+  const diagnostics = new WorkflowDiagnostics(() => now);
   const controller = new CaptureController(
     new WorkflowStore(),
+    diagnostics,
     session,
     new DestinationRegistry(adapter === null ? [] : [adapter]),
     overlay,
     mainSurface,
     () => OPERATION_ID,
   );
-  return { backend, calls, clipboard, controller, mainSurface, overlay, session };
+  return {
+    advanceClock: (milliseconds: number) => {
+      now += milliseconds;
+    },
+    backend,
+    calls,
+    clipboard,
+    controller,
+    diagnostics,
+    mainSurface,
+    overlay,
+    session,
+  };
 }
 
 async function prepareEditingCapture(
@@ -248,6 +264,42 @@ async function prepareEditingCapture(
 }
 
 describe("capture workflow controller", () => {
+  it("records sanitized shortcut, phase, result, and Reveal diagnostics once", async () => {
+    const adapter = new ControllerDestinationAdapter();
+    const harness = createHarness(adapter);
+
+    await harness.controller.startCapture("shortcut");
+    harness.advanceClock(12);
+    harness.controller.overlayReady(OPERATION_ID);
+    harness.advanceClock(3);
+    harness.controller.completeSelection(OPERATION_ID, {
+      x: 378,
+      y: 217.75,
+      width: 756,
+      height: 435.5,
+    });
+    const { pixels } = harness.controller.getDraft(OPERATION_ID);
+    harness.clipboard.evidence = {
+      bitmap: Uint8Array.from([4, 3, 2, 1]),
+      size: pixels,
+    };
+    await harness.controller.discoverDestinations(OPERATION_ID);
+    harness.advanceClock(5);
+    await harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, null);
+    await harness.controller.revealDestination(OPERATION_ID);
+
+    const diagnostics = harness.diagnostics.snapshot();
+    expect(diagnostics.starts).toEqual({ button: 0, shortcut: 1 });
+    expect(diagnostics.delivery.dispatchedUnverified).toBe(1);
+    expect(diagnostics.reveal.revealed).toBe(1);
+    expect(diagnostics.timingsMs).toMatchObject({
+      selectionToEditing: { count: 1, median: 0 },
+      selectionToResult: { count: 1, median: 5 },
+      shortcutToSelecting: { count: 1, median: 12 },
+    });
+    expect(JSON.stringify(diagnostics)).not.toContain(OPERATION_ID);
+  });
+
   it("preloads the hidden overlay before capturing and sends the frozen snapshot", async () => {
     const { calls, controller, overlay } = createHarness();
 
@@ -261,7 +313,7 @@ describe("capture workflow controller", () => {
   });
 
   it("runs selection through an explicit verified Copy result", async () => {
-    const { clipboard, controller, mainSurface, overlay } = createHarness();
+    const { clipboard, controller, diagnostics, mainSurface, overlay } = createHarness();
     await controller.startCapture();
 
     expect(controller.overlayReady(OPERATION_ID)).toMatchObject({ phase: "selecting" });
@@ -287,11 +339,12 @@ describe("capture workflow controller", () => {
       result: { status: "copied" },
     });
     expect(clipboard.writes).toBe(1);
+    expect(diagnostics.snapshot().delivery.copied).toBe(1);
     expect(mainSurface.showCalls).toBe(1);
   });
 
   it("lets cancellation win while the backend capture is pending", async () => {
-    const { backend, controller, session } = createHarness();
+    const { backend, controller, diagnostics, session } = createHarness();
     backend.waitForFinish = true;
     const pending = controller.startCapture();
     await Promise.resolve();
@@ -304,6 +357,7 @@ describe("capture workflow controller", () => {
     });
     backend.finish();
     await expect(pending).resolves.toMatchObject({ result: { status: "cancelled" } });
+    expect(diagnostics.snapshot().delivery.cancelled).toBe(1);
     expect(session.activeOperationId).toBeNull();
   });
 
@@ -363,7 +417,8 @@ describe("capture workflow controller", () => {
   });
 
   it("maps macOS permission denial without opening the overlay", async () => {
-    const { backend, clipboard, controller, mainSurface, overlay, session } = createHarness();
+    const { backend, clipboard, controller, diagnostics, mainSurface, overlay, session } =
+      createHarness();
     backend.error = new CapturePermissionBlockedError();
 
     await expect(controller.startCapture()).resolves.toMatchObject({
@@ -373,6 +428,7 @@ describe("capture workflow controller", () => {
     expect(overlay.showCalls).toBe(0);
     expect(overlay.closeCalls).toBe(1);
     expect(mainSurface.showCalls).toBe(1);
+    expect(diagnostics.snapshot().delivery.failures.permissionBlocked).toBe(1);
     expect(session.activeOperationId).toBeNull();
     expect(clipboard.writes).toBe(0);
   });
@@ -392,11 +448,12 @@ describe("capture workflow controller", () => {
   });
 
   it("rejects a second start without creating another capture or revealing main", async () => {
-    const { backend, controller, mainSurface } = createHarness();
+    const { backend, controller, diagnostics, mainSurface } = createHarness();
     await controller.startCapture();
 
     await expect(controller.startCapture()).resolves.toMatchObject({ phase: "snapshotting" });
     expect(backend.calls.filter((call) => call === "capture")).toHaveLength(1);
+    expect(diagnostics.snapshot().starts.button).toBe(1);
     expect(mainSurface.showCalls).toBe(0);
   });
 
@@ -464,6 +521,7 @@ describe("capture workflow controller", () => {
     expect(adapter.staged).toHaveLength(1);
     expect(harness.clipboard.writes).toBe(1);
     expect(harness.controller.snapshot).toBe(resultSnapshot);
+    expect(harness.diagnostics.snapshot().reveal.revealed).toBe(1);
     expect(harness.mainSurface.published).toHaveLength(publishedCount);
   });
 
@@ -477,6 +535,13 @@ describe("capture workflow controller", () => {
     await expect(
       copied.controller.revealDestination("a6f35ec1-15d7-4c64-9843-0b97a10d20ef"),
     ).resolves.toEqual({ status: "stale" });
+    expect(copied.diagnostics.snapshot().reveal).toEqual({
+      failed: 0,
+      revealed: 0,
+      stale: 0,
+      unavailable: 0,
+      unsupported: 0,
+    });
   });
 
   it("does not dismiss a result while its one Reveal request is in flight", async () => {
@@ -527,6 +592,7 @@ describe("capture workflow controller", () => {
       result: { status: "failed", reason: "unsupported" },
     });
     expect(harness.clipboard.writes).toBe(1);
+    expect(harness.diagnostics.snapshot().delivery.failures.unsupported).toBe(1);
     expect(adapterCalls).toBe(0);
     expect(harness.session.activeOperationId).toBeNull();
   });
@@ -562,5 +628,6 @@ describe("capture workflow controller", () => {
         },
       },
     });
+    expect(harness.diagnostics.snapshot().delivery.dispatchedUnverified).toBe(1);
   });
 });

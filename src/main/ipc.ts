@@ -14,10 +14,12 @@ import {
 
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import type { ShortcutStatus } from "../shared/bridge";
+import type { DiagnosticsSnapshot } from "../shared/diagnostics";
 import type { CaptureController } from "./capture-controller";
 import type { SerializedIpcValue } from "./validated-operation-handler";
 
 type WebContentsProvider = () => WebContents | null;
+type DiagnosticsProvider = () => DiagnosticsSnapshot;
 type ShortcutStatusProvider = () => ShortcutStatus;
 
 export function registerWorkflowIpc(
@@ -26,6 +28,7 @@ export function registerWorkflowIpc(
   mainRendererUrl: string,
   overlayRendererUrl: string,
   controller: CaptureController,
+  diagnostics: DiagnosticsProvider,
   shortcutStatus: ShortcutStatusProvider,
 ): void {
   const authorizeMain = (event: IpcMainInvokeEvent) => {
@@ -38,6 +41,10 @@ export function registerWorkflowIpc(
   ipcMain.handle(
     IPC_CHANNELS.getSnapshot,
     createAuthorizedNoPayloadHandler(authorizeMain, () => controller.snapshot),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.getDiagnostics,
+    createAuthorizedNoPayloadHandler(authorizeMain, diagnostics),
   );
   ipcMain.handle(
     IPC_CHANNELS.getShortcutStatus,

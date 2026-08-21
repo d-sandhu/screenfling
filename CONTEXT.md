@@ -82,6 +82,14 @@ that the operating system made the destination visible or frontmost.
 The strongest evidence ScreenFling can report after an operation: copied,
 dispatched-unverified, staged-verified, sent-verified, failed, or cancelled.
 
+## Workflow diagnostics
+
+A main-owned, in-memory aggregate of workflow start categories, delivery and
+Reveal result categories, and bounded phase timings. A diagnostic snapshot is
+not an event log: it contains no operation IDs, destinations, pixels, notes,
+clipboard content, paths, titles, terminal text, credentials, or raw adapter
+output, and it is discarded when the application exits.
+
 ## Stale action
 
 An action whose operation ID does not match the current active workflow, or whose

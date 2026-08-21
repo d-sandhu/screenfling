@@ -15,6 +15,7 @@ import {
 } from "../shared/capture";
 import { LatestValueRelay } from "../shared/latest-value-relay";
 import { destinationListSchema } from "../shared/domain";
+import { diagnosticsSnapshotSchema } from "../shared/diagnostics";
 import { revealResultSchema, workflowSnapshotSchema } from "../shared/workflow";
 
 import type {
@@ -32,6 +33,7 @@ import type {
 } from "../shared/capture";
 import type { RevealResult, WorkflowSnapshot } from "../shared/workflow";
 import type { Destination } from "../shared/domain";
+import type { DiagnosticsSnapshot } from "../shared/diagnostics";
 
 type OperationWorkflowChannel =
   | typeof IPC_CHANNELS.cancelOperation
@@ -60,6 +62,10 @@ async function getCaptureDraft(request: OperationRequest): Promise<CaptureDraft>
   return captureDraftSchema.parse(
     await ipcRenderer.invoke(IPC_CHANNELS.getCaptureDraft, validatedRequest),
   );
+}
+
+async function getDiagnostics(): Promise<DiagnosticsSnapshot> {
+  return diagnosticsSnapshotSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.getDiagnostics));
 }
 
 async function getShortcutStatus(): Promise<ShortcutStatus> {
@@ -102,6 +108,7 @@ const mainBridge: ScreenFlingBridge = Object.freeze({
   dismissResult: (request) => invokeOperationWorkflow(IPC_CHANNELS.dismissResult, request),
   discoverDestinations,
   getCaptureDraft,
+  getDiagnostics,
   getShortcutStatus,
   getSnapshot: () => invokeNoPayloadWorkflow(IPC_CHANNELS.getSnapshot),
   onWorkflowSnapshot,

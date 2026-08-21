@@ -89,8 +89,10 @@ The preload exposes a small, typed API for user actions and state updates. It
 does not expose raw Electron, Node.js, filesystem, shell, clipboard, or process
 APIs.
 
-Every request includes an operation ID. The main process validates the sender,
-payload, operation, and allowed state transition.
+Every operation-bound mutation includes an operation ID; the no-payload Start
+request creates a new one in the main process. Read-only snapshot and status
+requests also carry no payload. The main process validates the sender, payload,
+operation when present, and allowed state transition.
 
 The preload exposes one function per allowed message and never exposes raw
 `ipcRenderer`. Each main-process handler accepts only the current main window's
@@ -216,6 +218,26 @@ uncertain dispatch is allowed to finish exactly once and is never retried.
 Although `sent-verified` is part of the durable result vocabulary, the current
 state machine cannot produce it; a future verified Send implementation must add
 its own explicit phase and evidence gate.
+
+## Workflow diagnostics
+
+`WorkflowDiagnostics` is a main-owned collaborator beside the workflow store.
+The controller reports only an operation's trigger, fixed phase boundaries, a
+sanitized delivery outcome, and a validated Reveal outcome. Aggregation and
+sampling stay inside the diagnostics module; the controller never constructs a
+report or retains diagnostic history.
+
+Durations use an injected monotonic `performance.now()` clock. The snapshot
+contains count, minimum, median, p95, and maximum for button/shortcut to
+selecting, selection to editing, and selection to result. Each timing stream
+retains only its newest 200 finite, nonnegative samples. Finalization is
+operation-bound and idempotent, so a stale or late completion cannot increment
+a second result.
+
+Bridge API version 6 exposes the already-sanitized snapshot through one
+authorized `getDiagnostics` call with no request payload. Preload validates the
+strict versioned schema before returning it. There is no diagnostics renderer,
+disk format, telemetry transport, or durable history in this phase.
 
 The production capture core keeps the lossless `NativeImage` behind a
 main-process capture session. It exposes only bounded JPEG previews, validates
@@ -468,7 +490,9 @@ and visible cleanup behavior.
 
 There is no hosted ScreenFling service in the core architecture. Diagnostic
 events are local and exclude pixels, notes, clipboard data, file contents,
-terminal contents, and credentials.
+terminal contents, credentials, operation IDs, destination identities, paths,
+titles, and raw adapter output. The current aggregate exists only for the life
+of the main process.
 
 ## Verification strategy
 
@@ -489,7 +513,8 @@ Development-mode success does not qualify a release. Permissions, signing,
 notarization, paths, and desktop identity must be tested in packaged builds.
 The repository's packaged capture runner drives the existing validated overlay
 and main bridges, verifies production workflow results, and emits only sanitized
-timing/window/resource evidence. It deliberately keeps physical pointer input,
+timing/window/resource evidence plus the product-owned diagnostics snapshot. It
+deliberately keeps physical pointer input,
 the global shortcut, permission changes, sleep/wake, and display-hardware rows
 outside that automated claim.
 

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import { app, BrowserWindow, globalShortcut, powerMonitor, screen } from "electron";
 
@@ -15,6 +16,7 @@ import { ElectronCaptureBackend, ElectronImageClipboard } from "./electron-captu
 import { registerWorkflowIpc } from "./ipc";
 import { createMainWindowOptions } from "./window-options";
 import { readDevRendererUrl, rendererDocumentUrl } from "./renderer-url";
+import { WorkflowDiagnostics } from "./workflow-diagnostics";
 import { WorkflowStore } from "./workflow-store";
 
 import type { ShortcutStatus } from "../shared/bridge";
@@ -22,6 +24,7 @@ import type { WorkflowSnapshot } from "../shared/workflow";
 
 let mainWindow: BrowserWindow | null = null;
 const workflow = new WorkflowStore();
+const diagnostics = new WorkflowDiagnostics(() => performance.now());
 const rendererUrl = readDevRendererUrl(process.env.ELECTRON_RENDERER_URL);
 const mainRendererUrl = rendererDocumentUrl(rendererUrl, "main");
 const overlayRendererUrl = rendererDocumentUrl(rendererUrl, "capture");
@@ -96,6 +99,7 @@ void app.whenReady().then(() => {
   );
   controller = new CaptureController(
     workflow,
+    diagnostics,
     capture,
     destinations,
     overlay,
@@ -113,12 +117,13 @@ void app.whenReady().then(() => {
     mainRendererUrl,
     overlayRendererUrl,
     controller,
+    () => diagnostics.snapshot(),
     getShortcutStatus,
   );
   createWindow();
   try {
     shortcutRegistered = globalShortcut.register(captureShortcut, () => {
-      void controller.startCapture();
+      void controller.startCapture("shortcut");
     });
   } catch {
     shortcutRegistered = false;
