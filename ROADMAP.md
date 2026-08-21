@@ -203,6 +203,16 @@ endpoint replacement, and real-agent attachment trials remain open. See the
 [Phase 7 results](research/phase-7-joined-flow-results.md) and
 [Phase 9 results](research/phase-9-trusted-selector-results.md).
 
+Phase 11 added a shared Stage-capability policy and a distinct unsupported result
+without expanding the privileged bridge. Copy-only destinations are labeled and
+cannot enable Stage; empty discovery keeps Copy only visible. Unsupported,
+stale, failed, and uncertain post-copy results give explicit manual-paste
+guidance, while clipboard verification failure does not claim that fallback.
+Adapter dispatch remains single-shot and is not invoked for an unsupported
+request. Exact user-triggered Reveal remains a separate adapter-specific slice
+and native acceptance row. See the
+[Phase 11 results](research/phase-11-routing-recovery-results.md).
+
 ### Milestone 0 deliverables
 
 - [x] minimal Electron/TypeScript project scaffold;
@@ -468,9 +478,10 @@ land in this order:
    evidence remain.
 3. [ ] Add recoverable permission, stale-target, unsupported, and
    clipboard-fallback UI, then complete the 200-workflow soak and packaged
-   dogfooding evidence. The pure Screen Recording policy and denied/restricted
-   recovery copy are implemented; native TCC acceptance plus stale-target,
-   unsupported-adapter, and explicit clipboard-fallback guidance remain.
+   dogfooding evidence. Permission recovery, typed stale/unsupported results,
+   capability-gated Stage, and explicit clipboard-fallback guidance are
+   implemented. Exact Reveal, native TCC acceptance, the complete-workflow soak,
+   and packaged dogfooding evidence remain.
 4. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 

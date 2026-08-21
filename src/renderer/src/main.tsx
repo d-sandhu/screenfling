@@ -2,18 +2,18 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { CaptureDragTracker, selectionFromDrag } from "./capture-drag";
-import { failureCopy } from "./delivery-copy";
-import { DestinationPicker, destinationName } from "./destination-picker";
+import { deliveryCopy } from "./delivery-copy";
+import { DestinationPicker } from "./destination-picker";
 import "./styles.css";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { ShortcutStatus } from "../../shared/bridge";
 import type { CaptureDraft, CaptureOverlaySnapshot } from "../../shared/capture";
 import type { Destination } from "../../shared/domain";
-import type { DeliveryResult, WorkflowSnapshot } from "../../shared/workflow";
+import type { WorkflowSnapshot } from "../../shared/workflow";
 import type { CaptureDrag, CapturePoint } from "./capture-drag";
 import type { UiCopy } from "./delivery-copy";
-import { MAX_NOTE_LENGTH } from "../../shared/domain";
+import { MAX_NOTE_LENGTH, supportsStage } from "../../shared/domain";
 
 function useJpegUrl(bytes: Uint8Array | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -191,32 +191,6 @@ function CaptureOverlay() {
   );
 }
 
-function resultCopy(result: DeliveryResult): UiCopy {
-  if (result.status === "copied") {
-    return { detail: "The selected image is verified on your clipboard.", title: "Copied" };
-  }
-  if (result.status === "cancelled") {
-    return { detail: "Nothing was copied or sent.", title: "Capture cancelled" };
-  }
-  if (result.status === "failed") return failureCopy(result.reason);
-  if (result.status === "dispatched-unverified") {
-    return {
-      detail: `Input was dispatched to ${destinationName(result.destination)} without submission. Attachment could not be verified; the image remains on your clipboard.`,
-      title: "Staged — unverified",
-    };
-  }
-  if (result.status === "staged-verified") {
-    return {
-      detail: `${destinationName(result.destination)} verified the staged input without submitting it.`,
-      title: "Stage verified",
-    };
-  }
-  return {
-    detail: `${destinationName(result.destination)} verified the submitted turn.`,
-    title: "Send verified",
-  };
-}
-
 function phaseCopy(snapshot: WorkflowSnapshot): UiCopy {
   switch (snapshot.phase) {
     case "idle":
@@ -244,7 +218,7 @@ function phaseCopy(snapshot: WorkflowSnapshot): UiCopy {
         title: "Staging input",
       };
     case "result":
-      return resultCopy(snapshot.result);
+      return deliveryCopy(snapshot.result);
     default:
       return { detail: "Finishing the current operation.", title: "Working" };
   }
@@ -383,6 +357,11 @@ function ScreenFlingApp() {
   const copy = phaseCopy(snapshot);
   const operationId = operationIdOf(snapshot);
   const isActive = snapshot.phase !== "idle" && snapshot.phase !== "result";
+  const selectedDestination = destinations.find(
+    (destination) => destination.id === selectedDestinationId,
+  );
+  const stageSupported =
+    selectedDestination !== undefined && supportsStage(selectedDestination, note.length > 0);
   const canCancel =
     isActive &&
     snapshot.phase !== "target-selected" &&
@@ -470,12 +449,7 @@ function ScreenFlingApp() {
               <div className="actions actions--review">
                 <button
                   className="button button--primary"
-                  disabled={
-                    pending ||
-                    destinationsLoading ||
-                    draft === null ||
-                    selectedDestinationId === null
-                  }
+                  disabled={pending || destinationsLoading || draft === null || !stageSupported}
                   onClick={() => {
                     if (selectedDestinationId === null) return;
                     runAction(() =>
@@ -488,7 +462,9 @@ function ScreenFlingApp() {
                   }}
                   type="button"
                 >
-                  Stage, don’t send
+                  {selectedDestinationId !== null && !stageSupported
+                    ? "Stage unavailable"
+                    : "Stage, don’t send"}
                 </button>
                 <button
                   className="button button--secondary"

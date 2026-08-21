@@ -177,6 +177,15 @@ export type DestinationReceipt = z.infer<typeof destinationReceiptSchema>;
 export type Note = z.infer<typeof noteSchema>;
 export type OperationId = z.infer<typeof operationIdSchema>;
 
+export function supportsStage(destination: Destination, includesNote: boolean): boolean {
+  return (
+    destination.capabilities.address === "exact" &&
+    destination.capabilities.actions.includes("stage") &&
+    destination.capabilities.verification.includes("target-live") &&
+    (!includesNote || destination.capabilities.textInput !== "none")
+  );
+}
+
 export function parseDestination(input: DestinationInput): Destination {
   return destinationSchema.parse(input);
 }

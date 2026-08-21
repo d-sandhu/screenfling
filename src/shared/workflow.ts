@@ -33,6 +33,7 @@ export const deliveryResultSchema = z
         "capture-failed",
         "clipboard-failed",
         "target-stale",
+        "unsupported",
         "dispatch-failed",
         "unexpected",
       ]),
