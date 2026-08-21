@@ -6,9 +6,10 @@ import { destinationIdSchema, noteSchema } from "./domain";
 import type { CaptureDraft, CaptureOverlaySnapshot, CaptureSelectionRequest } from "./capture";
 import type { Destination } from "./domain";
 import type { DiagnosticsSnapshot } from "./diagnostics";
+import type { ShortcutConfiguration, ShortcutStatus, ShortcutUpdateResult } from "./shortcut";
 import type { RevealResult, WorkflowSnapshot } from "./workflow";
 
-export const BRIDGE_VERSION = 6;
+export const BRIDGE_VERSION = 7;
 
 export const IPC_CHANNELS = Object.freeze({
   cancelOperation: "workflow:cancel-operation",
@@ -17,9 +18,11 @@ export const IPC_CHANNELS = Object.freeze({
   dismissResult: "workflow:dismiss-result",
   getCaptureDraft: "workflow:get-capture-draft",
   getDiagnostics: "workflow:get-diagnostics",
-  getShortcutStatus: "workflow:get-shortcut-status",
+  getShortcutStatus: "shortcut:get-status",
   getSnapshot: "workflow:get-snapshot",
   revealDestination: "workflow:reveal-destination",
+  resetShortcut: "shortcut:reset",
+  setShortcut: "shortcut:set",
   snapshotChanged: "workflow:snapshot-changed",
   stageCapture: "workflow:stage-capture",
   startCapture: "workflow:start-capture",
@@ -48,14 +51,6 @@ export const stageCaptureRequestSchema = z
 
 export type StageCaptureRequest = z.infer<typeof stageCaptureRequestSchema>;
 
-export const shortcutStatusSchema = z
-  .strictObject({
-    accelerator: z.string().min(1).max(64),
-    registered: z.boolean(),
-  })
-  .readonly();
-
-export type ShortcutStatus = z.infer<typeof shortcutStatusSchema>;
 export type Unsubscribe = () => void;
 
 export type ScreenFlingBridge = {
@@ -70,6 +65,8 @@ export type ScreenFlingBridge = {
   readonly getSnapshot: () => Promise<WorkflowSnapshot>;
   readonly onWorkflowSnapshot: (listener: (snapshot: WorkflowSnapshot) => void) => Unsubscribe;
   readonly revealDestination: (request: OperationRequest) => Promise<RevealResult>;
+  readonly resetShortcut: () => Promise<ShortcutUpdateResult>;
+  readonly setShortcut: (configuration: ShortcutConfiguration) => Promise<ShortcutUpdateResult>;
   readonly startCapture: () => Promise<WorkflowSnapshot>;
   readonly stageCapture: (request: StageCaptureRequest) => Promise<WorkflowSnapshot>;
 };

@@ -123,6 +123,34 @@ The main and capture surfaces have separate preload bridges, IPC channel sets,
 exact document URLs, and authorized `WebContents`. A renderer cannot invoke the
 other surface's capabilities merely by constructing a channel name.
 
+## Shortcut configuration
+
+`ShortcutManager` is the main-process owner of the capture shortcut. The
+renderer can read its strict status and request set/reset operations through
+bridge API version 7; it cannot call Electron, choose a settings path, write a
+file, or replace the capture callback.
+
+ScreenFling intentionally accepts a smaller domain than Electron's complete
+accelerator grammar: `CommandOrControl` with Shift and/or Alt, plus one A–Z or
+0–9 key. The UI presents these as structured choices and stores the canonical
+portable value. It does not accept raw accelerator text, install a global key
+recorder, or suspend all application shortcuts while a renderer waits for a
+chord.
+
+Rebinding is candidate-first. The manager registers and verifies the candidate
+while the current binding remains active, commits the versioned preference, and
+only then unregisters the old accelerator. Registration or persistence failure
+rejects the candidate and retains the last working binding. An unverifiable
+cleanup is reported explicitly and final disposal retries every registration
+the manager may still own.
+
+The one durable preference is stored below Electron's application-specific
+`userData` directory. The store writes a private, uniquely named sibling,
+requests a flush, and renames the complete file over `shortcut.json`; malformed
+or unsupported data falls back to the default without being executed or
+silently overwritten. This is one bounded preference, not a general settings,
+profile, sync, history, or telemetry subsystem.
+
 ## Core modules
 
 ```text
@@ -234,7 +262,7 @@ retains only its newest 200 finite, nonnegative samples. Finalization is
 operation-bound and idempotent, so a stale or late completion cannot increment
 a second result.
 
-Bridge API version 6 exposes the already-sanitized snapshot through one
+Bridge API version 7 exposes the already-sanitized snapshot through one
 authorized `getDiagnostics` call with no request payload. Preload validates the
 strict versioned schema before returning it. There is no diagnostics renderer,
 disk format, telemetry transport, or durable history in this phase.

@@ -4,6 +4,7 @@ import { StaleWorkflowActionError } from "../shared/workflow";
 import {
   createAuthorizedNoPayloadHandler,
   createValidatedOperationHandler,
+  createValidatedShortcutHandler,
 } from "./validated-operation-handler";
 import { WorkflowStore } from "./workflow-store";
 
@@ -97,5 +98,39 @@ describe("authorized no-payload handler", () => {
     expect(handler("trusted")).toEqual({ phase: "idle" });
     expect(() => handler("trusted", null)).toThrow("Invalid empty workflow request.");
     expect(calls).toEqual(["authorize:trusted", "action", "authorize:trusted"]);
+  });
+});
+
+describe("validated shortcut handler", () => {
+  it("authorizes, rejects expanded input, and passes one portable configuration", () => {
+    const calls: string[] = [];
+    const handler = createValidatedShortcutHandler(
+      (event: string) => {
+        calls.push(`authorize:${event}`);
+        if (event !== "trusted") throw new Error("untrusted");
+      },
+      (configuration) => {
+        calls.push(`set:${configuration.modifiers}+${configuration.key}`);
+        return { outcome: "updated" };
+      },
+    );
+
+    expect(() => handler("untrusted", { key: "A", modifiers: "Shift" })).toThrow("untrusted");
+    expect(() =>
+      handler("trusted", {
+        extra: true,
+        key: "A",
+        modifiers: "CommandOrControl+Shift",
+      }),
+    ).toThrow("Invalid shortcut request.");
+    expect(handler("trusted", { key: "A", modifiers: "CommandOrControl+Shift" })).toEqual({
+      outcome: "updated",
+    });
+    expect(calls).toEqual([
+      "authorize:untrusted",
+      "authorize:trusted",
+      "authorize:trusted",
+      "set:CommandOrControl+Shift+A",
+    ]);
   });
 });

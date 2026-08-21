@@ -5,10 +5,15 @@ import { CaptureDragTracker, selectionFromDrag } from "./capture-drag";
 import { deliveryCopy, revealCopy } from "./delivery-copy";
 import { DestinationPicker } from "./destination-picker";
 import { revealDestinationForResult } from "./reveal-result";
+import { ShortcutSettings, shortcutUpdateMessage } from "./shortcut-settings";
 import "./styles.css";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { ShortcutStatus } from "../../shared/bridge";
+import type {
+  ShortcutConfiguration,
+  ShortcutStatus,
+  ShortcutUpdateResult,
+} from "../../shared/shortcut";
 import type { CaptureDraft, CaptureOverlaySnapshot } from "../../shared/capture";
 import type { Destination } from "../../shared/domain";
 import type { RevealResult, WorkflowSnapshot } from "../../shared/workflow";
@@ -225,21 +230,6 @@ function phaseCopy(snapshot: WorkflowSnapshot): UiCopy {
   }
 }
 
-function ShortcutHint({ status }: { readonly status: ShortcutStatus | null }) {
-  if (status === null) return <span className="shortcut">Checking shortcut…</span>;
-  if (!status.registered)
-    return <span className="shortcut shortcut--warning">Shortcut unavailable</span>;
-
-  const parts = status.accelerator.replace("CommandOrControl", "⌘").split("+");
-  return (
-    <span className="shortcut" aria-label={`${status.accelerator} global shortcut`}>
-      {parts.map((part) => (
-        <kbd key={part}>{part === "Shift" ? "⇧" : part}</kbd>
-      ))}
-    </span>
-  );
-}
-
 function CapturePreview({ draft }: { readonly draft: CaptureDraft }) {
   const imageUrl = useJpegUrl(draft.preview);
   if (imageUrl === null) return <div className="preview preview--loading" />;
@@ -258,6 +248,8 @@ function ScreenFlingApp() {
   const bridge = window.screenFling;
   const [snapshot, setSnapshot] = useState<WorkflowSnapshot | null>(null);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
+  const [shortcutMessage, setShortcutMessage] = useState<string | null>(null);
+  const [shortcutPending, setShortcutPending] = useState(false);
   const [draft, setDraft] = useState<CaptureDraft | null>(null);
   const [destinations, setDestinations] = useState<readonly Destination[]>([]);
   const [destinationsLoading, setDestinationsLoading] = useState(false);
@@ -411,6 +403,25 @@ function ScreenFlingApp() {
       .finally(() => setPending(false));
   };
 
+  const changeShortcut = (action: () => Promise<ShortcutUpdateResult>) => {
+    if (shortcutPending) return;
+    setShortcutPending(true);
+    setShortcutMessage(null);
+    void action()
+      .then((result) => {
+        setShortcut(result.status);
+        setShortcutMessage(shortcutUpdateMessage(result));
+      })
+      .catch(() => {
+        setShortcutMessage("ScreenFling could not complete that shortcut change safely.");
+      })
+      .finally(() => setShortcutPending(false));
+  };
+
+  const saveShortcut = (configuration: ShortcutConfiguration) => {
+    changeShortcut(() => bridge.setShortcut(configuration));
+  };
+
   return (
     <main className="app">
       <header className="app__header">
@@ -421,7 +432,13 @@ function ScreenFlingApp() {
           <span>ScreenFling</span>
           <span className="alpha">alpha</span>
         </div>
-        <ShortcutHint status={shortcut} />
+        <ShortcutSettings
+          message={shortcutMessage}
+          onReset={() => changeShortcut(() => bridge.resetShortcut())}
+          onSave={saveShortcut}
+          pending={shortcutPending}
+          status={shortcut}
+        />
       </header>
 
       <section className="workspace">

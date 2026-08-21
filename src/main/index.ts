@@ -14,22 +14,22 @@ import { createConfiguredAdapters } from "./configured-adapters";
 import { DestinationRegistry } from "./destination-registry";
 import { ElectronCaptureBackend, ElectronImageClipboard } from "./electron-capture-backend";
 import { registerWorkflowIpc } from "./ipc";
+import { ShortcutManager } from "./shortcut-manager";
+import { NodeShortcutPreferenceFiles, ShortcutPreferenceStore } from "./shortcut-preference-store";
 import { createMainWindowOptions } from "./window-options";
 import { readDevRendererUrl, rendererDocumentUrl } from "./renderer-url";
 import { WorkflowDiagnostics } from "./workflow-diagnostics";
 import { WorkflowStore } from "./workflow-store";
 
-import type { ShortcutStatus } from "../shared/bridge";
 import type { WorkflowSnapshot } from "../shared/workflow";
 
 let mainWindow: BrowserWindow | null = null;
+let shortcutManager: ShortcutManager | null = null;
 const workflow = new WorkflowStore();
 const diagnostics = new WorkflowDiagnostics(() => performance.now());
 const rendererUrl = readDevRendererUrl(process.env.ELECTRON_RENDERER_URL);
 const mainRendererUrl = rendererDocumentUrl(rendererUrl, "main");
 const overlayRendererUrl = rendererDocumentUrl(rendererUrl, "capture");
-const captureShortcut = "CommandOrControl+Shift+9";
-let shortcutRegistered = false;
 
 function getMainWebContents() {
   return mainWindow?.webContents ?? null;
@@ -82,11 +82,7 @@ function publishWorkflow(snapshot: WorkflowSnapshot): void {
   window.webContents.send(IPC_CHANNELS.snapshotChanged, snapshot);
 }
 
-function getShortcutStatus(): ShortcutStatus {
-  return { accelerator: captureShortcut, registered: shortcutRegistered };
-}
-
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   registerAppProtocol();
   const preload = join(__dirname, "../preload/index.js");
   let controller: CaptureController;
@@ -110,6 +106,23 @@ void app.whenReady().then(() => {
     },
     randomUUID,
   );
+  const shortcut = new ShortcutManager(
+    {
+      isRegistered: (accelerator) => globalShortcut.isRegistered(accelerator),
+      register: (accelerator, callback) => globalShortcut.register(accelerator, callback),
+      unregister: (accelerator) => globalShortcut.unregister(accelerator),
+    },
+    new ShortcutPreferenceStore(
+      join(app.getPath("userData"), "shortcut.json"),
+      new NodeShortcutPreferenceFiles(),
+      randomUUID,
+    ),
+    () => {
+      void controller.startCapture("shortcut");
+    },
+  );
+  await shortcut.initialize();
+  shortcutManager = shortcut;
 
   registerWorkflowIpc(
     getMainWebContents,
@@ -118,16 +131,9 @@ void app.whenReady().then(() => {
     overlayRendererUrl,
     controller,
     () => diagnostics.snapshot(),
-    getShortcutStatus,
+    shortcut,
   );
   createWindow();
-  try {
-    shortcutRegistered = globalShortcut.register(captureShortcut, () => {
-      void controller.startCapture("shortcut");
-    });
-  } catch {
-    shortcutRegistered = false;
-  }
 
   registerCaptureLifecycle(
     {
@@ -156,7 +162,7 @@ void app.whenReady().then(() => {
 });
 
 app.on("will-quit", () => {
-  globalShortcut.unregisterAll();
+  shortcutManager?.dispose();
 });
 
 app.on("window-all-closed", () => {
