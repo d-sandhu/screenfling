@@ -127,6 +127,25 @@ Records the packaged production runner, suspend/resume fail-closed behavior,
 sanitized timing and 200-cancel evidence, discarded flaky pointer automation,
 and every native Gate A/Gate B row that remains open.
 
+### [Phase 9 next-slice audit](phase-9-next-slice-audit.md)
+
+Compares the remaining Gate A and Gate B evidence, identifies the trusted
+WezTerm selector policy as the smallest repository-testable safety gap, and
+keeps native hardware, focus, and real-agent rows explicitly blocked.
+
+### [Screen Recording permission acceptance plan](screen-recording-permission-acceptance-plan.md)
+
+Uses Context7 plus Electron and Apple documentation to define a future pure
+Screen Recording permission-policy seam and the human-operated packaged checks
+that cannot be replaced by mocked permission state.
+
+### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
+
+Records the macOS executable/config/socket ownership, mode, type, ancestor,
+access, fingerprint, and before-spawn guards; the acceptance-overlay cleanup
+regression; and the ACL, config-semantic, native, and real-agent evidence that
+remains open.
+
 ## Research standard
 
 New reports should:

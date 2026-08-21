@@ -113,6 +113,11 @@ sample to 546,288 KiB after two minutes. The runner now compares packaged
 internal application URL, and requested/returned capture dimensions. Missing
 overlays and rejected or hung overlay actions fail and terminate the packaged
 process; any operator-assisted run is discarded.
+After a later smoke required the operator to press Escape, the runner added a
+second cleanup boundary: a settled bridge response is not accepted until the
+overlay page closes, and readiness/action failures explicitly close any retained
+overlay before application termination. That operator-assisted smoke is also
+discarded evidence.
 The runner does not automate the physical drag, real global shortcut, direct
 cancel-clipboard fingerprint, hardware/lifecycle matrix, stable signing, or
 Windows, so Gate A remains open. See the
@@ -175,8 +180,18 @@ destination selection, an optional bounded one-line note, verified clipboard
 fallback before one-shot Stage, and honest unverified results. The renderer sends
 only a destination ID; executable and mux configuration remain in the main
 process. The adapter is available only through a complete opt-in macOS developer
-configuration while trusted-path and real-agent acceptance remain open. See the
-[Phase 7 results](research/phase-7-joined-flow-results.md).
+configuration.
+
+Phase 9 added a macOS selector policy for canonical file/socket types, owner and
+mode, lexical and canonical ancestors, executable/config access, a private
+socket parent, and generation evidence that is checked before every version,
+list, and send subprocess. Unsafe or replaced selectors expose no destination or
+send zero bytes, preserving Copy. This closes the repository-testable
+owner/mode/type portion of the configured-selector row, not Gate B: extended ACL
+inspection, exact WezTerm config semantics, visible no-focus trials, native
+endpoint replacement, and real-agent attachment trials remain open. See the
+[Phase 7 results](research/phase-7-joined-flow-results.md) and
+[Phase 9 results](research/phase-9-trusted-selector-results.md).
 
 ### Milestone 0 deliverables
 
@@ -437,8 +452,10 @@ land in this order:
 2. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
    real-agent acceptance rows; record exact supported versions rather than broad
    claims. The repeatable one-display packaged runner and suspend/resume
-   fail-closed implementation are in place; real sleep/wake, display hardware,
-   stable-identity permission changes, and visible real-agent evidence remain.
+   fail-closed implementation plus the macOS WezTerm selector owner/mode/type
+   policy are in place; real sleep/wake, display hardware, stable-identity
+   permission changes, ACL/config-semantic checks, and visible real-agent
+   evidence remain.
 3. [ ] Add recoverable permission, stale-target, unsupported, and
    clipboard-fallback UI, then complete the 200-workflow soak and packaged
    dogfooding evidence.

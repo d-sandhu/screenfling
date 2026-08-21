@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -59,14 +60,22 @@ function success(text: string): BoundedProcessResult {
 
 class FakeWezTermRunner {
   readonly requests: BoundedProcessRequest[] = [];
+  readonly spawnedRequests: BoundedProcessRequest[] = [];
   readonly spawnedSendRequests: BoundedProcessRequest[] = [];
   versionResult: BoundedProcessResult = success(VERSION_TEXT);
   listResult: BoundedProcessResult = success(JSON.stringify([paneFixture(7)]));
   sendResult: BoundedProcessResult = success("");
+  beforeProcessGuard: ((request: BoundedProcessRequest) => void) | null = null;
   beforeSendGuard: (() => void) | null = null;
 
   readonly run: BoundedProcessRunner = async (request) => {
     this.requests.push(request);
+    if (request.arguments.includes("send-text")) this.beforeSendGuard?.();
+    this.beforeProcessGuard?.(request);
+    if (request.beforeSpawn !== undefined && !(await request.beforeSpawn())) {
+      return { status: "failed", reason: "guard-rejected" };
+    }
+    this.spawnedRequests.push(request);
     if (request.arguments.length === 1 && request.arguments[0] === "--version") {
       return this.versionResult;
     }
@@ -75,10 +84,6 @@ class FakeWezTermRunner {
       return { status: "failed", reason: "spawn" };
     }
 
-    this.beforeSendGuard?.();
-    if (request.beforeSpawn !== undefined && !(await request.beforeSpawn())) {
-      return { status: "failed", reason: "guard-rejected" };
-    }
     this.spawnedSendRequests.push(request);
     return this.sendResult;
   };
@@ -186,6 +191,65 @@ describe("WezTerm destination adapter", () => {
     });
     await expect(adapter.discover()).resolves.toEqual([]);
     expect(runner.requests.some((request) => request.arguments.includes("list"))).toBe(false);
+  });
+
+  it("does not spawn an untrusted executable during preflight", async () => {
+    const runner = new FakeWezTermRunner();
+    const adapter = createAdapter(runner, async () => {
+      throw new Error("untrusted selector fixture");
+    });
+
+    await expect(adapter.preflight()).resolves.toEqual({
+      status: "unavailable",
+      reason: "instance",
+    });
+    expect(runner.requests).toEqual([]);
+  });
+
+  it("rejects a selector replacement across the version probe", async () => {
+    const runner = new FakeWezTermRunner();
+    let generationReads = 0;
+    const adapter = createAdapter(runner, async () => {
+      generationReads += 1;
+      return generationReads === 1 ? GENERATION_A : GENERATION_B;
+    });
+
+    await expect(adapter.preflight()).resolves.toEqual({
+      status: "unavailable",
+      reason: "instance",
+    });
+    expect(runner.requests).toHaveLength(1);
+    expect(runner.requests[0]?.arguments).toEqual(["--version"]);
+  });
+
+  it("prevents the version probe when selectors change at the spawn boundary", async () => {
+    const runner = new FakeWezTermRunner();
+    let generation = GENERATION_A;
+    runner.beforeProcessGuard = () => {
+      generation = GENERATION_B;
+      runner.beforeProcessGuard = null;
+    };
+    const adapter = createAdapter(runner, async () => generation);
+
+    await expect(adapter.preflight()).resolves.toEqual({
+      status: "unavailable",
+      reason: "instance",
+    });
+    expect(runner.spawnedRequests).toEqual([]);
+  });
+
+  it("prevents pane discovery when selectors change at the list spawn boundary", async () => {
+    const runner = new FakeWezTermRunner();
+    let generation = GENERATION_A;
+    runner.beforeProcessGuard = (request) => {
+      if (request.arguments.includes("list")) generation = GENERATION_B;
+    };
+    const adapter = createAdapter(runner, async () => generation);
+
+    await expect(adapter.discover()).resolves.toEqual([]);
+    expect(runner.spawnedRequests.some((request) => request.arguments.includes("list"))).toBe(
+      false,
+    );
   });
 
   it("fails closed for malformed, duplicate, unsafe, or oversized pane lists", async () => {
@@ -342,33 +406,58 @@ describe("WezTerm destination adapter", () => {
     }
   });
 
-  it("changes the instance generation when the selected socket is replaced", async () => {
-    const fixtureDirectory = await mkdtemp(join(tmpdir(), "screenfling-wezterm-generation-"));
-    const executable = join(fixtureDirectory, "wezterm");
-    const configFile = join(fixtureDirectory, "wezterm.lua");
-    const socketPath = join(fixtureDirectory, "wezterm.sock");
-    const config = {
-      executable,
-      configFile,
-      socketPath,
-      imagePasteInput: IMAGE_PASTE_INPUT,
-    };
+  it.skipIf(process.platform !== "darwin")(
+    "changes the instance generation when the selected socket is replaced",
+    async () => {
+      const fixtureDirectory = await mkdtemp(join(tmpdir(), "screenfling-wezterm-generation-"));
+      const executable = join(fixtureDirectory, "wezterm");
+      const configFile = join(fixtureDirectory, "wezterm.lua");
+      const socketPath = join(fixtureDirectory, "wezterm.sock");
+      const firstServer = createServer();
+      const replacementServer = createServer();
+      const config = {
+        executable,
+        configFile,
+        socketPath,
+        imagePasteInput: IMAGE_PASTE_INPUT,
+      };
 
-    try {
-      await Promise.all([
-        writeFile(executable, "binary fixture"),
-        writeFile(configFile, "config fixture"),
-        writeFile(socketPath, "first socket fixture"),
-      ]);
-      const firstGeneration = await readWezTermGeneration(config, SUPPORTED_WEZTERM_VERSION);
-      await writeFile(socketPath, "replacement socket fixture with a new identity");
-      const replacementGeneration = await readWezTermGeneration(config, SUPPORTED_WEZTERM_VERSION);
+      try {
+        await Promise.all([
+          writeFile(executable, "binary fixture"),
+          writeFile(configFile, "config fixture"),
+        ]);
+        await Promise.all([chmod(executable, 0o700), chmod(configFile, 0o600)]);
+        await new Promise<void>((resolveListen, rejectListen) => {
+          firstServer.once("error", rejectListen);
+          firstServer.listen(socketPath, resolveListen);
+        });
+        await chmod(socketPath, 0o600);
+        const firstGeneration = await readWezTermGeneration(config, SUPPORTED_WEZTERM_VERSION);
+        await new Promise<void>((resolveClose) => firstServer.close(() => resolveClose()));
+        await rm(socketPath, { force: true });
+        await new Promise<void>((resolveListen, rejectListen) => {
+          replacementServer.once("error", rejectListen);
+          replacementServer.listen(socketPath, resolveListen);
+        });
+        await chmod(socketPath, 0o600);
+        const replacementGeneration = await readWezTermGeneration(
+          config,
+          SUPPORTED_WEZTERM_VERSION,
+        );
 
-      expect(firstGeneration).toMatch(/^[a-f\d]{64}$/u);
-      expect(replacementGeneration).toMatch(/^[a-f\d]{64}$/u);
-      expect(replacementGeneration).not.toBe(firstGeneration);
-    } finally {
-      await rm(fixtureDirectory, { recursive: true, force: true });
-    }
-  });
+        expect(firstGeneration).toMatch(/^[a-f\d]{64}$/u);
+        expect(replacementGeneration).toMatch(/^[a-f\d]{64}$/u);
+        expect(replacementGeneration).not.toBe(firstGeneration);
+      } finally {
+        if (firstServer.listening) {
+          await new Promise<void>((resolveClose) => firstServer.close(() => resolveClose()));
+        }
+        if (replacementServer.listening) {
+          await new Promise<void>((resolveClose) => replacementServer.close(() => resolveClose()));
+        }
+        await rm(fixtureDirectory, { recursive: true, force: true });
+      }
+    },
+  );
 });

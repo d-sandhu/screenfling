@@ -57,6 +57,7 @@ void test("cancelOverlay reports a bridge failure while the overlay remains open
     },
   };
   const overlay = {
+    close: () => Promise.resolve(),
     evaluate: async (action, operationId) => action(operationId),
     isClosed: () => false,
   };
@@ -72,6 +73,7 @@ void test("completeOverlaySelection reports a bridge failure while the overlay r
     },
   };
   const overlay = {
+    close: () => Promise.resolve(),
     evaluate: async (action, request) => action(request),
     isClosed: () => false,
   };
@@ -80,6 +82,29 @@ void test("completeOverlaySelection reports a bridge failure while the overlay r
     completeOverlaySelection(overlay, { operationId: "operation-id", selection: {} }),
     bridgeFailure,
   );
+});
+
+void test("completeOverlaySelection closes an overlay that does not close itself", async () => {
+  let closed = false;
+  globalThis.window = {
+    captureOverlay: {
+      completeSelection: () => Promise.resolve(),
+    },
+  };
+  const overlay = {
+    close: () => {
+      closed = true;
+      return Promise.resolve();
+    },
+    evaluate: async (action, request) => action(request),
+    isClosed: () => closed,
+  };
+
+  await assert.rejects(
+    completeOverlaySelection(overlay, { operationId: "operation-id", selection: {} }, 1),
+    /overlay-close-timeout/,
+  );
+  assert.equal(closed, true);
 });
 
 void test("allowExpectedPageClose accepts a bridge race only after the overlay closes", async () => {
@@ -138,9 +163,35 @@ void test("waitForOverlay rejects when no overlay page opens", async () => {
   );
 });
 
-void test("startCapture rejects when the overlay never reaches selecting", async () => {
+void test("waitForOverlay closes an overlay page that arrives after its deadline", async () => {
+  let closed = false;
   const overlay = {
+    close: () => {
+      closed = true;
+      return Promise.resolve();
+    },
     getByText: () => ({ waitFor: () => Promise.resolve() }),
+    isClosed: () => closed,
+    waitForURL: () => Promise.resolve(),
+  };
+  const context = {
+    waitForEvent: () => new Promise((resolvePage) => setTimeout(() => resolvePage(overlay), 5)),
+  };
+
+  await assert.rejects(waitForOverlay(context, 1), /overlay-open-timeout/);
+  await new Promise((resolveLatePage) => setTimeout(resolveLatePage, 10));
+  assert.equal(closed, true);
+});
+
+void test("startCapture rejects when the overlay never reaches selecting", async () => {
+  let closed = false;
+  const overlay = {
+    close: () => {
+      closed = true;
+      return Promise.resolve();
+    },
+    getByText: () => ({ waitFor: () => Promise.resolve() }),
+    isClosed: () => closed,
     waitForURL: () => Promise.resolve(),
   };
   const context = { waitForEvent: () => Promise.resolve(overlay) };
@@ -156,4 +207,5 @@ void test("startCapture rejects when the overlay never reaches selecting", async
     Promise.race([startCapture(mainWindow, context, 1), externalDeadline]),
     /overlay-ready-timeout/,
   );
+  assert.equal(closed, true);
 });
