@@ -321,12 +321,19 @@ The first WezTerm implementation keeps its executable, config file, and mux
 socket in main-owned adapter configuration. Discovery accepts only the pinned
 stable compatibility fixture, runtime-parses bounded `list --format json`
 output, and mints stable-within-generation routes scoped to a fingerprint of the
-selected executable, config, socket, and version. Dispatch re-runs that exact discovery,
-requires the selected pane, checks the generation again immediately before
-spawning, and performs one `send-text --no-paste --pane-id` call. The image-paste
-binding and optional note share one stdin payload; neither shell interpolation
-nor a second partially successful note process exists. A timeout or post-spawn
-failure is reported as `dispatched-unverified` and is never retried.
+selected executable, config, socket, and version. On macOS, selectors fail
+closed unless their canonical types, owner, access mode, group/other write bits,
+lexical ancestors, canonical ancestors, and private socket parent satisfy the
+adapter policy. The fingerprint includes canonical path, device, inode, mode,
+owner, group, size, and nanosecond timestamps. The same evidence is re-read
+before every version, discovery, and send process is spawned.
+
+Dispatch re-runs that exact discovery, requires the selected pane, checks the
+generation again immediately before spawning, and performs one
+`send-text --no-paste --pane-id` call. The image-paste binding and optional note
+share one stdin payload; neither shell interpolation nor a second partially
+successful note process exists. A timeout or post-spawn failure is reported as
+`dispatched-unverified` and is never retried.
 
 WezTerm does not provide an atomic compare-and-send operation. The generation
 guard narrows but cannot remove the final endpoint replacement race, so visible
@@ -337,8 +344,8 @@ window, or claims that CLI acceptance proves an agent attachment.
 The current product wiring exposes this adapter only through a complete,
 explicit macOS developer environment configuration. Missing or invalid values
 produce an empty registry and preserve Copy. This is an acceptance-test path,
-not a compatibility claim; trusted-path ownership and permission checks plus
-visible native and real-agent trials remain release gates.
+not a compatibility claim; extended ACL inspection, exact-config semantics,
+visible native trials, and real-agent trials remain release gates.
 
 Surface adapters and managed adapters are separate families. A surface adapter
 can place input into an existing, exact terminal composer. A managed adapter owns
@@ -440,10 +447,11 @@ the global shortcut, permission changes, sleep/wake, and display-hardware rows
 outside that automated claim.
 
 The runner bounds overlay creation/readiness, awaits overlay bridge results, and
-treats rejection as failure unless the page has already closed. A bounded action
-deadline closes the browser and packaged process on a missing overlay or hung
-bridge, so unattended validation cannot depend on an operator dismissing an
-overlay.
+treats rejection as failure unless the page has already closed. It also requires
+the overlay page to close after a successful bridge response and explicitly
+closes any page retained by a readiness or action failure. The packaged process
+remains the final cleanup boundary, so an unattended validation result cannot
+depend on an operator pressing Escape.
 
 ## Type-safety and lint policy
 

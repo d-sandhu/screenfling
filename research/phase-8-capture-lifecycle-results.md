@@ -124,6 +124,13 @@ The committed runner does not claim automated pointer-drag coverage; the
 deterministic drag tracker tests and the Phase 5 human dogfood remain separate
 evidence.
 
+A Phase 9 unattended smoke exposed one more cleanup gap: a bridge could settle
+without the overlay page closing, or overlay readiness could time out after the
+page existed. The operator pressed Escape, so that run is discarded as well.
+The runner now requires page closure after a settled bridge action and explicitly
+closes a retained page on readiness/action failure. Headless regression tests
+cover both paths; no replacement native timing or capture evidence is claimed.
+
 ## Automated implementation evidence
 
 Controller tests cover environment changes during pending snapshot, visible

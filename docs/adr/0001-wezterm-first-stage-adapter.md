@@ -18,11 +18,14 @@ runtime dependency; Copy remains the safe fallback.
 The production-tree primitive now implements pinned-version preflight, bounded
 JSON discovery, explicit absolute executable/config/socket selection,
 stable-within-generation pane routes, one combined stdin dispatch, and
-conservative no-retry outcomes. This satisfies the implementation decision, not the release gate:
-the adapter is wired into the application picker only through a complete,
-macOS-only developer environment configuration. Trusted-path checks, visible
-no-focus trials, and real-agent attachment trials remain open before supported
-picker exposure.
+conservative no-retry outcomes. Its macOS selector policy now checks canonical
+types, owner and mode, lexical and canonical ancestors, executable/config access,
+a private socket parent, and replacement identity before every subprocess. This
+satisfies the implementation decision, not the release gate: the adapter is
+wired into the application picker only through a complete, macOS-only developer
+environment configuration. Extended ACL inspection, exact-config semantics,
+visible no-focus trials, and real-agent attachment trials remain open before
+supported picker exposure.
 
 ## Consequences
 

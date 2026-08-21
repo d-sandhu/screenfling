@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { realpath, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
 import { z } from "zod";
 
 import { destinationSchema, noteSchema } from "../shared/domain";
 import { runBoundedProcess } from "./bounded-process";
+import { readTrustedWezTermSelectorEvidence } from "./trusted-wezterm-selectors";
 
 import type { BoundedProcessRequest, BoundedProcessRunner } from "./bounded-process";
 import type {
@@ -127,29 +127,11 @@ function joinInput(imagePasteInput: Uint8Array, note: string | null): Uint8Array
   return input;
 }
 
-async function pathGenerationEvidence(path: string): Promise<string> {
-  const canonicalPath = await realpath(path);
-  const evidence = await stat(canonicalPath, { bigint: true });
-  return [
-    canonicalPath,
-    evidence.dev.toString(),
-    evidence.ino.toString(),
-    evidence.mode.toString(),
-    evidence.size.toString(),
-    evidence.birthtimeNs.toString(),
-    evidence.mtimeNs.toString(),
-  ].join("\u0000");
-}
-
 export async function readWezTermGeneration(
   config: Readonly<WezTermAdapterConfig>,
   version: string,
 ): Promise<string> {
-  const evidence = await Promise.all([
-    pathGenerationEvidence(config.executable),
-    pathGenerationEvidence(config.configFile),
-    pathGenerationEvidence(config.socketPath),
-  ]);
+  const evidence = await readTrustedWezTermSelectorEvidence(config);
   return createHash("sha256")
     .update([version, ...evidence].join("\u0001"))
     .digest("hex");
@@ -182,10 +164,30 @@ export class WezTermAdapter implements DestinationAdapter {
   }
 
   async preflight(): Promise<WezTermPreflightResult> {
+    let generationBeforeVersion;
+    try {
+      generationBeforeVersion = await this.#dependencies.readGeneration(
+        this.#config,
+        SUPPORTED_WEZTERM_VERSION,
+      );
+      if (!/^[a-f\d]{64}$/u.test(generationBeforeVersion)) {
+        return { status: "unavailable", reason: "instance" };
+      }
+    } catch {
+      return { status: "unavailable", reason: "instance" };
+    }
     const versionResult = await this.#dependencies.runProcess(
-      this.#processRequest(["--version"], null, MAX_PROCESS_OUTPUT_BYTES),
+      this.#processRequest(
+        ["--version"],
+        null,
+        MAX_PROCESS_OUTPUT_BYTES,
+        this.#generationGuard(generationBeforeVersion),
+      ),
     );
     if (versionResult.status !== "success") {
+      if (versionResult.reason === "guard-rejected") {
+        return { status: "unavailable", reason: "instance" };
+      }
       return { status: "unavailable", reason: "binary" };
     }
     const versionOutput = decodeUtf8(versionResult.stdout)?.trim();
@@ -193,14 +195,21 @@ export class WezTermAdapter implements DestinationAdapter {
       return { status: "unavailable", reason: "unsupported-version" };
     }
     try {
-      const generation = await this.#dependencies.readGeneration(
+      const generationAfterVersion = await this.#dependencies.readGeneration(
         this.#config,
         SUPPORTED_WEZTERM_VERSION,
       );
-      if (!/^[a-f\d]{64}$/u.test(generation)) {
+      if (
+        !/^[a-f\d]{64}$/u.test(generationAfterVersion) ||
+        generationAfterVersion !== generationBeforeVersion
+      ) {
         return { status: "unavailable", reason: "instance" };
       }
-      return { status: "ready", generation, version: SUPPORTED_WEZTERM_VERSION };
+      return {
+        status: "ready",
+        generation: generationAfterVersion,
+        version: SUPPORTED_WEZTERM_VERSION,
+      };
     } catch {
       return { status: "unavailable", reason: "instance" };
     }
@@ -276,9 +285,18 @@ export class WezTermAdapter implements DestinationAdapter {
     const preflight = await this.preflight();
     if (preflight.status !== "ready") return { status: "unavailable" };
     const listResult = await this.#dependencies.runProcess(
-      this.#processRequest(this.#cliArguments(["list", "--format", "json"]), null, MAX_LIST_BYTES),
+      this.#processRequest(
+        this.#cliArguments(["list", "--format", "json"]),
+        null,
+        MAX_LIST_BYTES,
+        this.#generationGuard(preflight.generation),
+      ),
     );
-    if (listResult.status !== "success") return { status: "unavailable" };
+    if (listResult.status !== "success") {
+      return listResult.reason === "guard-rejected"
+        ? { status: "generation-changed" }
+        : { status: "unavailable" };
+    }
     const panes = parsePaneList(listResult.stdout);
     if (panes === null) return { status: "unavailable" };
     try {
@@ -301,16 +319,7 @@ export class WezTermAdapter implements DestinationAdapter {
         this.#cliArguments(["send-text", "--no-paste", "--pane-id", String(route.paneId)]),
         input,
         MAX_PROCESS_OUTPUT_BYTES,
-        async () => {
-          try {
-            return (
-              (await this.#dependencies.readGeneration(this.#config, SUPPORTED_WEZTERM_VERSION)) ===
-              route.generation
-            );
-          } catch {
-            return false;
-          }
-        },
+        this.#generationGuard(route.generation),
       ),
     );
     if (result.status === "success") return { status: "dispatched-unverified" };
@@ -344,6 +353,19 @@ export class WezTermAdapter implements DestinationAdapter {
     };
     if (beforeSpawn === undefined) return request;
     return { ...request, beforeSpawn };
+  }
+
+  #generationGuard(expectedGeneration: string): () => Promise<boolean> {
+    return async () => {
+      try {
+        return (
+          (await this.#dependencies.readGeneration(this.#config, SUPPORTED_WEZTERM_VERSION)) ===
+          expectedGeneration
+        );
+      } catch {
+        return false;
+      }
+    };
   }
 }
 

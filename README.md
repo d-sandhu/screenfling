@@ -26,9 +26,10 @@ pixels or clipboard content.
 
 The WezTerm integration remains an opt-in macOS developer experiment. Discovery
 and one-shot exact-pane staging fail closed on unsupported versions, malformed
-data, ambiguous identities, and stale generations. Missing hardware/lifecycle
-coverage, trusted configuration checks, visible no-focus trials, and real-agent
-attachment trials still block any alpha or compatibility claim.
+data, ambiguous identities, unsafe selector ownership or mode, and stale
+generations. Missing hardware/lifecycle coverage, macOS ACL and configuration-
+semantics acceptance, visible no-focus trials, and real-agent attachment trials
+still block any alpha or compatibility claim.
 
 The first reference implementation will be built on macOS, followed by Windows.
 Both are Tier 1 product targets. Linux is optional and may be explored later
@@ -110,8 +111,14 @@ acceptance work; it is not yet a supported user setup.
 The input bytes must match a tested agent binding that stages an image without
 submission. A partial, malformed, unsafe, unsupported-version, or non-macOS
 configuration exposes no destination and leaves Copy available. Do not treat
-this environment-variable path as a secret store or a substitute for the
-ownership, mode, ACL, and replacement checks still required by the roadmap.
+this environment-variable path as a secret store. On macOS, the executable must
+be a current-user- or root-owned executable file, the config must be a readable
+current-user-owned file, and the socket must be a current-user-owned Unix socket
+inside a private directory. Group/other-writable selector leaves or lexical and
+canonical ancestors are rejected. Selector identity is checked before version,
+discovery, and send subprocesses. macOS ACL inspection, config semantic
+validation, visible focus behavior, and real-agent attachment remain acceptance
+work rather than support claims.
 
 ## Project documents
 

@@ -15,6 +15,7 @@ const DEFAULT_COOLDOWN_MS = 120_000;
 const CAPTURE_WARMUP_RUNS = 3;
 const SELECTION_COMPLETION_P95_TARGET_MS = 150;
 const OVERLAY_ACTION_TIMEOUT_MS = 5_000;
+const OVERLAY_EMERGENCY_CLOSE_TIMEOUT_MS = 1_000;
 const OVERLAY_READY_TIMEOUT_MS = 5_000;
 const MAX_RUNS = 1_000;
 const portAddressSchema = z.object({ port: z.number().int().min(1).max(65_535) });
@@ -211,35 +212,47 @@ function mainPage(context) {
 }
 
 async function waitForOverlay(context, timeoutMs = OVERLAY_READY_TIMEOUT_MS) {
-  return withTimeout(
-    async () => {
-      const overlay = await context.waitForEvent("page");
-      await overlay.waitForURL(/surface=capture/);
-      await overlay.getByText("Drag to capture", { exact: true }).waitFor({ state: "visible" });
-      return overlay;
-    },
-    timeoutMs,
-    "overlay-open-timeout",
-  );
+  let overlay;
+  try {
+    return await withTimeout(
+      async () => {
+        overlay = await context.waitForEvent("page");
+        await overlay.waitForURL(/surface=capture/);
+        await overlay.getByText("Drag to capture", { exact: true }).waitFor({ state: "visible" });
+        return overlay;
+      },
+      timeoutMs,
+      "overlay-open-timeout",
+    );
+  } catch (cause) {
+    if (overlay !== undefined) await closeOverlayAfterFailure(overlay);
+    throw cause;
+  }
 }
 
 async function startCapture(mainWindow, context, timeoutMs = OVERLAY_READY_TIMEOUT_MS) {
   const startedAt = performance.now();
-  return withTimeout(
-    async () => {
-      const overlayPromise = waitForOverlay(context, timeoutMs);
-      await mainWindow.getByRole("button", { name: "Capture region" }).click();
-      const overlay = await overlayPromise;
-      const snapshot = await waitForWorkflowPhase(mainWindow, "selecting", timeoutMs);
-      return {
-        overlay,
-        operationId: snapshot.operationId,
-        elapsedMs: performance.now() - startedAt,
-      };
-    },
-    timeoutMs,
-    "overlay-ready-timeout",
-  );
+  let overlay;
+  try {
+    return await withTimeout(
+      async () => {
+        const overlayPromise = waitForOverlay(context, timeoutMs);
+        await mainWindow.getByRole("button", { name: "Capture region" }).click();
+        overlay = await overlayPromise;
+        const snapshot = await waitForWorkflowPhase(mainWindow, "selecting", timeoutMs);
+        return {
+          overlay,
+          operationId: snapshot.operationId,
+          elapsedMs: performance.now() - startedAt,
+        };
+      },
+      timeoutMs,
+      "overlay-ready-timeout",
+    );
+  } catch (cause) {
+    if (overlay !== undefined) await closeOverlayAfterFailure(overlay);
+    throw cause;
+  }
 }
 
 async function dismissResult(mainWindow) {
@@ -254,6 +267,37 @@ async function allowExpectedPageClose(page, action, timeoutMs = OVERLAY_ACTION_T
     await withTimeout(action, timeoutMs, "overlay-action-timeout");
   } catch (cause) {
     if (!page.isClosed()) throw cause;
+  }
+}
+
+async function closeOverlayAfterFailure(overlay) {
+  if (overlay.isClosed()) return;
+  try {
+    await withTimeout(
+      () => overlay.close({ runBeforeUnload: false }),
+      OVERLAY_EMERGENCY_CLOSE_TIMEOUT_MS,
+      "overlay-emergency-close-timeout",
+    );
+  } catch {
+    // Application termination is the final cleanup boundary.
+  }
+}
+
+async function runOverlayAction(overlay, action, timeoutMs) {
+  try {
+    await allowExpectedPageClose(overlay, action, timeoutMs);
+    if (!overlay.isClosed()) {
+      await withTimeout(
+        async () => {
+          while (!overlay.isClosed()) await delay(10);
+        },
+        timeoutMs,
+        "overlay-close-timeout",
+      );
+    }
+  } catch (cause) {
+    await closeOverlayAfterFailure(overlay);
+    throw cause;
   }
 }
 
@@ -278,23 +322,29 @@ async function runWarmup(mainWindow, context) {
   await dismissResult(mainWindow);
 }
 
-async function cancelOverlay(overlay, operationId) {
-  await allowExpectedPageClose(overlay, () =>
-    overlay.evaluate((id) => {
-      const bridge = window.captureOverlay;
-      if (bridge === undefined) throw new Error("Capture bridge unavailable.");
-      return bridge.cancel({ operationId: id });
-    }, operationId),
+async function cancelOverlay(overlay, operationId, timeoutMs = OVERLAY_ACTION_TIMEOUT_MS) {
+  await runOverlayAction(
+    overlay,
+    () =>
+      overlay.evaluate((id) => {
+        const bridge = window.captureOverlay;
+        if (bridge === undefined) throw new Error("Capture bridge unavailable.");
+        return bridge.cancel({ operationId: id });
+      }, operationId),
+    timeoutMs,
   );
 }
 
-async function completeOverlaySelection(overlay, request) {
-  await allowExpectedPageClose(overlay, () =>
-    overlay.evaluate((selectionRequest) => {
-      const bridge = window.captureOverlay;
-      if (bridge === undefined) throw new Error("Capture bridge unavailable.");
-      return bridge.completeSelection(selectionRequest);
-    }, request),
+async function completeOverlaySelection(overlay, request, timeoutMs = OVERLAY_ACTION_TIMEOUT_MS) {
+  await runOverlayAction(
+    overlay,
+    () =>
+      overlay.evaluate((selectionRequest) => {
+        const bridge = window.captureOverlay;
+        if (bridge === undefined) throw new Error("Capture bridge unavailable.");
+        return bridge.completeSelection(selectionRequest);
+      }, request),
+    timeoutMs,
   );
 }
 
@@ -435,6 +485,7 @@ function classifyFailure(cause) {
     "invalid-overlay-geometry",
     "main-window-unavailable",
     "overlay-action-timeout",
+    "overlay-close-timeout",
     "overlay-open-timeout",
     "overlay-ready-timeout",
     "overlay-window-leaked",
