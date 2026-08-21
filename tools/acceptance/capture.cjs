@@ -212,11 +212,16 @@ function mainPage(context) {
 }
 
 async function waitForOverlay(context, timeoutMs = OVERLAY_READY_TIMEOUT_MS) {
+  let abandoned = false;
   let overlay;
   try {
     return await withTimeout(
       async () => {
         overlay = await context.waitForEvent("page");
+        if (abandoned) {
+          await closeOverlayAfterFailure(overlay);
+          throw new Error("overlay-open-timeout");
+        }
         await overlay.waitForURL(/surface=capture/);
         await overlay.getByText("Drag to capture", { exact: true }).waitFor({ state: "visible" });
         return overlay;
@@ -225,6 +230,7 @@ async function waitForOverlay(context, timeoutMs = OVERLAY_READY_TIMEOUT_MS) {
       "overlay-open-timeout",
     );
   } catch (cause) {
+    abandoned = true;
     if (overlay !== undefined) await closeOverlayAfterFailure(overlay);
     throw cause;
   }
@@ -232,6 +238,7 @@ async function waitForOverlay(context, timeoutMs = OVERLAY_READY_TIMEOUT_MS) {
 
 async function startCapture(mainWindow, context, timeoutMs = OVERLAY_READY_TIMEOUT_MS) {
   const startedAt = performance.now();
+  let abandoned = false;
   let overlay;
   try {
     return await withTimeout(
@@ -239,6 +246,10 @@ async function startCapture(mainWindow, context, timeoutMs = OVERLAY_READY_TIMEO
         const overlayPromise = waitForOverlay(context, timeoutMs);
         await mainWindow.getByRole("button", { name: "Capture region" }).click();
         overlay = await overlayPromise;
+        if (abandoned) {
+          await closeOverlayAfterFailure(overlay);
+          throw new Error("overlay-ready-timeout");
+        }
         const snapshot = await waitForWorkflowPhase(mainWindow, "selecting", timeoutMs);
         return {
           overlay,
@@ -250,6 +261,7 @@ async function startCapture(mainWindow, context, timeoutMs = OVERLAY_READY_TIMEO
       "overlay-ready-timeout",
     );
   } catch (cause) {
+    abandoned = true;
     if (overlay !== undefined) await closeOverlayAfterFailure(overlay);
     throw cause;
   }

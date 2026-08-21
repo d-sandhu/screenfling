@@ -75,7 +75,7 @@ packaged capture result.
 The normal quality gate still includes Prettier, strict TypeScript, type-aware
 Oxlint, all vendored generic anti-slop rules at error severity, Vitest, the Node
 acceptance-runner tests, the production build, and native packaging.
-The Phase 9 branch passed that gate with 172 Vitest tests, nine headless
+The Phase 9 branch passed that gate with 175 Vitest tests, ten headless
 acceptance-runner tests, and an ad-hoc signed macOS arm64 directory package.
 Packaging did not launch the application or open a capture surface.
 
@@ -89,10 +89,13 @@ failure can fall back to built-in defaults. ScreenFling therefore does not
 pretend to validate arbitrary Lua with a home-grown parser; exact config
 semantics remain a pinned native acceptance row.
 
-The separate permission research used Context7 with `/electron/electron` and
-first-party Apple documentation. It recommends a later pure permission-policy
-slice while preserving the exact packaged application and human-operated TCC
-checks. No permission simulation or native helper was added here.
+The separate
+[permission acceptance plan](screen-recording-permission-acceptance-plan.md)
+used Context7 with `/electron/electron` and first-party Apple documentation. It
+recommends a future pure permission-policy slice while preserving the exact
+packaged application and human-operated TCC checks. It is planning evidence, not
+part of the Phase 9 implementation. No permission simulation or native helper
+was added here.
 
 ## Remaining release blockers
 
@@ -118,6 +121,6 @@ checks. No permission simulation or native helper was added here.
 - [WezTerm `send-text`](https://wezterm.org/cli/cli/send-text.html)
 - [Electron system preferences](https://www.electronjs.org/docs/latest/api/system-preferences)
 - [Phase 9 next-slice audit](phase-9-next-slice-audit.md)
-- [Phase 9 permission acceptance plan](phase-9-permission-acceptance-plan.md)
+- [Screen Recording permission acceptance plan](screen-recording-permission-acceptance-plan.md)
 - [Roadmap](../ROADMAP.md)
 - [Architecture](../docs/ARCHITECTURE.md)

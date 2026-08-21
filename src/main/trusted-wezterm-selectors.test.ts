@@ -161,4 +161,37 @@ describe.skipIf(process.platform !== "darwin")("trusted WezTerm selectors", () =
       );
     });
   });
+
+  it("rejects missing and dangling selector leaves without disclosing their paths", async () => {
+    await withSelectorFixture(async (selectors, root) => {
+      const genericFailure = {
+        message: "The configured WezTerm selector is not trusted.",
+      };
+      await rm(selectors.configFile);
+      await expect(readTrustedWezTermSelectorEvidence(selectors)).rejects.toMatchObject(
+        genericFailure,
+      );
+
+      await symlink(join(root, "missing-config.lua"), selectors.configFile);
+      await expect(readTrustedWezTermSelectorEvidence(selectors)).rejects.toMatchObject(
+        genericFailure,
+      );
+    });
+  });
+
+  it.each(["executable", "configFile"] as const)(
+    "changes selector evidence when %s is replaced",
+    async (field) => {
+      await withSelectorFixture(async (selectors) => {
+        const before = await readTrustedWezTermSelectorEvidence(selectors);
+        await rm(selectors[field]);
+        await writeFile(selectors[field], "replacement fixture");
+        await chmod(selectors[field], field === "executable" ? 0o700 : 0o600);
+
+        const after = await readTrustedWezTermSelectorEvidence(selectors);
+
+        expect(after).not.toEqual(before);
+      });
+    },
+  );
 });

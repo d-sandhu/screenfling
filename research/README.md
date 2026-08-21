@@ -133,9 +133,9 @@ Compares the remaining Gate A and Gate B evidence, identifies the trusted
 WezTerm selector policy as the smallest repository-testable safety gap, and
 keeps native hardware, focus, and real-agent rows explicitly blocked.
 
-### [Phase 9 permission acceptance plan](phase-9-permission-acceptance-plan.md)
+### [Screen Recording permission acceptance plan](screen-recording-permission-acceptance-plan.md)
 
-Uses Context7 plus Electron and Apple documentation to define a later pure
+Uses Context7 plus Electron and Apple documentation to define a future pure
 Screen Recording permission-policy seam and the human-operated packaged checks
 that cannot be replaced by mocked permission state.
 

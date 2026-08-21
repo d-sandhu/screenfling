@@ -1,10 +1,11 @@
-# Phase 9 macOS Screen Recording permission acceptance plan
+# macOS Screen Recording permission acceptance plan
 
 Research date: 2026-08-21
 
 Target tree: `main`; Electron `43.4.1`; electron-builder `26.15.3`
 
-Status: proposed issue-sized permission slice; this report does not close Gate A
+Status: proposed future issue-sized permission slice; this report does not close
+Gate A or expand the Phase 9 selector implementation.
 
 ## Decision
 
@@ -56,7 +57,7 @@ the next capture's `permission-blocked`/capture failure; an already-returned
 image may finish its clipboard or Stage side effect under the existing workflow
 boundary. No claim is made here that Electron emits a permission-change event.
 
-## Minimal implementation issue
+## Proposed follow-up implementation issue
 
 1. Add a pure `screenCapturePermissionPolicy(status, platform)` function. On
    non-macOS it returns `allowed`; on macOS it returns `blocked` only for
@@ -104,8 +105,8 @@ packaged capture separately. ([Electron systemPreferences](https://www.electronj
 - Electron provides no `askForMediaAccess("screen")`; do not add a fake call,
   hidden browser permission request, or native helper to simulate one.
 - Apple’s restart requirement is documented by the ScreenCaptureKit sample; the
-  Phase 9 runner should verify it for this Electron thumbnail path rather than
-  generalize beyond the observed host.
+  future native acceptance should verify it for this Electron thumbnail path
+  rather than generalize beyond the observed host.
 - The current ad-hoc `package:mac` artifact is not notarized/release-signed;
   do not use it to claim release identity stability.
 - No native ScreenCaptureKit fallback is justified until the practical Electron

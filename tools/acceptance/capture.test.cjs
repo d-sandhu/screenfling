@@ -163,6 +163,26 @@ void test("waitForOverlay rejects when no overlay page opens", async () => {
   );
 });
 
+void test("waitForOverlay closes an overlay page that arrives after its deadline", async () => {
+  let closed = false;
+  const overlay = {
+    close: () => {
+      closed = true;
+      return Promise.resolve();
+    },
+    getByText: () => ({ waitFor: () => Promise.resolve() }),
+    isClosed: () => closed,
+    waitForURL: () => Promise.resolve(),
+  };
+  const context = {
+    waitForEvent: () => new Promise((resolvePage) => setTimeout(() => resolvePage(overlay), 5)),
+  };
+
+  await assert.rejects(waitForOverlay(context, 1), /overlay-open-timeout/);
+  await new Promise((resolveLatePage) => setTimeout(resolveLatePage, 10));
+  assert.equal(closed, true);
+});
+
 void test("startCapture rejects when the overlay never reaches selecting", async () => {
   let closed = false;
   const overlay = {
