@@ -27,6 +27,7 @@ export function createCaptureWindowOptions(
     acceptFirstMouse: true,
     alwaysOnTop: true,
     backgroundColor: "#000000",
+    enableLargerThanScreen: true,
     frame: false,
     fullscreenable: false,
     hasShadow: false,

@@ -276,6 +276,18 @@ allocation stability, hardware/lifecycle rows, permissions, Stage, and real-agen
 evidence remain open. See the
 [Phase 18 results](research/phase-18-packaged-capture-results.md).
 
+Phase 19 began the authorized physical-input matrix on a two-display macOS host.
+One shortcut delivered exactly one operation while another app was frontmost,
+and 20 warm shortcut attempts reached selecting and cancelled without a recorded
+workflow failure, but their 206.78 ms p95 missed the 150 ms target. A physical
+mixed-scale attempt failed closed, and diagnosis found that macOS constrained
+the frameless right-display overlay 33 DIP below the display origin. The capture
+window now opts out of that constraint; the rebuilt package aligned at the exact
+`(1920, 0)` origin and accepted a physical scale-2 selection. The original row
+remains failed, exact crop-pixel comparison and the remaining native matrix stay
+open, and no native capture helper is justified. See the
+[Phase 19 results](research/phase-19-native-capture-results.md).
+
 ### Milestone 0 deliverables
 
 - [x] minimal Electron/TypeScript project scaffold;
