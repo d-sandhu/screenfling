@@ -72,6 +72,7 @@ export class CaptureOverlayWindow implements CaptureOverlayPort {
   show(): void {
     const window = this.#requireWindow();
     window.show();
+    window.focus();
   }
 
   close(): void {
