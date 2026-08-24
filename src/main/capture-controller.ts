@@ -96,19 +96,26 @@ export class CaptureController {
       if (!isActiveOperation(this.#workflow.snapshot, operationId)) {
         return this.#workflow.snapshot;
       }
+      this.#diagnostics.mark(operationId, "main-hidden");
       const display = this.#capture.getDisplayAtPointer();
-      await this.#overlay.prepare(display);
-      if (!isActiveOperation(this.#workflow.snapshot, operationId)) {
-        this.#overlay.close();
-        return this.#workflow.snapshot;
-      }
-
-      const snapshot = await this.#capture.begin(operationId, display);
+      const [overlayPreparation, capturePreparation] = await Promise.allSettled([
+        this.#overlay.prepare(display).then(() => {
+          this.#diagnostics.mark(operationId, "overlay-prepared");
+        }),
+        this.#capture.begin(operationId, display).then((captureSnapshot) => {
+          this.#diagnostics.mark(operationId, "snapshot-ready");
+          return captureSnapshot;
+        }),
+      ]);
+      if (overlayPreparation.status === "rejected") throw overlayPreparation.reason;
+      if (capturePreparation.status === "rejected") throw capturePreparation.reason;
+      const snapshot = capturePreparation.value;
       if (!isActiveOperation(this.#workflow.snapshot, operationId)) {
         if (this.#capture.activeOperationId === operationId) this.#capture.release(operationId);
         this.#overlay.close();
         return this.#workflow.snapshot;
       }
+      this.#diagnostics.mark(operationId, "startup-joined");
       this.#overlay.sendSnapshot(snapshot);
       return this.#workflow.snapshot;
     } catch (cause) {

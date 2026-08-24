@@ -131,8 +131,11 @@ class ControllerClipboard implements ImageClipboard {
 class ControllerOverlay implements CaptureOverlayPort {
   readonly calls: string[];
   closeCalls = 0;
+  error: Error | null = null;
   sent: CaptureOverlaySnapshot | null = null;
   showCalls = 0;
+  waitForFinish = false;
+  #finish: (() => void) | null = null;
 
   constructor(calls: string[]) {
     this.calls = calls;
@@ -144,6 +147,16 @@ class ControllerOverlay implements CaptureOverlayPort {
 
   async prepare(_display: CaptureDisplay): Promise<void> {
     this.calls.push("prepare");
+    if (this.waitForFinish) {
+      await new Promise<void>((resolve) => {
+        this.#finish = resolve;
+      });
+    }
+    if (this.error !== null) throw this.error;
+  }
+
+  finish(): void {
+    this.#finish?.();
   }
 
   sendSnapshot(snapshot: CaptureOverlaySnapshot): void {
@@ -300,7 +313,7 @@ describe("capture workflow controller", () => {
     expect(JSON.stringify(diagnostics)).not.toContain(OPERATION_ID);
   });
 
-  it("preloads the hidden overlay before capturing and sends the frozen snapshot", async () => {
+  it("starts the hidden overlay before capture and sends the frozen snapshot", async () => {
     const { calls, controller, overlay } = createHarness();
 
     await expect(controller.startCapture()).resolves.toMatchObject({
@@ -310,6 +323,69 @@ describe("capture workflow controller", () => {
     expect(calls).toEqual(["display", "prepare", "capture", "send"]);
     expect(overlay.sent).toMatchObject({ operationId: OPERATION_ID, display: DISPLAY });
     expect(overlay.showCalls).toBe(0);
+  });
+
+  it("loads the hidden overlay while capturing the display", async () => {
+    const { calls, controller, overlay } = createHarness();
+    overlay.waitForFinish = true;
+
+    const pending = controller.startCapture();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(calls).toEqual(["display", "prepare", "capture"]);
+    overlay.finish();
+    await expect(pending).resolves.toMatchObject({ phase: "snapshotting" });
+    expect(calls).toEqual(["display", "prepare", "capture", "send"]);
+  });
+
+  it("settles pending overlay preparation before reporting capture failure", async () => {
+    const { backend, controller, mainSurface, overlay, session } = createHarness();
+    backend.error = new CapturePermissionBlockedError();
+    overlay.waitForFinish = true;
+    let settled = false;
+
+    const pending = controller.startCapture().then((snapshot) => {
+      settled = true;
+      return snapshot;
+    });
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(settled).toBe(false);
+    expect(mainSurface.showCalls).toBe(0);
+    overlay.finish();
+    await expect(pending).resolves.toMatchObject({
+      phase: "result",
+      result: { status: "failed", reason: "permission-blocked" },
+    });
+    expect(session.activeOperationId).toBeNull();
+  });
+
+  it("settles pending capture before reporting overlay preparation failure", async () => {
+    const { backend, controller, mainSurface, overlay, session } = createHarness();
+    backend.waitForFinish = true;
+    overlay.error = new Error("overlay failed");
+    overlay.waitForFinish = true;
+    let settled = false;
+
+    const pending = controller.startCapture().then((snapshot) => {
+      settled = true;
+      return snapshot;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    overlay.finish();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(settled).toBe(false);
+    expect(mainSurface.showCalls).toBe(0);
+    backend.finish();
+    await expect(pending).resolves.toMatchObject({
+      phase: "result",
+      result: { status: "failed", reason: "capture-failed" },
+    });
+    expect(session.activeOperationId).toBeNull();
   });
 
   it("runs selection through an explicit verified Copy result", async () => {
