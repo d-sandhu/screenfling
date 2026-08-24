@@ -199,6 +199,24 @@ Records the bounded portable picker, candidate-first registration and rollback,
 versioned private preference, bridge v7, headless verification, and native rows
 that remain unclaimed.
 
+### [Phase 15 next-slice audit](phase-15-next-slice-audit.md)
+
+Ranks the remaining repository-testable work after Phase 14 and selects a
+bounded Screen Recording readiness/recovery surface while keeping native TCC,
+hardware, packaged, and operator evidence explicitly open.
+
+### [Phase 15 product-readiness research](phase-15-product-readiness-research.md)
+
+Uses Context7 and primary Electron, Apple, and WezTerm sources to compare
+permission readiness, adapter configuration, and diagnostics export, then
+defines the narrow read-only permission seam appropriate for Phase 15.
+
+### [Phase 15 Screen Recording readiness results](phase-15-screen-recording-readiness-results.md)
+
+Records the strict cross-platform status contract, main-owned bridge, compact
+recheck UI, headless verification, and native permission evidence that remains
+unclaimed.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,

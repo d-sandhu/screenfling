@@ -248,6 +248,15 @@ Windows observations remain native acceptance. See the
 [Phase 14 research](research/phase-14-shortcut-configuration-research.md) and
 [Phase 14 results](research/phase-14-configurable-shortcut-results.md).
 
+Phase 15 adds a main-owned Screen Recording readiness readout. A strict bridge
+version 8 reports Electron's closed macOS status values, while other platforms
+return `not-applicable` rather than a fabricated grant. The idle surface gives
+honest guidance and a manual recheck without requesting permission, opening a
+native settings app, disabling Capture, or treating status as pixel evidence.
+See the [Phase 15 research](research/phase-15-product-readiness-research.md),
+[next-slice audit](research/phase-15-next-slice-audit.md), and
+[results](research/phase-15-screen-recording-readiness-results.md).
+
 ### Milestone 0 deliverables
 
 - [x] minimal Electron/TypeScript project scaffold;
@@ -515,18 +524,21 @@ land in this order:
    picker, main-owned candidate-first registration, atomic persistence, strict
    set/reset IPC, and failure rollback. This does not claim native shortcut
    delivery or conflict acceptance.
-4. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
+4. [x] Expose a strict, read-only Screen Recording readiness status with honest
+   macOS recovery guidance and a manual recheck. Keep capture-time validation
+   authoritative and native TCC evidence open.
+5. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
    real-agent acceptance rows; record exact supported versions rather than broad
    claims. The repeatable one-display packaged runner and suspend/resume
    fail-closed implementation plus the macOS WezTerm selector owner/mode/type
    policy are in place; real sleep/wake, display hardware, stable-identity
    permission changes, ACL/config-semantic checks, and visible real-agent
    evidence remain.
-5. [ ] Complete the 200-workflow soak and packaged dogfooding evidence using the
+6. [ ] Complete the 200-workflow soak and packaged dogfooding evidence using the
    product-owned diagnostics snapshot. Native Reveal foreground behavior,
    native TCC acceptance, the complete-workflow soak, and comparative product
    value evidence remain open.
-6. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
+7. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 
 The first implementation branch should not contain remote support, browser
