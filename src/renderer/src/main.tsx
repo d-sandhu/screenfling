@@ -5,6 +5,7 @@ import { CaptureDragTracker, selectionFromDrag } from "./capture-drag";
 import { deliveryCopy, revealCopy } from "./delivery-copy";
 import { DestinationPicker } from "./destination-picker";
 import { revealDestinationForResult } from "./reveal-result";
+import { IdleCaptureActions } from "./screen-capture-readiness";
 import { ShortcutSettings, shortcutUpdateMessage } from "./shortcut-settings";
 import "./styles.css";
 
@@ -17,6 +18,7 @@ import type {
 import type { CaptureDraft, CaptureOverlaySnapshot } from "../../shared/capture";
 import type { Destination } from "../../shared/domain";
 import type { RevealResult, WorkflowSnapshot } from "../../shared/workflow";
+import type { ScreenCaptureReadinessSnapshot } from "../../shared/screen-capture-readiness";
 import type { CaptureDrag, CapturePoint } from "./capture-drag";
 import type { UiCopy } from "./delivery-copy";
 import { MAX_NOTE_LENGTH, supportsStage } from "../../shared/domain";
@@ -247,6 +249,11 @@ function CapturePreview({ draft }: { readonly draft: CaptureDraft }) {
 function ScreenFlingApp() {
   const bridge = window.screenFling;
   const [snapshot, setSnapshot] = useState<WorkflowSnapshot | null>(null);
+  const [screenCaptureReadiness, setScreenCaptureReadiness] =
+    useState<ScreenCaptureReadinessSnapshot | null>(null);
+  const [screenCaptureReadinessRequest, setScreenCaptureReadinessRequest] = useState<
+    "checking" | "idle"
+  >("idle");
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutMessage, setShortcutMessage] = useState<string | null>(null);
   const [shortcutPending, setShortcutPending] = useState(false);
@@ -275,6 +282,14 @@ function ScreenFlingApp() {
       })
       .catch(() => {
         if (current) setError("ScreenFling could not connect to its secure main process.");
+      });
+    void bridge
+      .getScreenCaptureReadiness()
+      .then((nextScreenCaptureReadiness) => {
+        if (current) setScreenCaptureReadiness(nextScreenCaptureReadiness);
+      })
+      .catch(() => {
+        if (current) setError("ScreenFling could not check Screen Recording status.");
       });
     return () => {
       current = false;
@@ -422,6 +437,17 @@ function ScreenFlingApp() {
     changeShortcut(() => bridge.setShortcut(configuration));
   };
 
+  const refreshScreenCaptureReadiness = () => {
+    if (screenCaptureReadinessRequest === "checking") return;
+    setScreenCaptureReadinessRequest("checking");
+    setError(null);
+    void bridge
+      .getScreenCaptureReadiness()
+      .then(setScreenCaptureReadiness)
+      .catch(() => setError("ScreenFling could not check Screen Recording status."))
+      .finally(() => setScreenCaptureReadinessRequest("idle"));
+  };
+
   return (
     <main className="app">
       <header className="app__header">
@@ -539,15 +565,13 @@ function ScreenFlingApp() {
         ) : null}
 
         {snapshot.phase === "idle" ? (
-          <button
-            className="button button--primary button--capture"
-            disabled={pending}
-            onClick={() => runAction(() => bridge.startCapture())}
-            type="button"
-          >
-            <span>Capture region</span>
-            <span aria-hidden="true">↗</span>
-          </button>
+          <IdleCaptureActions
+            onRefresh={refreshScreenCaptureReadiness}
+            onStartCapture={() => runAction(() => bridge.startCapture())}
+            readiness={screenCaptureReadiness}
+            refreshState={screenCaptureReadinessRequest}
+            startState={pending ? "starting" : "idle"}
+          />
         ) : null}
 
         {canCancel && operationId !== null && snapshot.phase !== "editing" ? (

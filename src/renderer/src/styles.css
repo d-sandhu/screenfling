@@ -311,6 +311,71 @@ h1 {
   text-wrap: pretty;
 }
 
+.permission-readiness {
+  display: grid;
+  width: min(100%, 680px);
+  min-height: 74px;
+  align-items: center;
+  margin-top: 28px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--mist);
+  background: rgb(23 26 28 / 72%);
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.permission-readiness--loading {
+  grid-template-columns: auto minmax(0, 1fr);
+  font-size: 11px;
+}
+
+.permission-readiness__indicator {
+  width: 7px;
+  height: 38px;
+  border-radius: 999px;
+  background: #586164;
+}
+
+.permission-readiness--positive .permission-readiness__indicator {
+  background: var(--signal);
+}
+
+.permission-readiness--warning .permission-readiness__indicator {
+  background: var(--warning);
+}
+
+.permission-readiness--fault .permission-readiness__indicator {
+  background: var(--fault);
+}
+
+.permission-readiness__copy {
+  display: grid;
+  gap: 3px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.permission-readiness__copy strong {
+  color: #e8edee;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.permission-readiness__label {
+  color: #7c878a;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 620;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.permission-readiness > .text-button {
+  white-space: nowrap;
+}
+
 .preview {
   position: relative;
   display: grid;
@@ -630,7 +695,18 @@ h1 {
   align-items: center;
   justify-content: space-between;
   width: min(100%, 260px);
-  margin-top: 30px;
+  margin-top: 16px;
+}
+
+@media (width <= 560px) {
+  .permission-readiness {
+    grid-template-columns: 7px minmax(0, 1fr);
+  }
+
+  .permission-readiness > .text-button {
+    justify-self: start;
+    grid-column: 2;
+  }
 }
 
 .button--compact {

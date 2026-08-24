@@ -127,7 +127,7 @@ other surface's capabilities merely by constructing a channel name.
 
 `ShortcutManager` is the main-process owner of the capture shortcut. The
 renderer can read its strict status and request set/reset operations through
-bridge API version 7; it cannot call Electron, choose a settings path, write a
+bridge API version 8; it cannot call Electron, choose a settings path, write a
 file, or replace the capture callback.
 
 ScreenFling intentionally accepts a smaller domain than Electron's complete
@@ -237,6 +237,14 @@ Permission denial is a bounded `failed` reason (`permission-blocked`), not a
 separate state. This keeps every terminal outcome visible until the matching
 operation explicitly dismisses it.
 
+The main surface also reads one ephemeral Screen Recording readiness snapshot
+through bridge API version 8. Main maps Electron's macOS status to a strict,
+content-free value; Windows, Linux, and other platforms report
+`not-applicable` rather than inheriting a macOS result. The renderer can recheck
+that value but cannot request permission, call Electron, open an arbitrary URL,
+or treat `granted` as capture evidence. The capture backend's checks immediately
+before and after source enumeration remain authoritative.
+
 A second shortcut while an operation is active is rejected. Cancellation is a
 separate operation-ID-scoped action. Stale renderer events, invalid coordinates,
 dead targets, and invalid transitions never advance the operation.
@@ -265,7 +273,7 @@ retains only its newest 200 finite, nonnegative samples. Finalization is
 operation-bound and idempotent, so a stale or late completion cannot increment
 a second result.
 
-Bridge API version 7 exposes the already-sanitized snapshot through one
+Bridge API version 8 exposes the already-sanitized snapshot through one
 authorized `getDiagnostics` call with no request payload. Preload validates the
 strict versioned schema before returning it. There is no diagnostics renderer,
 disk format, telemetry transport, or durable history in this phase.
@@ -496,6 +504,10 @@ request path or native permission helper. A blocked result closes the prepared
 overlay, releases capture state, restores the main surface, writes nothing to
 the clipboard, and tells the user which System Settings pane and restart are
 required.
+
+The idle main surface shows the same closed status vocabulary and a manual
+recheck. It does not poll, persist status, open System Settings, or claim that a
+reported grant proves a non-empty capture.
 
 ## Native-code gate
 

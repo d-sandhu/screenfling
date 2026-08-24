@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { app, BrowserWindow, globalShortcut, powerMonitor, screen } from "electron";
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  powerMonitor,
+  screen,
+  systemPreferences,
+} from "electron";
 
 import { IPC_CHANNELS } from "../shared/bridge";
 import { registerAppProtocol } from "./app-protocol";
@@ -14,6 +21,7 @@ import { createConfiguredAdapters } from "./configured-adapters";
 import { DestinationRegistry } from "./destination-registry";
 import { ElectronCaptureBackend, ElectronImageClipboard } from "./electron-capture-backend";
 import { registerWorkflowIpc } from "./ipc";
+import { readScreenCaptureReadiness } from "./screen-capture-permission";
 import { ShortcutManager } from "./shortcut-manager";
 import { NodeShortcutPreferenceFiles, ShortcutPreferenceStore } from "./shortcut-preference-store";
 import { createMainWindowOptions } from "./window-options";
@@ -131,6 +139,10 @@ void app.whenReady().then(async () => {
     overlayRendererUrl,
     controller,
     () => diagnostics.snapshot(),
+    () =>
+      readScreenCaptureReadiness(process.platform, () =>
+        systemPreferences.getMediaAccessStatus("screen"),
+      ),
     shortcut,
   );
   createWindow();

@@ -15,12 +15,30 @@ import {
 
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import type { DiagnosticsSnapshot } from "../shared/diagnostics";
+import type { ScreenCaptureReadinessSnapshot } from "../shared/screen-capture-readiness";
 import type { CaptureController } from "./capture-controller";
 import type { ShortcutOperations } from "./shortcut-manager";
 import type { SerializedIpcValue } from "./validated-operation-handler";
 
 type WebContentsProvider = () => WebContents | null;
 type DiagnosticsProvider = () => DiagnosticsSnapshot;
+type ScreenCaptureReadinessProvider = () => ScreenCaptureReadinessSnapshot;
+type ReadinessHandler<Event> = (
+  event: Event,
+  ...payloads: SerializedIpcValue[]
+) => ScreenCaptureReadinessSnapshot;
+type ReadinessHandlerRegistrar<Event> = (channel: string, handler: ReadinessHandler<Event>) => void;
+
+export function registerScreenCaptureReadinessIpc<Event>(
+  register: ReadinessHandlerRegistrar<Event>,
+  authorize: (event: Event) => void,
+  screenCaptureReadiness: ScreenCaptureReadinessProvider,
+): void {
+  register(
+    IPC_CHANNELS.getScreenCaptureReadiness,
+    createAuthorizedNoPayloadHandler(authorize, screenCaptureReadiness),
+  );
+}
 
 export function registerWorkflowIpc(
   mainWebContents: WebContentsProvider,
@@ -29,6 +47,7 @@ export function registerWorkflowIpc(
   overlayRendererUrl: string,
   controller: CaptureController,
   diagnostics: DiagnosticsProvider,
+  screenCaptureReadiness: ScreenCaptureReadinessProvider,
   shortcut: ShortcutOperations,
 ): void {
   const authorizeMain = (event: IpcMainInvokeEvent) => {
@@ -45,6 +64,11 @@ export function registerWorkflowIpc(
   ipcMain.handle(
     IPC_CHANNELS.getDiagnostics,
     createAuthorizedNoPayloadHandler(authorizeMain, diagnostics),
+  );
+  registerScreenCaptureReadinessIpc(
+    (channel, handler) => ipcMain.handle(channel, handler),
+    authorizeMain,
+    screenCaptureReadiness,
   );
   ipcMain.handle(
     IPC_CHANNELS.getShortcutStatus,

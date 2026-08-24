@@ -6,10 +6,11 @@ import { destinationIdSchema, noteSchema } from "./domain";
 import type { CaptureDraft, CaptureOverlaySnapshot, CaptureSelectionRequest } from "./capture";
 import type { Destination } from "./domain";
 import type { DiagnosticsSnapshot } from "./diagnostics";
+import type { ScreenCaptureReadinessSnapshot } from "./screen-capture-readiness";
 import type { ShortcutConfiguration, ShortcutStatus, ShortcutUpdateResult } from "./shortcut";
 import type { RevealResult, WorkflowSnapshot } from "./workflow";
 
-export const BRIDGE_VERSION = 7;
+export const BRIDGE_VERSION = 8;
 
 export const IPC_CHANNELS = Object.freeze({
   cancelOperation: "workflow:cancel-operation",
@@ -18,6 +19,7 @@ export const IPC_CHANNELS = Object.freeze({
   dismissResult: "workflow:dismiss-result",
   getCaptureDraft: "workflow:get-capture-draft",
   getDiagnostics: "workflow:get-diagnostics",
+  getScreenCaptureReadiness: "permission:get-screen-capture-readiness",
   getShortcutStatus: "shortcut:get-status",
   getSnapshot: "workflow:get-snapshot",
   revealDestination: "workflow:reveal-destination",
@@ -61,6 +63,7 @@ export type ScreenFlingBridge = {
   readonly discoverDestinations: (request: OperationRequest) => Promise<readonly Destination[]>;
   readonly getCaptureDraft: (request: OperationRequest) => Promise<CaptureDraft>;
   readonly getDiagnostics: () => Promise<DiagnosticsSnapshot>;
+  readonly getScreenCaptureReadiness: () => Promise<ScreenCaptureReadinessSnapshot>;
   readonly getShortcutStatus: () => Promise<ShortcutStatus>;
   readonly getSnapshot: () => Promise<WorkflowSnapshot>;
   readonly onWorkflowSnapshot: (listener: (snapshot: WorkflowSnapshot) => void) => Unsubscribe;
