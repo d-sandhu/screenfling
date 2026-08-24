@@ -243,6 +243,12 @@ Records the exact-artifact hardened default runner and 200-Copy/200-cancel soak,
 including timing, cleanup, process working-set evidence, and the physical/native
 rows those unattended runs cannot close.
 
+### [Phase 19 native capture results](phase-19-native-capture-results.md)
+
+Records the authorized physical-shortcut and mixed-scale observations, the
+failed shortcut-latency target, the macOS overlay-origin defect and minimal fix,
+and the native rows that remain open without overstating the partial evidence.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,
