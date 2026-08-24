@@ -217,6 +217,21 @@ Records the strict cross-platform status contract, main-owned bridge, compact
 recheck UI, headless verification, and native permission evidence that remains
 unclaimed.
 
+### [Phase 16 native acceptance gap audit](phase-16-native-acceptance-gap-audit.md)
+
+Maps the remaining Gate A and Gate B evidence gaps and selects a canonical
+operator protocol instead of a GUI-driving wizard or runner expansion.
+
+### [Phase 16 operator protocol research](phase-16-operator-protocol-research.md)
+
+Uses primary Electron, Apple, and WezTerm sources to define evidence classes,
+ordered operator stages, stop conditions, cleanup, and redaction requirements.
+
+### [Phase 16 native acceptance protocol results](phase-16-native-acceptance-protocol-results.md)
+
+Records the versioned protocol, its deliberately documentation-only scope, and
+the native rows that remain open until an authorized operator session.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,

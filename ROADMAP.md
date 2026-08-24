@@ -2,7 +2,7 @@
 
 Status: Active pre-alpha plan
 
-Last reviewed: 2026-08-21
+Last reviewed: 2026-08-24
 
 This roadmap turns ScreenFling's [product direction](docs/PRODUCT.md) into
 testable releases. It intentionally has no calendar promises. A milestone moves
@@ -256,6 +256,13 @@ native settings app, disabling Capture, or treating status as pixel evidence.
 See the [Phase 15 research](research/phase-15-product-readiness-research.md),
 [next-slice audit](research/phase-15-next-slice-audit.md), and
 [results](research/phase-15-screen-recording-readiness-results.md).
+
+Phase 16 freezes a versioned
+[macOS operator acceptance protocol](docs/acceptance/macos-operator-acceptance.md)
+for the remaining native rows. It separates packaged-runner, physical-input, and
+human-observed evidence; defines stop, cleanup, and redaction rules; and does not
+close any Gate A, Gate B, or milestone row by itself. A launch wizard or new GUI
+automation would weaken that evidence boundary, so this phase adds neither.
 
 ### Milestone 0 deliverables
 
@@ -527,18 +534,21 @@ land in this order:
 4. [x] Expose a strict, read-only Screen Recording readiness status with honest
    macOS recovery guidance and a manual recheck. Keep capture-time validation
    authoritative and native TCC evidence open.
-5. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
+5. [x] Freeze the versioned native operator protocol, evidence classes, stop
+   rules, cleanup rules, and redacted report schema without claiming that the
+   protocol itself closes a native row.
+6. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
    real-agent acceptance rows; record exact supported versions rather than broad
    claims. The repeatable one-display packaged runner and suspend/resume
    fail-closed implementation plus the macOS WezTerm selector owner/mode/type
    policy are in place; real sleep/wake, display hardware, stable-identity
    permission changes, ACL/config-semantic checks, and visible real-agent
    evidence remain.
-6. [ ] Complete the 200-workflow soak and packaged dogfooding evidence using the
+7. [ ] Complete the 200-workflow soak and packaged dogfooding evidence using the
    product-owned diagnostics snapshot. Native Reveal foreground behavior,
    native TCC acceptance, the complete-workflow soak, and comparative product
    value evidence remain open.
-7. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
+8. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 
 The first implementation branch should not contain remote support, browser
