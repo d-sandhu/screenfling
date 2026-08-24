@@ -84,7 +84,7 @@ const revealCountersSchema = z
 
 export const diagnosticsSnapshotSchema = z
   .strictObject({
-    version: z.literal(1),
+    version: z.literal(2),
     starts: z
       .strictObject({
         button: counterSchema,
@@ -96,9 +96,13 @@ export const diagnosticsSnapshotSchema = z
     timingsMs: z
       .strictObject({
         buttonToSelecting: timingSummarySchema,
+        mainHiddenToOverlayPrepared: timingSummarySchema,
+        mainHiddenToSnapshotReady: timingSummarySchema,
         selectionToEditing: timingSummarySchema,
         selectionToResult: timingSummarySchema,
         shortcutToSelecting: timingSummarySchema,
+        startToMainHidden: timingSummarySchema,
+        startupJoinedToSelecting: timingSummarySchema,
       })
       .readonly(),
   })

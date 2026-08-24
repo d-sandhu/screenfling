@@ -14,6 +14,14 @@ describe("workflow diagnostics", () => {
     let now = 10;
     const diagnostics = new WorkflowDiagnostics(() => now);
     diagnostics.begin(OPERATION_ID, "button");
+    now = 15;
+    diagnostics.mark(OPERATION_ID, "main-hidden");
+    now = 20;
+    diagnostics.mark(OPERATION_ID, "overlay-prepared");
+    now = 24;
+    diagnostics.mark(OPERATION_ID, "snapshot-ready");
+    now = 24.5;
+    diagnostics.mark(OPERATION_ID, "startup-joined");
     now = 25;
     diagnostics.mark(OPERATION_ID, "selecting");
     now = 30;
@@ -30,8 +38,30 @@ describe("workflow diagnostics", () => {
     expect(snapshot.reveal.stale).toBe(1);
     expect(snapshot.timingsMs).toMatchObject({
       buttonToSelecting: { count: 1, minimum: 15, median: 15, p95: 15, maximum: 15 },
+      mainHiddenToOverlayPrepared: {
+        count: 1,
+        minimum: 5,
+        median: 5,
+        p95: 5,
+        maximum: 5,
+      },
+      mainHiddenToSnapshotReady: {
+        count: 1,
+        minimum: 9,
+        median: 9,
+        p95: 9,
+        maximum: 9,
+      },
       selectionToEditing: { count: 1, minimum: 5, median: 5, p95: 5, maximum: 5 },
       selectionToResult: { count: 1, minimum: 20, median: 20, p95: 20, maximum: 20 },
+      startupJoinedToSelecting: {
+        count: 1,
+        minimum: 0.5,
+        median: 0.5,
+        p95: 0.5,
+        maximum: 0.5,
+      },
+      startToMainHidden: { count: 1, minimum: 5, median: 5, p95: 5, maximum: 5 },
     });
     expect(JSON.stringify(snapshot)).not.toMatch(
       /operationId|destination|note|image|clipboard(?:Bytes|Content|Text)/iu,

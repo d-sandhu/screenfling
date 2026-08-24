@@ -110,7 +110,7 @@ void test("completeOverlaySelection closes an overlay that does not close itself
 
 void test("readDiagnostics returns only the bridge-provided sanitized snapshot", async () => {
   const diagnostics = {
-    version: 1,
+    version: 2,
     starts: { button: 2, shortcut: 1 },
     delivery: {
       cancelled: 1,
@@ -131,9 +131,31 @@ void test("readDiagnostics returns only the bridge-provided sanitized snapshot",
     reveal: { failed: 0, revealed: 0, stale: 0, unavailable: 0, unsupported: 0 },
     timingsMs: {
       buttonToSelecting: { count: 0, maximum: null, median: null, minimum: null, p95: null },
+      mainHiddenToOverlayPrepared: {
+        count: 0,
+        maximum: null,
+        median: null,
+        minimum: null,
+        p95: null,
+      },
+      mainHiddenToSnapshotReady: {
+        count: 0,
+        maximum: null,
+        median: null,
+        minimum: null,
+        p95: null,
+      },
       selectionToEditing: { count: 0, maximum: null, median: null, minimum: null, p95: null },
       selectionToResult: { count: 0, maximum: null, median: null, minimum: null, p95: null },
       shortcutToSelecting: { count: 0, maximum: null, median: null, minimum: null, p95: null },
+      startupJoinedToSelecting: {
+        count: 0,
+        maximum: null,
+        median: null,
+        minimum: null,
+        p95: null,
+      },
+      startToMainHidden: { count: 0, maximum: null, median: null, minimum: null, p95: null },
     },
   };
   globalThis.window = {
