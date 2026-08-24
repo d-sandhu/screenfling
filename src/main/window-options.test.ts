@@ -35,6 +35,7 @@ describe("createCaptureWindowOptions", () => {
         rotation: 0,
       }),
     ).toMatchObject({
+      acceptFirstMouse: true,
       x: -1512,
       y: 0,
       width: 1512,
