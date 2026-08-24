@@ -41,6 +41,7 @@ describe("createCaptureWindowOptions", () => {
       width: 1512,
       height: 982,
       alwaysOnTop: true,
+      enableLargerThanScreen: true,
       frame: false,
       resizable: false,
       show: false,
