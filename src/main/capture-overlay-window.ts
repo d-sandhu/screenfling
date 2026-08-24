@@ -58,7 +58,8 @@ export class CaptureOverlayWindow implements CaptureOverlayPort {
       await window.loadURL(rendererDocumentUrl(this.#devRendererUrl, "capture"));
       if (this.#window !== window) throw new Error("Capture overlay closed while loading.");
     } catch (cause) {
-      this.close();
+      if (this.#window === window) this.close();
+      else if (!window.isDestroyed()) window.destroy();
       throw cause;
     }
   }

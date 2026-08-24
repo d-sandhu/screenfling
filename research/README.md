@@ -249,6 +249,18 @@ Records the authorized physical-shortcut and mixed-scale observations, the
 failed shortcut-latency target, the macOS overlay-origin defect and minimal fix,
 and the native rows that remain open without overstating the partial evidence.
 
+### [Phase 20 shortcut latency research](phase-20-shortcut-latency-research.md)
+
+Uses Context7 and Electron 43.4.1 primary documentation and source to profile
+the packaged shortcut path, rank bounded optimizations, and select concurrent
+hidden overlay loading plus fresh capture for physical validation.
+
+### [Phase 20 shortcut latency results](phase-20-shortcut-latency-results.md)
+
+Records the sanitized component timings, scripted controls, two physical
+20-sample distributions, narrow reference-host pass, rejected experiments, and
+the exact packaged artifact without retaining captured pixels or private data.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,

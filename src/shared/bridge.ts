@@ -10,7 +10,7 @@ import type { ScreenCaptureReadinessSnapshot } from "./screen-capture-readiness"
 import type { ShortcutConfiguration, ShortcutStatus, ShortcutUpdateResult } from "./shortcut";
 import type { RevealResult, WorkflowSnapshot } from "./workflow";
 
-export const BRIDGE_VERSION = 8;
+export const BRIDGE_VERSION = 9;
 
 export const IPC_CHANNELS = Object.freeze({
   cancelOperation: "workflow:cancel-operation",

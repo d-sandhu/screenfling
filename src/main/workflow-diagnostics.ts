@@ -14,15 +14,26 @@ import type {
 } from "../shared/diagnostics";
 import type { RevealResult } from "../shared/workflow";
 
-type DiagnosticPhase = "editing" | "selecting" | "selection-complete";
+type DiagnosticPhase =
+  | "editing"
+  | "main-hidden"
+  | "overlay-prepared"
+  | "selecting"
+  | "selection-complete"
+  | "snapshot-ready"
+  | "startup-joined";
 
 type ActiveMeasurement = {
   readonly operationId: string;
   readonly startedAt: number;
   readonly trigger: DiagnosticTrigger;
   editingRecorded: boolean;
+  mainHiddenAt: number | null;
+  overlayPreparedAt: number | null;
   selectingRecorded: boolean;
   selectionCompletedAt: number | null;
+  snapshotReadyAt: number | null;
+  startupJoinedAt: number | null;
 };
 
 type DeliveryCounters = {
@@ -44,9 +55,13 @@ type DeliveryCounters = {
 
 type TimingSamples = {
   buttonToSelecting: number[];
+  mainHiddenToOverlayPrepared: number[];
+  mainHiddenToSnapshotReady: number[];
   selectionToEditing: number[];
   selectionToResult: number[];
   shortcutToSelecting: number[];
+  startToMainHidden: number[];
+  startupJoinedToSelecting: number[];
 };
 
 function increment(value: number): number {
@@ -107,9 +122,13 @@ export class WorkflowDiagnostics {
   };
   readonly #samples: TimingSamples = {
     buttonToSelecting: [],
+    mainHiddenToOverlayPrepared: [],
+    mainHiddenToSnapshotReady: [],
     selectionToEditing: [],
     selectionToResult: [],
     shortcutToSelecting: [],
+    startToMainHidden: [],
+    startupJoinedToSelecting: [],
   };
   readonly #starts = { button: 0, shortcut: 0 };
   #active: ActiveMeasurement | null = null;
@@ -127,8 +146,12 @@ export class WorkflowDiagnostics {
       startedAt: this.#clock(),
       trigger,
       editingRecorded: false,
+      mainHiddenAt: null,
+      overlayPreparedAt: null,
       selectingRecorded: false,
       selectionCompletedAt: null,
+      snapshotReadyAt: null,
+      startupJoinedAt: null,
     };
   }
 
@@ -139,11 +162,45 @@ export class WorkflowDiagnostics {
 
     const now = this.#clock();
     switch (phase) {
+      case "main-hidden":
+        if (active.mainHiddenAt !== null || !Number.isFinite(now)) return;
+        active.mainHiddenAt = now;
+        this.#recordDuration("startToMainHidden", active.startedAt, now);
+        return;
+      case "overlay-prepared":
+        if (
+          active.overlayPreparedAt !== null ||
+          active.mainHiddenAt === null ||
+          !Number.isFinite(now)
+        ) {
+          return;
+        }
+        active.overlayPreparedAt = now;
+        this.#recordDuration("mainHiddenToOverlayPrepared", active.mainHiddenAt, now);
+        return;
+      case "snapshot-ready":
+        if (
+          active.snapshotReadyAt !== null ||
+          active.mainHiddenAt === null ||
+          !Number.isFinite(now)
+        ) {
+          return;
+        }
+        active.snapshotReadyAt = now;
+        this.#recordDuration("mainHiddenToSnapshotReady", active.mainHiddenAt, now);
+        return;
+      case "startup-joined":
+        if (active.startupJoinedAt !== null || !Number.isFinite(now)) return;
+        active.startupJoinedAt = now;
+        return;
       case "selecting": {
         if (active.selectingRecorded) return;
         active.selectingRecorded = true;
         const key = active.trigger === "button" ? "buttonToSelecting" : "shortcutToSelecting";
         this.#recordDuration(key, active.startedAt, now);
+        if (active.startupJoinedAt !== null) {
+          this.#recordDuration("startupJoinedToSelecting", active.startupJoinedAt, now);
+        }
         return;
       }
       case "selection-complete":
@@ -178,7 +235,7 @@ export class WorkflowDiagnostics {
 
   snapshot(): DiagnosticsSnapshot {
     return diagnosticsSnapshotSchema.parse({
-      version: 1,
+      version: 2,
       starts: { ...this.#starts },
       delivery: {
         ...this.#delivery,
@@ -187,9 +244,13 @@ export class WorkflowDiagnostics {
       reveal: { ...this.#reveal },
       timingsMs: {
         buttonToSelecting: summarize(this.#samples.buttonToSelecting),
+        mainHiddenToOverlayPrepared: summarize(this.#samples.mainHiddenToOverlayPrepared),
+        mainHiddenToSnapshotReady: summarize(this.#samples.mainHiddenToSnapshotReady),
         selectionToEditing: summarize(this.#samples.selectionToEditing),
         selectionToResult: summarize(this.#samples.selectionToResult),
         shortcutToSelecting: summarize(this.#samples.shortcutToSelecting),
+        startToMainHidden: summarize(this.#samples.startToMainHidden),
+        startupJoinedToSelecting: summarize(this.#samples.startupJoinedToSelecting),
       },
     });
   }

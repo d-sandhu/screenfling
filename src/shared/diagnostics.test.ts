@@ -15,7 +15,7 @@ const EMPTY_TIMING = {
 } as const;
 
 const EMPTY_SNAPSHOT = {
-  version: 1,
+  version: 2,
   starts: { button: 0, shortcut: 0 },
   delivery: {
     cancelled: 0,
@@ -36,9 +36,13 @@ const EMPTY_SNAPSHOT = {
   reveal: { failed: 0, revealed: 0, stale: 0, unavailable: 0, unsupported: 0 },
   timingsMs: {
     buttonToSelecting: EMPTY_TIMING,
+    mainHiddenToOverlayPrepared: EMPTY_TIMING,
+    mainHiddenToSnapshotReady: EMPTY_TIMING,
     selectionToEditing: EMPTY_TIMING,
     selectionToResult: EMPTY_TIMING,
     shortcutToSelecting: EMPTY_TIMING,
+    startToMainHidden: EMPTY_TIMING,
+    startupJoinedToSelecting: EMPTY_TIMING,
   },
 } as const;
 

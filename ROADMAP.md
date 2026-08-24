@@ -133,6 +133,18 @@ identity TCC denial, grant, revocation, Settings labeling, and restart behavior
 remain native human-operated rows. See the
 [Phase 10 results](research/phase-10-permission-recovery-results.md).
 
+Phase 20 closed the warm physical-shortcut latency row narrowly on the reference
+Mac. Sanitized profiling first measured the serial packaged path at 197.95 ms
+p95, then justified overlapping hidden overlay navigation with a fresh display
+capture. The production candidate measured 123.11 ms p95 in the main-owned
+scripted control. Its first 20-sample physical run missed at 153.20 ms p95; a
+second unchanged 20-sample run passed at 149.25 ms p95, with all 40 shortcuts
+reaching selecting, all 40 cancelling cleanly, and zero recorded failures. This
+is a reference-host pass with little headroom, not a cross-machine guarantee.
+Gate A remains open for the other hardware, lifecycle, permission, end-to-end
+clipboard, signing, and Windows rows. See the
+[Phase 20 results](research/phase-20-shortcut-latency-results.md).
+
 ### Gate B: exact-routing harness
 
 Build a separate developer harness around the destination contract in
