@@ -1,7 +1,7 @@
 # Phase 14 configurable global-shortcut research
 
-Research date: 2026-08-21  
-Target: ScreenFling, Electron `43.4.1`, Node.js `>=24 <25`  
+Research date: 2026-08-21
+Target: ScreenFling, Electron `43.4.1`, Node.js `>=24 <25`
 Scope: one configurable capture shortcut, its conflict contract, persistence,
 IPC boundary, and repository-testable design. No app launch, `npm start`,
 `acceptance:capture`, or GUI/native test was run.

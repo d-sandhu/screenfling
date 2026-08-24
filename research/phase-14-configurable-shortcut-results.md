@@ -1,7 +1,7 @@
 # Phase 14 configurable shortcut results
 
-Result date: 2026-08-21  
-Branch: `phase/14-configurable-shortcut`  
+Result date: 2026-08-21
+Branch: `phase/14-configurable-shortcut`
 Scope: repository implementation and headless evidence only
 
 ## Outcome
