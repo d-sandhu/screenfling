@@ -264,6 +264,18 @@ human-observed evidence; defines stop, cleanup, and redaction rules; and does no
 close any Gate A, Gate B, or milestone row by itself. A launch wizard or new GUI
 automation would weaken that evidence boundary, so this phase adds neither.
 
+Phase 18 repeated the hardened runner on the exact packaged arm64 artifact. The
+canonical default completed 20 measured Copy workflows and 200 cancellations;
+the separate soak completed 200 measured Copy workflows and 200 cancellations.
+The larger run measured 66.72 ms p95 from validated bridge selection to verified
+clipboard, retained one window after every cancel, recorded zero workflow
+failures, and cooled below its pre-cancel process working set. This replaces the
+provisional pre-hardening runner measurement for that narrow component. Physical
+shortcut and drag timing, Cancel clipboard preservation, listener and native
+allocation stability, hardware/lifecycle rows, permissions, Stage, and real-agent
+evidence remain open. See the
+[Phase 18 results](research/phase-18-packaged-capture-results.md).
+
 ### Milestone 0 deliverables
 
 - [x] minimal Electron/TypeScript project scaffold;

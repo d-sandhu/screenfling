@@ -232,6 +232,17 @@ ordered operator stages, stop conditions, cleanup, and redaction requirements.
 Records the versioned protocol, its deliberately documentation-only scope, and
 the native rows that remain open until an authorized operator session.
 
+### [Phase 17 WezTerm preflight](phase-17-wezterm-preflight.md)
+
+Records the pinned WezTerm installation and exact CLI/config/socket evidence
+boundary used to prepare the authorized native acceptance session.
+
+### [Phase 18 packaged capture results](phase-18-packaged-capture-results.md)
+
+Records the exact-artifact hardened default runner and 200-Copy/200-cancel soak,
+including timing, cleanup, process working-set evidence, and the physical/native
+rows those unattended runs cannot close.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,
