@@ -2,7 +2,7 @@
 
 Status: Accepted pre-alpha direction
 
-Last reviewed: 2026-08-21
+Last reviewed: 2026-08-24
 
 ## Decision
 
@@ -567,6 +567,12 @@ the overlay page to close after a successful bridge response and explicitly
 closes any page retained by a readiness or action failure. The packaged process
 remains the final cleanup boundary, so an unattended validation result cannot
 depend on an operator pressing Escape.
+
+The [macOS operator acceptance protocol](acceptance/macos-operator-acceptance.md)
+is canonical for evidence the repository cannot observe directly. It keeps unit,
+packaged-runner, physical-shortcut, physical-pointer, and human-observed claims
+separate; an operator intervention invalidates an unattended result rather than
+repairing it into a pass.
 
 ## Type-safety and lint policy
 

@@ -143,6 +143,14 @@ surfaces; any manual input invalidates the evidence. Overlay readiness and bridg
 actions are awaited and bounded to five seconds, after which the runner fails and
 terminates the packaged application rather than requiring operator cleanup.
 
+### Native operator acceptance
+
+Use the [macOS operator acceptance protocol](docs/acceptance/macos-operator-acceptance.md)
+for physical shortcut, pointer, permission, display, focus, lifecycle, and
+real-agent evidence. Keep that evidence separate from the packaged runner. If an
+operator must rescue or otherwise influence an unattended run, record it as
+`discarded`, not passed.
+
 ## Documentation
 
 Update the canonical document affected by a behavior change:

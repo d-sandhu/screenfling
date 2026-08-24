@@ -167,6 +167,7 @@ work rather than support claims.
 - [Architecture](docs/ARCHITECTURE.md) — system boundaries and technical decisions
 - [Domain context](CONTEXT.md) — canonical product and routing vocabulary
 - [Roadmap](ROADMAP.md) — ordered milestones and acceptance gates
+- [macOS operator acceptance](docs/acceptance/macos-operator-acceptance.md) — safe native Gate A and Gate B procedure
 - [Contributing](CONTRIBUTING.md) — how to participate while the project is pre-alpha
 - [Security policy](SECURITY.md) — reporting and security invariants
 - [Research index](research/README.md) — supporting evidence and feasibility reports
