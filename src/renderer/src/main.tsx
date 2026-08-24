@@ -23,21 +23,16 @@ import type { CaptureDrag, CapturePoint } from "./capture-drag";
 import type { UiCopy } from "./delivery-copy";
 import { MAX_NOTE_LENGTH, supportsStage } from "../../shared/domain";
 
-function useJpegUrl(bytes: Uint8Array | undefined): string | null {
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (bytes === undefined) {
-      setUrl(null);
-      return;
-    }
-
-    const nextUrl = URL.createObjectURL(new Blob([Uint8Array.from(bytes)], { type: "image/jpeg" }));
-    setUrl(nextUrl);
-    return () => URL.revokeObjectURL(nextUrl);
-  }, [bytes]);
-
-  return url;
+function useJpegImageRef(bytes: Uint8Array | undefined) {
+  return useCallback(
+    (image: HTMLImageElement | null) => {
+      if (image === null || bytes === undefined) return;
+      const url = URL.createObjectURL(new Blob([Uint8Array.from(bytes)], { type: "image/jpeg" }));
+      image.src = url;
+      return () => URL.revokeObjectURL(url);
+    },
+    [bytes],
+  );
 }
 
 function operationIdOf(snapshot: WorkflowSnapshot): string | null {
@@ -52,7 +47,7 @@ function CaptureOverlay() {
   const [message, setMessage] = useState<string | null>(null);
   const submitting = useRef(false);
   const readyOperation = useRef<string | null>(null);
-  const imageUrl = useJpegUrl(snapshot?.preview);
+  const imageRef = useJpegImageRef(snapshot?.preview);
 
   const failOverlay = () => {
     if (snapshot === null || submitting.current) return;
@@ -97,7 +92,7 @@ function CaptureOverlay() {
     return <RendererFailure message="The secure capture bridge is unavailable." />;
   }
 
-  if (snapshot === null || imageUrl === null) {
+  if (snapshot === null) {
     return (
       <main className="overlay overlay--loading" aria-live="polite">
         Preparing frozen screen…
@@ -174,7 +169,7 @@ function CaptureOverlay() {
             failOverlay();
           });
         }}
-        src={imageUrl}
+        ref={imageRef}
       />
       {selection === null ? <div className="overlay__shade" /> : null}
       {selection === null ? null : (
@@ -233,12 +228,11 @@ function phaseCopy(snapshot: WorkflowSnapshot): UiCopy {
 }
 
 function CapturePreview({ draft }: { readonly draft: CaptureDraft }) {
-  const imageUrl = useJpegUrl(draft.preview);
-  if (imageUrl === null) return <div className="preview preview--loading" />;
+  const imageRef = useJpegImageRef(draft.preview);
 
   return (
     <figure className="preview">
-      <img alt="Selected screen region" draggable={false} src={imageUrl} />
+      <img alt="Selected screen region" draggable={false} ref={imageRef} />
       <figcaption>
         {draft.pixels.width} × {draft.pixels.height} px
       </figcaption>
