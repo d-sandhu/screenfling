@@ -19,8 +19,11 @@ frozen region overlay, reviews the crop, and writes and verifies the image
 clipboard only after an explicit Copy or Stage action. Stage requires an explicit
 destination choice, accepts an optional one-line note, never sends Enter, and
 reports unverified dispatch honestly. The global shortcut plus display, suspend,
-and resume invalidation are wired through the main-owned controller. A packaged
-acceptance runner can repeat the production selection-completion, verified Copy,
+and resume invalidation are wired through the main-owned controller. The capture
+shortcut can be changed through a bounded cross-platform picker. The main process
+validates, registers, and atomically persists the choice; an unavailable choice
+or failed save retains the previous working shortcut. A packaged acceptance
+runner can repeat the production selection-completion, verified Copy,
 cancellation, window-cleanup, and working-set checks without logging captured
 pixels or clipboard content.
 

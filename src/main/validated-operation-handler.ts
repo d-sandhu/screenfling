@@ -1,4 +1,7 @@
 import { operationRequestSchema } from "../shared/bridge";
+import { shortcutConfigurationSchema } from "../shared/shortcut";
+
+import type { ShortcutConfiguration } from "../shared/shortcut";
 
 type SerializedIpcRecord = {
   readonly [key: string]: SerializedIpcValue;
@@ -42,5 +45,21 @@ export function createAuthorizedNoPayloadHandler<Event, Result>(
     authorize(event);
     if (payloads.length !== 0) throw new Error("Invalid empty workflow request.");
     return action();
+  };
+}
+
+type ShortcutAction<Result> = (configuration: ShortcutConfiguration) => Result;
+
+export function createValidatedShortcutHandler<Event, Result>(
+  authorize: OperationAuthorizer<Event>,
+  action: ShortcutAction<Result>,
+): ValidatedOperationHandler<Event, Result> {
+  return (event, ...payloads) => {
+    authorize(event);
+    if (payloads.length !== 1) throw new Error("Invalid shortcut request.");
+
+    const request = shortcutConfigurationSchema.safeParse(payloads[0]);
+    if (!request.success) throw new Error("Invalid shortcut request.");
+    return action(request.data);
   };
 }

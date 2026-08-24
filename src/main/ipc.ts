@@ -10,17 +10,17 @@ import { assertTrustedIpcSender } from "./ipc-sender";
 import {
   createAuthorizedNoPayloadHandler,
   createValidatedOperationHandler,
+  createValidatedShortcutHandler,
 } from "./validated-operation-handler";
 
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import type { ShortcutStatus } from "../shared/bridge";
 import type { DiagnosticsSnapshot } from "../shared/diagnostics";
 import type { CaptureController } from "./capture-controller";
+import type { ShortcutOperations } from "./shortcut-manager";
 import type { SerializedIpcValue } from "./validated-operation-handler";
 
 type WebContentsProvider = () => WebContents | null;
 type DiagnosticsProvider = () => DiagnosticsSnapshot;
-type ShortcutStatusProvider = () => ShortcutStatus;
 
 export function registerWorkflowIpc(
   mainWebContents: WebContentsProvider,
@@ -29,7 +29,7 @@ export function registerWorkflowIpc(
   overlayRendererUrl: string,
   controller: CaptureController,
   diagnostics: DiagnosticsProvider,
-  shortcutStatus: ShortcutStatusProvider,
+  shortcut: ShortcutOperations,
 ): void {
   const authorizeMain = (event: IpcMainInvokeEvent) => {
     assertTrustedIpcSender(event, mainWebContents(), mainRendererUrl);
@@ -48,7 +48,15 @@ export function registerWorkflowIpc(
   );
   ipcMain.handle(
     IPC_CHANNELS.getShortcutStatus,
-    createAuthorizedNoPayloadHandler(authorizeMain, shortcutStatus),
+    createAuthorizedNoPayloadHandler(authorizeMain, () => shortcut.getStatus()),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.resetShortcut,
+    createAuthorizedNoPayloadHandler(authorizeMain, () => shortcut.reset()),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.setShortcut,
+    createValidatedShortcutHandler(authorizeMain, (configuration) => shortcut.set(configuration)),
   );
   ipcMain.handle(
     IPC_CHANNELS.startCapture,

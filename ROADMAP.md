@@ -235,6 +235,19 @@ See the
 [Phase 13 audit](research/phase-13-next-slice-audit.md) and
 [Phase 13 results](research/phase-13-sanitized-diagnostics-results.md).
 
+Phase 14 replaces the fixed capture accelerator with one bounded, main-owned
+configuration transaction. The renderer chooses only from portable modifier and
+key options; strict IPC carries the structured value, while Electron registration
+and a versioned `userData` preference remain in main. A candidate is registered
+and verified before persistence, the old binding remains active until commit,
+and registration or write failure retains it. Repository tests cover startup,
+rollback, concurrency, cleanup, strict schemas, the production filesystem
+adapter, and accessible static markup. This closes the repository seam only:
+packaged shortcut delivery, real conflict, restart persistence, non-QWERTY, and
+Windows observations remain native acceptance. See the
+[Phase 14 research](research/phase-14-shortcut-configuration-research.md) and
+[Phase 14 results](research/phase-14-configurable-shortcut-results.md).
+
 ### Milestone 0 deliverables
 
 - [x] minimal Electron/TypeScript project scaffold;
@@ -256,8 +269,9 @@ See the
   do not claim or release the alpha until the remaining Gate A and Gate B
   acceptance rows pass.
 
-Do not build settings, history, remote transfer, browser integration, native
-helpers, or a public plugin system during these spikes.
+Do not build a general settings framework, history, remote transfer, browser
+integration, native helpers, or a public plugin system during these spikes. The
+single versioned shortcut preference above is the bounded Milestone 1 exception.
 
 ## Milestone 1 — useful macOS alpha
 
@@ -323,7 +337,7 @@ Scope:
 
 - signed and notarized installer;
 - first-run onboarding and permission diagnostics;
-- shortcut-conflict handling;
+- packaged shortcut-conflict acceptance and recovery;
 - stable settings and adapter configuration;
 - accessibility, keyboard navigation, reduced motion, and screen-reader checks;
 - a second exact destination surface chosen from demonstrated demand;
@@ -497,18 +511,22 @@ land in this order:
 2. [x] Add repository-testable recovery and measurement seams: permission
    guidance, stale/unsupported/manual-paste outcomes, bounded content-free local
    diagnostics, and a strict read-only acceptance-report snapshot.
-3. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
+3. [x] Replace the fixed capture accelerator with a bounded cross-platform
+   picker, main-owned candidate-first registration, atomic persistence, strict
+   set/reset IPC, and failure rollback. This does not claim native shortcut
+   delivery or conflict acceptance.
+4. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
    real-agent acceptance rows; record exact supported versions rather than broad
    claims. The repeatable one-display packaged runner and suspend/resume
    fail-closed implementation plus the macOS WezTerm selector owner/mode/type
    policy are in place; real sleep/wake, display hardware, stable-identity
    permission changes, ACL/config-semantic checks, and visible real-agent
    evidence remain.
-4. [ ] Complete the 200-workflow soak and packaged dogfooding evidence using the
+5. [ ] Complete the 200-workflow soak and packaged dogfooding evidence using the
    product-owned diagnostics snapshot. Native Reveal foreground behavior,
    native TCC acceptance, the complete-workflow soak, and comparative product
    value evidence remain open.
-5. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
+6. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
    criterion has direct evidence.
 
 The first implementation branch should not contain remote support, browser

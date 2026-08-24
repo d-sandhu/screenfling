@@ -138,6 +138,136 @@ button {
   color: var(--warning);
 }
 
+.shortcut-settings {
+  position: relative;
+}
+
+.shortcut-settings > summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  list-style: none;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.shortcut-settings > summary::-webkit-details-marker {
+  display: none;
+}
+
+.shortcut-settings > summary:hover,
+.shortcut-settings[open] > summary {
+  background: rgb(255 255 255 / 5%);
+}
+
+.shortcut-settings > summary:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.shortcut-settings__edit {
+  margin-left: 8px;
+  color: #727c7f;
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.shortcut-settings__panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(360px, calc(100vw - 48px));
+  padding: 18px;
+  border: 1px solid #353c3f;
+  border-radius: 12px;
+  background: #151819;
+  box-shadow:
+    0 22px 54px rgb(0 0 0 / 46%),
+    0 1px 0 rgb(255 255 255 / 4%) inset;
+}
+
+.shortcut-settings__panel fieldset {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 14px;
+}
+
+.shortcut-settings__panel legend {
+  padding: 0;
+  color: #eef2f3;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.shortcut-settings__panel p {
+  margin: 0;
+  color: var(--mist);
+  font-size: 11px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.shortcut-settings__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px;
+  gap: 10px;
+}
+
+.shortcut-settings__fields label {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  color: #c9d0d2;
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.shortcut-settings__fields select {
+  width: 100%;
+  height: 40px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: none;
+  color: #eff3f4;
+  background: #101314;
+  font: inherit;
+  font-size: 11px;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.shortcut-settings__fields select:focus {
+  border-color: rgb(99 230 226 / 64%);
+  box-shadow: 0 0 0 3px rgb(99 230 226 / 8%);
+}
+
+.shortcut-settings__feedback {
+  color: var(--warning);
+}
+
+.shortcut-settings__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut-settings__actions .button {
+  min-height: 40px;
+}
+
+.shortcut-settings__actions .text-button {
+  min-height: 40px;
+}
+
 .workspace {
   display: grid;
   align-content: center;

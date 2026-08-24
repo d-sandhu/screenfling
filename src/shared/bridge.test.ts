@@ -4,9 +4,9 @@ import {
   BRIDGE_VERSION,
   IPC_CHANNELS,
   operationRequestSchema,
-  shortcutStatusSchema,
   stageCaptureRequestSchema,
 } from "./bridge";
+import { shortcutStatusSchema } from "./shortcut";
 
 const OPERATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -27,7 +27,7 @@ describe("workflow IPC request contract", () => {
 
 describe("Reveal IPC contract", () => {
   it("uses the strict operation request without renderer-selected routing data", () => {
-    expect(BRIDGE_VERSION).toBe(6);
+    expect(BRIDGE_VERSION).toBe(7);
     expect(IPC_CHANNELS.revealDestination).toBe("workflow:reveal-destination");
     expect(
       operationRequestSchema.safeParse({
@@ -76,13 +76,31 @@ describe("Stage IPC request contract", () => {
 });
 
 describe("shortcut status contract", () => {
-  it("reports an explicit accelerator conflict without extra fields", () => {
+  it("exposes strict read, set, and reset channels", () => {
+    expect(IPC_CHANNELS.getShortcutStatus).toBe("shortcut:get-status");
+    expect(IPC_CHANNELS.setShortcut).toBe("shortcut:set");
+    expect(IPC_CHANNELS.resetShortcut).toBe("shortcut:reset");
     expect(
-      shortcutStatusSchema.parse({ accelerator: "CommandOrControl+Shift+9", registered: false }),
-    ).toEqual({ accelerator: "CommandOrControl+Shift+9", registered: false });
+      shortcutStatusSchema.parse({
+        accelerator: "CommandOrControl+Shift+9",
+        cleanupRequired: false,
+        configuration: { key: "9", modifiers: "CommandOrControl+Shift" },
+        configurationState: "saved",
+        registered: false,
+      }),
+    ).toEqual({
+      accelerator: "CommandOrControl+Shift+9",
+      cleanupRequired: false,
+      configuration: { key: "9", modifiers: "CommandOrControl+Shift" },
+      configurationState: "saved",
+      registered: false,
+    });
     expect(
       shortcutStatusSchema.safeParse({
         accelerator: "CommandOrControl+Shift+9",
+        cleanupRequired: false,
+        configuration: { key: "9", modifiers: "CommandOrControl+Shift" },
+        configurationState: "saved",
         registered: true,
         fallback: "active-window",
       }).success,

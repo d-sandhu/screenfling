@@ -5,7 +5,6 @@ import {
   CAPTURE_OVERLAY_CHANNELS,
   IPC_CHANNELS,
   operationRequestSchema,
-  shortcutStatusSchema,
   stageCaptureRequestSchema,
 } from "../shared/bridge";
 import {
@@ -17,15 +16,24 @@ import { LatestValueRelay } from "../shared/latest-value-relay";
 import { destinationListSchema } from "../shared/domain";
 import { diagnosticsSnapshotSchema } from "../shared/diagnostics";
 import { revealResultSchema, workflowSnapshotSchema } from "../shared/workflow";
+import {
+  shortcutConfigurationSchema,
+  shortcutStatusSchema,
+  shortcutUpdateResultSchema,
+} from "../shared/shortcut";
 
 import type {
   CaptureOverlayBridge,
   OperationRequest,
   ScreenFlingBridge,
   StageCaptureRequest,
-  ShortcutStatus,
   Unsubscribe,
 } from "../shared/bridge";
+import type {
+  ShortcutConfiguration,
+  ShortcutStatus,
+  ShortcutUpdateResult,
+} from "../shared/shortcut";
 import type {
   CaptureDraft,
   CaptureOverlaySnapshot,
@@ -72,6 +80,17 @@ async function getShortcutStatus(): Promise<ShortcutStatus> {
   return shortcutStatusSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.getShortcutStatus));
 }
 
+async function resetShortcut(): Promise<ShortcutUpdateResult> {
+  return shortcutUpdateResultSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.resetShortcut));
+}
+
+async function setShortcut(configuration: ShortcutConfiguration): Promise<ShortcutUpdateResult> {
+  const validatedConfiguration = shortcutConfigurationSchema.parse(configuration);
+  return shortcutUpdateResultSchema.parse(
+    await ipcRenderer.invoke(IPC_CHANNELS.setShortcut, validatedConfiguration),
+  );
+}
+
 async function discoverDestinations(request: OperationRequest): Promise<readonly Destination[]> {
   const validatedRequest = operationRequestSchema.parse(request);
   return destinationListSchema.parse(
@@ -113,6 +132,8 @@ const mainBridge: ScreenFlingBridge = Object.freeze({
   getSnapshot: () => invokeNoPayloadWorkflow(IPC_CHANNELS.getSnapshot),
   onWorkflowSnapshot,
   revealDestination,
+  resetShortcut,
+  setShortcut,
   startCapture: () => invokeNoPayloadWorkflow(IPC_CHANNELS.startCapture),
   stageCapture,
 });

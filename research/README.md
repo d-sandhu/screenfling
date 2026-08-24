@@ -181,6 +181,24 @@ Records the strict content-free schema, monotonic bounded aggregation,
 controller lifecycle wiring, read-only bridge, acceptance-report integration,
 headless verification, and native evidence that remains open.
 
+### [Phase 14 next-slice audit](phase-14-next-slice-audit.md)
+
+Compares the remaining repository-testable gaps after Phase 13 and selects one
+complete configurable-shortcut seam while keeping native shortcut delivery and
+conflict evidence explicitly open.
+
+### [Phase 14 shortcut configuration research](phase-14-shortcut-configuration-research.md)
+
+Uses Context7 and pinned Electron 43/Node 24 primary documentation to define the
+main-process registration lifecycle, persistence transaction, strict IPC
+boundary, cross-platform caveats, and safe failure behavior.
+
+### [Phase 14 configurable shortcut results](phase-14-configurable-shortcut-results.md)
+
+Records the bounded portable picker, candidate-first registration and rollback,
+versioned private preference, bridge v7, headless verification, and native rows
+that remain unclaimed.
+
 ### [Phase 9 trusted selector results](phase-9-trusted-selector-results.md)
 
 Records the macOS executable/config/socket ownership, mode, type, ancestor,
