@@ -24,6 +24,7 @@ export function createCaptureWindowOptions(
   display: CaptureDisplay,
 ): BrowserWindowConstructorOptions {
   return {
+    acceptFirstMouse: true,
     alwaysOnTop: true,
     backgroundColor: "#000000",
     frame: false,
