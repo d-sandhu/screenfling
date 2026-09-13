@@ -54,6 +54,9 @@ describe("macOS selector ACL boundary", () => {
     { paths: [] },
     { paths: ["relative"] },
     { paths: ["/line\nbreak"] },
+    { paths: ["/delete\u007fcontrol"] },
+    { paths: ["/unicode\u0085control"] },
+    { paths: ["/".repeat(4097)] },
     { paths: Array.from({ length: 257 }, () => PATH) },
   ])("rejects invalid or oversized path input before spawning (%#)", async ({ paths }) => {
     const run = vi.fn(async () => success(RESPONSE));
