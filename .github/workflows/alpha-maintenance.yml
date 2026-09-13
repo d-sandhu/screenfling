@@ -27,7 +27,7 @@ jobs:
           node-version-file: .node-version
       - run: npm install --global npm@11.19.0
       - run: npm ci
-      - name: Apply exact documentation and recovery corrections
+      - name: Apply scoped acceptance-boundary corrections
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -38,9 +38,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- src tools/acceptance
-          git commit -m 'fix: clarify uncertain outcomes and verify packaged ACL boundary'
-          git add -- README.md ROADMAP.md CONTRIBUTING.md docs
-          git commit -m 'docs: reconcile alpha gates with current implementation and evidence'
+          git commit -m 'test: validate native runner boundaries and explicit test promises'
           test -z "$(git status --porcelain)"
           actual=$(git ls-remote origin refs/heads/alpha/macos-hardening-2026-09-13 | cut -f1)
           test "$actual" = "$EXPECTED_HEAD"
