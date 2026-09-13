@@ -2,7 +2,7 @@
 
 Status: Active pre-alpha plan
 
-Last reviewed: 2026-08-24
+Last reviewed: 2026-09-13
 
 This roadmap turns ScreenFling's [product direction](docs/PRODUCT.md) into
 testable releases. It intentionally has no calendar promises. A milestone moves
@@ -45,6 +45,11 @@ If the alpha is not meaningfully better than an operating-system screenshot plus
 manual paste, improve or reconsider the handoff before adding more destinations
 or platforms.
 
+For Milestone 1, Gate A and Gate B apply to the macOS tuple proposed for release.
+Windows native rows remain required for the later Windows milestone; they do not
+block the macOS alpha. Public signing/notarization remains distinct from a local
+ad-hoc dogfood package.
+
 ## Milestone 0 — feasibility gates
 
 Status: **In progress**
@@ -73,7 +78,8 @@ Gate A passes when:
 - warm shortcut to interactive overlay is p95 <= 150 ms on the reference host,
   or profiling identifies a credible path to that target;
 - selection release to clipboard-ready is p95 <= 150 ms;
-- cancel and failure leave the previous clipboard unchanged;
+- cancellation and failures before clipboard writes leave the previous clipboard
+  unchanged; failed write verification must not claim the old clipboard survived;
 - 200 capture/cancel cycles show no monotonic image, window, or listener growth;
 - all checks run in a packaged application with a stable identity.
 
@@ -81,7 +87,7 @@ Compare Electron's full-resolution source-thumbnail path with a first-frame
 display-media path only if necessary. Native ScreenCaptureKit is considered only
 if both practical Electron paths fail the agreed quality or latency target.
 
-**Current evidence:** the packaged macOS prototype passed the single-display
+**Historical prototype evidence:** the packaged macOS prototype passed the single-display
 Retina path on Electron 43.4.1: 20/20 non-empty captures, p95 overlay readiness
 124.73 ms, p95 crop 0.0571 ms, p95 clipboard write 23.63 ms, and a 200-cycle
 cancel run with unchanged clipboard and no monotonic RSS growth. The permanent
@@ -105,8 +111,8 @@ Phase 8 added fail-closed suspend/resume handling and a repeatable packaged
 production runner. On the reference arm64 Mac, a pre-hardening 20-workflow run
 without operator selection measured p95 18.24 ms from validated selection
 completion to review and p95 106.51 ms through verified image-clipboard
-completion. Those timings are provisional until repeated with the hardened
-runner. A separate 200-cancel run returned `cancelled` every cycle, retained
+completion. Those timings are historical and superseded by the hardened Phase 18
+runner results below; they are not current production acceptance. A separate 200-cancel run returned `cancelled` every cycle, retained
 exactly one window after each cancel, and cooled from 638,112 KiB at its first
 sample to 546,288 KiB after two minutes. The runner now compares packaged
 `Info.plist` identity with expected ScreenFling metadata, verifies `app.asar`, the
@@ -221,8 +227,8 @@ cannot enable Stage; empty discovery keeps Copy only visible. Unsupported,
 stale, failed, and uncertain post-copy results give explicit manual-paste
 guidance, while clipboard verification failure does not claim that fallback.
 Adapter dispatch remains single-shot and is not invoked for an unsupported
-request. Exact user-triggered Reveal remains a separate adapter-specific slice
-and native acceptance row. See the
+request. Exact user-triggered Reveal was implemented in Phase 12 below; its native
+activation/visibility acceptance remains separate and open. See the
 [Phase 11 results](research/phase-11-routing-recovery-results.md).
 
 Phase 12 added exact, user-triggered Reveal as a transaction separate from Stage.
@@ -552,40 +558,49 @@ These items are not on the committed roadmap:
 
 ## Immediate implementation sequence
 
-The capture-to-Copy path, production WezTerm adapter primitive, and joined
-developer workflow are now in the main implementation. This does not close Gate
-A, Gate B, or the macOS alpha milestone. The next work should be issue-sized and
-land in this order:
+The repository implements capture/review, explicit Copy/Stage, separate exact
+Reveal, permission/readiness guidance, configurable shortcuts, sanitized local
+diagnostics, bounded startup, single-instance behavior, and presentation-only
+renderer recovery. Built-renderer fixtures cover the visible workflow. The macOS
+selector gate now checks extended ACLs as well as owner/mode/type. Tests and a
+packaged idle-lifecycle runner do not close the native rows below.
 
-1. [x] Join capture, optional note, exact destination choice, Copy, Stage, and
-   explicit exact-route Reveal through the main-owned workflow without Enter,
-   automatic focus changes, retry, or fallback routing.
-2. [x] Add repository-testable recovery and measurement seams: permission
-   guidance, stale/unsupported/manual-paste outcomes, bounded content-free local
-   diagnostics, and a strict read-only acceptance-report snapshot.
-3. [x] Replace the fixed capture accelerator with a bounded cross-platform
-   picker, main-owned candidate-first registration, atomic persistence, strict
-   set/reset IPC, and failure rollback. This does not claim native shortcut
-   delivery or conflict acceptance.
-4. [x] Expose a strict, read-only Screen Recording readiness status with honest
-   macOS recovery guidance and a manual recheck. Keep capture-time validation
-   authoritative and native TCC evidence open.
-5. [x] Freeze the versioned native operator protocol, evidence classes, stop
-   rules, cleanup rules, and redacted report schema without claiming that the
-   protocol itself closes a native row.
-6. [ ] Run the missing Gate A hardware/lifecycle matrix and Gate B visible
-   real-agent acceptance rows; record exact supported versions rather than broad
-   claims. The repeatable one-display packaged runner and suspend/resume
-   fail-closed implementation plus the macOS WezTerm selector owner/mode/type
-   policy are in place; real sleep/wake, display hardware, stable-identity
-   permission changes, ACL/config-semantic checks, and visible real-agent
-   evidence remain.
-7. [ ] Complete the 200-workflow soak and packaged dogfooding evidence using the
-   product-owned diagnostics snapshot. Native Reveal foreground behavior,
-   native TCC acceptance, the complete-workflow soak, and comparative product
-   value evidence remain open.
-8. [ ] Release the macOS alpha only after every Milestone 0 and Milestone 1 exit
-   criterion has direct evidence.
+The Phase 18 **200-complete/200-cancel packaged soak already ran**. Do not reopen
+that completed component measurement as if it never happened. Its working-set
+and window evidence does not prove listener or native image-allocation stability,
+and does not transfer automatically to a changed release candidate. Phase 20's
+149.25 ms reference-host physical shortcut pass is also historical evidence for
+its exact candidate, not a promise for every host or this new package.
 
-The first implementation branch should not contain remote support, browser
-integration, Linux work, a native helper, history, or automatic submission.
+Remaining macOS alpha gates, in execution order:
+
+1. Run the static checks, browser fixtures, dependency audit, package build, and
+   packaged lifecycle smoke on the exact candidate. Record actual CI results.
+2. Run the operator protocol's Screen Recording grant/denial/revocation/restart
+   rows on a stable package identity. Record managed/unknown states as unavailable
+   when the host cannot produce them. Developer signing credentials and public
+   notarization are not supplied by an ad-hoc CI signature.
+3. Finish physical crop-pixel, mixed-scale, negative-origin, rotation when
+   available, reconnect, sleep/wake, cancel-clipboard, shortcut conflict and
+   persistence, and renderer-recovery observations. Repeat candidate performance
+   and resource checks as affected by changes. Retain unavailable hardware rows.
+4. Resolve the physical selection-release-to-clipboard measurement boundary:
+   review and explicit Copy are intentional user steps. Report release-to-review,
+   human review dwell, and Copy-to-verified-clipboard separately. Do not automate
+   Copy or relabel scripted component timing as the physical <=150 ms row. That
+   row remains open until its reviewed definition and direct evidence agree.
+5. Run exact WezTerm selector/config, final endpoint replacement, no-focus,
+   literal/control-input, stale/fallback, and separate Reveal visibility rows.
+   The CLI has no atomic compare-and-send primitive; native race conformance is
+   a release blocker, not something the pre-spawn guard alone proves.
+6. Observe at least 30 alternating trials per proposed agent/version/binding
+   tuple, with zero wrong-target writes and submissions. Unsupported/remapped
+   bindings must remain safe. No agent support is claimed before this evidence.
+7. Compare at least five complete workflows with five manual screenshot/paste
+   workflows, then record repeated dogfooding and outstanding listener/native
+   allocation evidence. Release only after all applicable M0/M1 criteria pass.
+
+Use the [macOS operator protocol](docs/acceptance/macos-operator-acceptance.md)
+as the procedure, not a separate new plan. Research remains supporting historical
+evidence. No Linux, remote/browser integration, history, automatic Send, or broad
+settings/native rewrite belongs in this alpha.

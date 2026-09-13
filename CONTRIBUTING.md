@@ -113,6 +113,38 @@ current host. Local macOS directory packages use an explicit ad-hoc signature so
 they can be launched without a Developer ID; release artifacts still require the
 signed and notarized path tracked in Milestone 2.
 
+### Browser fixtures and packaged lifecycle smoke
+
+On macOS, install Apple's Command Line Tools before building. `build:native`
+compiles the small read-only ACL inspector; `start`, `build`, and `test` invoke it.
+The helper is packaged on macOS only. It does not replace Electron capture.
+
+After `npm run build`, run the built production renderer against synthetic bridges:
+
+```bash
+npx playwright install chromium
+node --test tools/acceptance/ui.test.cjs
+npm audit --audit-level=high
+```
+
+These tests cover selection, review, explicit target choice, Copy/Stage, separate
+Reveal, stale results, and recovery. They do not touch the OS clipboard or prove
+native capture, focus, permissions, or agent attachment.
+
+After `npm run package:mac`, quit every other ScreenFling build and run:
+
+```bash
+node tools/acceptance/lifecycle.cjs
+```
+
+This launches the real package, checks its secure bridge and bundled ACL helper,
+rejects a duplicate launch, replaces one crashed idle renderer, and reopens a
+closed main window. It uses only disposable ACL fixtures; it does not capture
+pixels or change Screen Recording. The diagnostics must remain unchanged.
+Native tests and package smoke run in CI; only the disposable ACL-read-failure
+fixture uses the hosted runner's non-interactive ownership-change capability.
+Never perform that fixture on a user's real selectors.
+
 ### Packaged capture acceptance
 
 Native capture evidence is intentionally separate from `check:all` because it
