@@ -10,6 +10,8 @@ import type { DestinationRegistry } from "./destination-registry";
 import type { WorkflowDiagnostics } from "./workflow-diagnostics";
 import type { WorkflowStore } from "./workflow-store";
 
+export const CAPTURE_STARTUP_TIMEOUT_MS = 30_000;
+
 export type CaptureOverlayPort = {
   readonly close: () => void;
   readonly prepare: (display: CaptureDisplay) => Promise<void>;
@@ -24,6 +26,12 @@ export type MainSurfacePort = {
 };
 
 type OperationIdFactory = () => string;
+
+type CaptureStartup = {
+  readonly operationId: string;
+  readonly timeout: ReturnType<typeof setTimeout>;
+  readonly resolve: (snapshot: WorkflowSnapshot) => void;
+};
 
 function isActiveOperation(snapshot: WorkflowSnapshot, operationId: string): boolean {
   return (
@@ -61,6 +69,7 @@ export class CaptureController {
   readonly #overlay: CaptureOverlayPort;
   readonly #workflow: WorkflowStore;
   #revealInFlight: string | null = null;
+  #startup: CaptureStartup | null = null;
 
   constructor(
     workflow: WorkflowStore,
@@ -91,6 +100,17 @@ export class CaptureController {
     const snapshot = this.#workflow.start(operationId);
     this.#diagnostics.begin(operationId, trigger);
     this.#publish(snapshot);
+    const interrupted = new Promise<WorkflowSnapshot>((resolve) => {
+      const timeout = setTimeout(() => {
+        this.#fail(operationId, "capture-failed");
+      }, CAPTURE_STARTUP_TIMEOUT_MS);
+      timeout.unref();
+      this.#startup = { operationId, timeout, resolve };
+    });
+    return Promise.race([this.#prepareCapture(operationId), interrupted]);
+  }
+
+  async #prepareCapture(operationId: string): Promise<WorkflowSnapshot> {
     try {
       await this.#mainSurface.hideForCapture();
       if (!isActiveOperation(this.#workflow.snapshot, operationId)) {
@@ -112,7 +132,7 @@ export class CaptureController {
       const snapshot = capturePreparation.value;
       if (!isActiveOperation(this.#workflow.snapshot, operationId)) {
         if (this.#capture.activeOperationId === operationId) this.#capture.release(operationId);
-        this.#overlay.close();
+        // Cancellation already closed this operation's overlay. A newer one may now exist.
         return this.#workflow.snapshot;
       }
       this.#diagnostics.mark(operationId, "startup-joined");
@@ -310,6 +330,14 @@ export class CaptureController {
   }
 
   #publish(snapshot: WorkflowSnapshot): WorkflowSnapshot {
+    if (snapshot.phase === "selecting" || snapshot.phase === "result") {
+      const startup = this.#startup;
+      if (startup?.operationId === snapshot.operationId) {
+        this.#startup = null;
+        clearTimeout(startup.timeout);
+        startup.resolve(snapshot);
+      }
+    }
     if (snapshot.phase === "result") {
       this.#diagnostics.finish(snapshot.operationId, diagnosticOutcomeFor(snapshot.result));
     }
