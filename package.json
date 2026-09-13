@@ -21,9 +21,10 @@
     "npm": "11.19.0"
   },
   "scripts": {
-    "start": "npm run electron:install && electron-vite dev",
+    "start": "npm run build:native && npm run electron:install && electron-vite dev",
     "electron:install": "install-electron --no",
-    "build": "electron-vite build",
+    "build:native": "node tools/build-native.cjs",
+    "build": "npm run build:native && electron-vite build",
     "package": "node tools/package.cjs",
     "package:mac": "npm run build && electron-builder --dir --mac --config.mac.identity=- --config.mac.hardenedRuntime=false",
     "package:win": "npm run build && electron-builder --dir --win --x64",
@@ -34,6 +35,7 @@
     "format": "prettier --write \".github/**/*.{yml,yaml}\" \"src/**/*.{ts,tsx,css,html}\" \"tools/**/*.cjs\" \"*.{json,ts,mts}\"",
     "format:check": "prettier --check \".github/**/*.{yml,yaml}\" \"src/**/*.{ts,tsx,css,html}\" \"tools/**/*.cjs\" \"*.{json,ts,mts}\"",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build:native",
     "test": "vitest run && node --test tools/acceptance/capture.test.cjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "check:all": "npm run check && npm run package"
@@ -47,6 +49,7 @@
     },
     "files": [
       "out/**/*",
+      "!out/native/**/*",
       "package.json"
     ],
     "afterPack": "tools/after-pack.cjs",
@@ -58,6 +61,12 @@
         "NSCameraUsageDescription": null,
         "NSMicrophoneUsageDescription": null
       },
+      "extraResources": [
+        {
+          "from": "out/native/screenfling-selector-acl",
+          "to": "screenfling-selector-acl"
+        }
+      ],
       "target": [
         "zip"
       ]

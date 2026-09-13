@@ -2,6 +2,8 @@ import { constants } from "node:fs";
 import { access, lstat, realpath, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { areMacSelectorAclsTrusted } from "./macos-selector-acl";
+
 export type WezTermSelectorPaths = {
   readonly configFile: string;
   readonly executable: string;
@@ -27,7 +29,11 @@ function currentUserId(): bigint {
   return BigInt(getuid());
 }
 
-async function assertTrustedAncestorDirectories(path: string, currentUid: bigint): Promise<void> {
+async function assertTrustedAncestorDirectories(
+  path: string,
+  currentUid: bigint,
+  inspected: Set<string>,
+): Promise<void> {
   let ancestor = dirname(path);
   for (;;) {
     const metadata = await stat(ancestor, { bigint: true });
@@ -38,13 +44,18 @@ async function assertTrustedAncestorDirectories(path: string, currentUid: bigint
     ) {
       throw new UntrustedWezTermSelectorError();
     }
+    inspected.add(ancestor);
     const parent = dirname(ancestor);
     if (parent === ancestor) return;
     ancestor = parent;
   }
 }
 
-async function assertTrustedLexicalPath(path: string, currentUid: bigint): Promise<void> {
+async function assertTrustedLexicalPath(
+  path: string,
+  currentUid: bigint,
+  inspected: Set<string>,
+): Promise<void> {
   let entry = path;
   let isLeaf = true;
   for (;;) {
@@ -53,6 +64,7 @@ async function assertTrustedLexicalPath(path: string, currentUid: bigint): Promi
     const unsafeOwner = !isTrustedOwner(metadata.uid, currentUid);
     const unsafeMode = !metadata.isSymbolicLink() && (metadata.mode & 0o022n) !== 0n;
     if (unsafeType || unsafeOwner || unsafeMode) throw new UntrustedWezTermSelectorError();
+    inspected.add(entry);
     const parent = dirname(entry);
     if (parent === entry) return;
     entry = parent;
@@ -71,10 +83,11 @@ async function selectorEvidence(
   path: string,
   kind: SelectorKind,
   currentUid: bigint,
+  inspected: Set<string>,
 ): Promise<string> {
-  await assertTrustedLexicalPath(path, currentUid);
+  await assertTrustedLexicalPath(path, currentUid, inspected);
   const canonicalPath = await realpath(path);
-  await assertTrustedAncestorDirectories(canonicalPath, currentUid);
+  await assertTrustedAncestorDirectories(canonicalPath, currentUid, inspected);
   if (kind === "socket") await assertPrivateSocketParent(canonicalPath, currentUid);
   const metadata = await stat(canonicalPath, { bigint: true });
   const expectedType = kind === "socket" ? metadata.isSocket() : metadata.isFile();
@@ -86,6 +99,7 @@ async function selectorEvidence(
   }
   if (kind === "executable") await access(canonicalPath, constants.X_OK);
   if (kind === "config") await access(canonicalPath, constants.R_OK);
+  inspected.add(canonicalPath);
   return [
     kind,
     path,
@@ -108,11 +122,16 @@ export async function readTrustedWezTermSelectorEvidence(
 ): Promise<readonly string[]> {
   try {
     const currentUid = expectedUid ?? currentUserId();
-    return await Promise.all([
-      selectorEvidence(selectors.executable, "executable", currentUid),
-      selectorEvidence(selectors.configFile, "config", currentUid),
-      selectorEvidence(selectors.socketPath, "socket", currentUid),
+    const inspected = new Set<string>();
+    const evidence = await Promise.all([
+      selectorEvidence(selectors.executable, "executable", currentUid, inspected),
+      selectorEvidence(selectors.configFile, "config", currentUid, inspected),
+      selectorEvidence(selectors.socketPath, "socket", currentUid, inspected),
     ]);
+    if (process.platform === "darwin" && !(await areMacSelectorAclsTrusted([...inspected]))) {
+      throw new UntrustedWezTermSelectorError();
+    }
+    return evidence;
   } catch (cause) {
     if (cause instanceof UntrustedWezTermSelectorError) throw cause;
     throw new UntrustedWezTermSelectorError();
