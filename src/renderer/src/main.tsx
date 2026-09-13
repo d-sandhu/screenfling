@@ -268,6 +268,7 @@ function ScreenFlingApp() {
   const [error, setError] = useState<string | null>(null);
   const discoverySequence = useRef(0);
   const workflowRevision = useRef(0);
+  const focusedResultOperation = useRef<string | null>(null);
 
   useEffect(() => {
     if (bridge === undefined) return;
@@ -309,9 +310,21 @@ function ScreenFlingApp() {
   }, [bridge]);
 
   const editingOperationId = snapshot?.phase === "editing" ? snapshot.operationId : null;
-  const focusResultAction = useCallback((button: HTMLButtonElement | null) => {
-    button?.focus();
-  }, []);
+  const focusResultAction = useCallback(
+    (button: HTMLButtonElement | null) => {
+      if (
+        button === null ||
+        pending ||
+        snapshot?.phase !== "result" ||
+        focusedResultOperation.current === snapshot.operationId
+      ) {
+        return;
+      }
+      button.focus();
+      focusedResultOperation.current = snapshot.operationId;
+    },
+    [pending, snapshot],
+  );
 
   useEffect(() => {
     if (bridge === undefined || editingOperationId === null) {
@@ -549,7 +562,11 @@ function ScreenFlingApp() {
                 <button
                   className="button button--primary"
                   disabled={
-                    pending || destinationsLoading || draft === null || !stageSupported || !noteIsValid
+                    pending ||
+                    destinationsLoading ||
+                    draft === null ||
+                    !stageSupported ||
+                    !noteIsValid
                   }
                   onClick={() => {
                     if (selectedDestination === undefined || !noteIsValid) return;
