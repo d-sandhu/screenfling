@@ -411,3 +411,46 @@ void test("renderer fixture: Escape cancels without selection or delivery", asyn
     ]);
   });
 });
+
+void test("renderer fixture: invalid notes block Stage with guidance and allow correction", async () => {
+  await withPage({ editing: true }, async (page) => {
+    await editingReady(page);
+    await page.getByRole("radio", { name: /pane 8/ }).check();
+    const input = page.getByPlaceholder("What should the agent notice?");
+    for (const invalid of ["before\u2028after", "before\u0085after", "before\u007fafter"]) {
+      await input.fill(invalid);
+      assert.equal(await input.getAttribute("aria-invalid"), "true");
+      assert.match(await page.getByRole("alert").innerText(), /Edit the note or use Copy only/);
+      assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
+      assert.equal(await page.getByRole("button", { name: "Copy only" }).isEnabled(), true);
+      await input.press("Enter");
+      assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+    }
+    const valid = "Unicode café 😀, literal Enter";
+    await input.fill(valid);
+    assert.equal(await input.getAttribute("aria-invalid"), "false");
+    assert.equal(await page.getByRole("alert").count(), 0);
+    await page.getByRole("button", { name: "Stage, don’t send" }).click();
+    await page.getByRole("heading", { name: "Staged — unverified" }).waitFor();
+    const calls = await page.evaluate(() => window.fixture.calls);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].action, "stage");
+    assert.equal(calls[0].request.note, valid);
+    assert.equal(calls[0].request.destinationId, "wezterm:fixture:8");
+  });
+});
+
+void test("renderer fixture: Copy ignores an invalid note and never stages it", async () => {
+  await withPage({ editing: true }, async (page) => {
+    await editingReady(page);
+    await page.getByPlaceholder("What should the agent notice?").fill("before\u2028after");
+    await page.getByRole("alert").waitFor();
+    await page.getByRole("button", { name: "Copy only" }).click();
+    await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+    const calls = await page.evaluate(() => window.fixture.calls);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].action, "copy");
+    assert.equal(Object.hasOwn(calls[0].request, "note"), false);
+    assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
+  });
+});
