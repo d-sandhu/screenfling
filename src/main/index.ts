@@ -5,6 +5,7 @@ import { performance } from "node:perf_hooks";
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   powerMonitor,
   screen,
@@ -12,6 +13,7 @@ import {
 } from "electron";
 
 import { IPC_CHANNELS } from "../shared/bridge";
+import { ApplicationLifecycle } from "./application-lifecycle";
 import { registerAppProtocol } from "./app-protocol";
 import { registerCaptureLifecycle } from "./capture-lifecycle";
 import { CaptureController } from "./capture-controller";
@@ -33,6 +35,8 @@ import type { WorkflowSnapshot } from "../shared/workflow";
 
 let mainWindow: BrowserWindow | null = null;
 let shortcutManager: ShortcutManager | null = null;
+let applicationLifecycle: ApplicationLifecycle | null = null;
+let quitting = false;
 const workflow = new WorkflowStore();
 const diagnostics = new WorkflowDiagnostics(() => performance.now());
 const rendererUrl = readDevRendererUrl(process.env.ELECTRON_RENDERER_URL);
@@ -43,12 +47,24 @@ function getMainWebContents() {
   return mainWindow?.webContents ?? null;
 }
 
+function stopApplication(): void {
+  quitting = true;
+  applicationLifecycle?.beginQuit();
+  dialog.showErrorBox(
+    "ScreenFling stopped",
+    "ScreenFling could not restore its window. Restart the app. No workflow action was retried. " +
+      "Check the chosen destination before attempting another Stage.",
+  );
+  app.quit();
+}
+
 function createWindow(): BrowserWindow {
   const preload = join(__dirname, "../preload/index.js");
   const window = new BrowserWindow(createMainWindowOptions(preload));
   mainWindow = window;
 
   window.once("ready-to-show", () => {
+    if (quitting || mainWindow !== window || window.isDestroyed()) return;
     if (workflow.snapshot.phase !== "snapshotting" && workflow.snapshot.phase !== "selecting") {
       window.show();
     }
@@ -61,16 +77,30 @@ function createWindow(): BrowserWindow {
   window.webContents.on("will-navigate", (event) => {
     event.preventDefault();
   });
+  window.webContents.on("render-process-gone", () => {
+    if (!quitting && mainWindow === window) applicationLifecycle?.mainRendererGone();
+  });
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
   });
 
-  void window.loadURL(mainRendererUrl);
+  void window.loadURL(mainRendererUrl).catch(() => {
+    if (!quitting && mainWindow === window) applicationLifecycle?.mainRendererGone();
+  });
 
   return window;
 }
 
+function recreateMainWindow(): void {
+  const previous = mainWindow;
+  // Install the new authorized sender before destroying the old surface.
+  // Keeping a window alive also avoids window-all-closed quitting on Windows.
+  createWindow();
+  if (previous !== null && !previous.isDestroyed()) previous.destroy();
+}
+
 function showMainWindow(): void {
+  if (quitting) return;
   const window = mainWindow ?? createWindow();
   if (window.isMinimized()) window.restore();
   if (!window.isVisible()) window.show();
@@ -86,11 +116,13 @@ async function hideMainWindowForCapture(): Promise<void> {
 
 function publishWorkflow(snapshot: WorkflowSnapshot): void {
   const window = mainWindow;
-  if (window === null || window.isDestroyed()) return;
+  if (window === null || window.isDestroyed() || window.webContents.isDestroyed()) return;
   window.webContents.send(IPC_CHANNELS.snapshotChanged, snapshot);
 }
 
-void app.whenReady().then(async () => {
+async function initializeApplication(): Promise<void> {
+  await app.whenReady();
+  if (quitting) return;
   registerAppProtocol();
   const preload = join(__dirname, "../preload/index.js");
   let controller: CaptureController;
@@ -126,11 +158,14 @@ void app.whenReady().then(async () => {
       randomUUID,
     ),
     () => {
-      void controller.startCapture("shortcut");
+      if (applicationLifecycle === null || quitting) return;
+      if (workflow.snapshot.phase === "idle") void controller.startCapture("shortcut");
+      else applicationLifecycle.activate();
     },
   );
-  await shortcut.initialize();
   shortcutManager = shortcut;
+  await shortcut.initialize();
+  if (quitting) return;
 
   registerWorkflowIpc(
     getMainWebContents,
@@ -145,6 +180,13 @@ void app.whenReady().then(async () => {
       ),
     shortcut,
   );
+  applicationLifecycle = new ApplicationLifecycle({
+    phase: () => workflow.snapshot.phase,
+    showMain: showMainWindow,
+    showOverlay: () => overlay.show(),
+    recreateMain: recreateMainWindow,
+    stop: stopApplication,
+  });
   createWindow();
 
   registerCaptureLifecycle(
@@ -167,16 +209,23 @@ void app.whenReady().then(async () => {
     },
     controller,
   );
+}
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+app.on("activate", () => applicationLifecycle?.activate());
+app.on("second-instance", () => applicationLifecycle?.activate());
+app.on("before-quit", () => {
+  quitting = true;
+  applicationLifecycle?.beginQuit();
 });
-
 app.on("will-quit", () => {
   shortcutManager?.dispose();
 });
-
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+if (app.requestSingleInstanceLock()) {
+  void initializeApplication().catch(stopApplication);
+} else {
+  app.quit();
+}
