@@ -21,7 +21,7 @@ import type { RevealResult, WorkflowSnapshot } from "../../shared/workflow";
 import type { ScreenCaptureReadinessSnapshot } from "../../shared/screen-capture-readiness";
 import type { CaptureDrag, CapturePoint } from "./capture-drag";
 import type { UiCopy } from "./delivery-copy";
-import { MAX_NOTE_LENGTH, supportsStage } from "../../shared/domain";
+import { MAX_NOTE_LENGTH, noteSchema, supportsStage } from "../../shared/domain";
 
 function useJpegUrl(bytes: Uint8Array | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -394,6 +394,7 @@ function ScreenFlingApp() {
   );
   const stageSupported =
     selectedDestination !== undefined && supportsStage(selectedDestination, note.length > 0);
+  const noteIsValid = noteSchema.safeParse(note).success;
   const revealTarget = revealDestinationForResult(snapshot, stagedDestination);
   const revealStatusCopy = revealResult === null ? null : revealCopy(revealResult);
   const canCancel =
@@ -517,7 +518,10 @@ function ScreenFlingApp() {
                   </span>
                 </span>
                 <input
-                  aria-describedby="note-counter note-scope"
+                  aria-describedby={
+                    noteIsValid ? "note-counter note-scope" : "note-counter note-scope note-error"
+                  }
+                  aria-invalid={!noteIsValid}
                   autoComplete="off"
                   name="note"
                   onChange={(event) => {
@@ -536,12 +540,19 @@ function ScreenFlingApp() {
               <p id="note-scope" className="empty-state">
                 Stage includes your note. Copy only copies the image.
               </p>
+              {noteIsValid ? null : (
+                <p id="note-error" className="error" role="alert">
+                  Use one line without control characters. Edit the note or use Copy only.
+                </p>
+              )}
               <div className="actions actions--review">
                 <button
                   className="button button--primary"
-                  disabled={pending || destinationsLoading || draft === null || !stageSupported}
+                  disabled={
+                    pending || destinationsLoading || draft === null || !stageSupported || !noteIsValid
+                  }
                   onClick={() => {
-                    if (selectedDestination === undefined) return;
+                    if (selectedDestination === undefined || !noteIsValid) return;
                     setStagedDestination(selectedDestination);
                     setRevealResult(null);
                     runAction(() =>
