@@ -37,7 +37,21 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm run check
       - if: runner.os == 'macOS'
+        # package:mac fixes identity to '-'. Never provide certificates or secrets here.
+        env:
+          CSC_FOR_PULL_REQUEST: "true"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run package:mac
+      - name: Verify local ad-hoc macOS signatures (not signing trust or notarization)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          APP="release/$(node -p 'process.arch === "arm64" ? "mac-arm64" : "mac"')/ScreenFling.app"
+          /usr/bin/codesign --verify --deep --strict "$APP"
+          /usr/bin/codesign --verify --strict "$APP/Contents/Resources/screenfling-selector-acl"
+          SIGNATURE="$(/usr/bin/codesign --display --verbose=2 "$APP" 2>&1)"
+          grep -qx 'Signature=adhoc' <<< "$SIGNATURE"
+          echo 'Ad-hoc bundle and helper signature verification passed. No Developer ID or notarization claim.'
       - if: runner.os == 'Windows'
         run: npm run package:win
       - run: npx playwright install chromium
