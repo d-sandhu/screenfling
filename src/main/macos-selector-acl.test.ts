@@ -35,7 +35,9 @@ describe("macOS selector ACL boundary", () => {
   it.each(["", "trusted", RESPONSE + RESPONSE, "screenfling-acl-v2:trusted\n"])(
     "rejects missing, malformed, or unsupported helper evidence (%#)",
     async (output) => {
-      await expect(areMacSelectorAclsTrusted([PATH], async () => success(output))).resolves.toBe(false);
+      await expect(areMacSelectorAclsTrusted([PATH], async () => success(output))).resolves.toBe(
+        false,
+      );
     },
   );
 
