@@ -50,14 +50,16 @@ describe("macOS selector ACL boundary", () => {
     },
   );
 
-  it.each([[], ["relative"], ["/line\nbreak"], Array.from({ length: 257 }, () => PATH)])(
-    "rejects invalid or oversized path input before spawning (%#)",
-    async (paths) => {
-      const run = vi.fn(async () => success(RESPONSE));
-      await expect(areMacSelectorAclsTrusted(paths, run)).resolves.toBe(false);
-      expect(run).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    { paths: [] },
+    { paths: ["relative"] },
+    { paths: ["/line\nbreak"] },
+    { paths: Array.from({ length: 257 }, () => PATH) },
+  ])("rejects invalid or oversized path input before spawning (%#)", async ({ paths }) => {
+    const run = vi.fn(async () => success(RESPONSE));
+    await expect(areMacSelectorAclsTrusted(paths, run)).resolves.toBe(false);
+    expect(run).not.toHaveBeenCalled();
+  });
 
   it("does not expose an inspection exception", async () => {
     await expect(
