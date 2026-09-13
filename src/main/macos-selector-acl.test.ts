@@ -98,16 +98,16 @@ it.skipIf(process.platform !== "darwin")(
 // CI-only: passwordless ownership changes apply solely to this disposable file.
 // Never request elevation or change an operator's real selectors or settings.
 it.skipIf(process.platform !== "darwin" || process.env.CI !== "true")(
-  "rejects an ACL-read failure that ls silently reports without an ACL",
+  "rejects an actual ACL-read permission failure rather than treating it as an absent ACL",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "screenfling-acl-read-failure-"));
     const file = join(directory, "selector");
     try {
       await writeFile(file, "synthetic", { mode: 0o600 });
+      await execute("/bin/chmod", ["-N", file]);
+      expect(await areMacSelectorAclsTrusted([file])).toBe(true);
       await execute("/bin/chmod", ["+a", "everyone deny readsecurity", file]);
       await execute("/usr/bin/sudo", ["-n", "/usr/sbin/chown", "0", file]);
-      const listing = await execute("/bin/ls", ["-ldne", file]);
-      expect(listing.stdout).not.toContain("deny readsecurity");
       expect(await areMacSelectorAclsTrusted([file])).toBe(false);
     } finally {
       await rm(directory, { recursive: true, force: true });
