@@ -1,0 +1,53 @@
+name: One-shot alpha maintenance
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  maintenance:
+    if: >-
+      github.repository == 'd-sandhu/screenfling' &&
+      github.event.pull_request.number == 31 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'alpha/macos-hardening-2026-09-13'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - run: npm install --global npm@11.19.0
+      - run: npm ci --ignore-scripts
+      - name: Format the new fixture and update only affected dependency families
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          npx prettier --write tools/acceptance/ui.test.cjs
+          if ! git diff --quiet -- tools/acceptance/ui.test.cjs; then
+            git add -- tools/acceptance/ui.test.cjs
+            git commit -m 'test: format built renderer acceptance fixtures'
+          fi
+          npm update @xmldom/xmldom fast-uri js-yaml --package-lock-only --ignore-scripts --no-fund
+          git diff --exit-code -- package.json
+          npm audit --json
+          git diff --stat
+          if ! git diff --quiet -- package-lock.json; then
+            git add -- package-lock.json
+            git commit -m 'build: refresh vulnerable packaging dependencies'
+          fi
+          test -z "$(git status --porcelain)"
+          actual=$(git ls-remote origin refs/heads/alpha/macos-hardening-2026-09-13 | cut -f1)
+          test "$actual" = "$EXPECTED_HEAD"
+          git push origin HEAD:refs/heads/alpha/macos-hardening-2026-09-13
