@@ -50,6 +50,7 @@ function installFixture(options) {
   let state = initial;
   let bootstrapResolvers = [];
   let startResolver = null;
+  let copyResolver = null;
   let destinations = ["7", "8"].map((locator) => ({
     id: `wezterm:fixture:${locator}`,
     adapter: "wezterm",
@@ -105,6 +106,7 @@ function installFixture(options) {
       bootstrapResolvers = [];
     },
     releaseStart: () => startResolver?.({ phase: "snapshotting", operationId }),
+    releaseCopy: () => copyResolver?.(state),
     removeDestinations: () => {
       destinations = [];
     },
@@ -146,7 +148,9 @@ function installFixture(options) {
     discoverDestinations: async () => destinations,
     copyCapture: async (request) => {
       calls.push({ action: "copy", request });
-      return result({ status: "copied" });
+      result({ status: "copied" });
+      if (options.delayCopy) return new Promise((resolve) => (copyResolver = resolve));
+      return state;
     },
     stageCapture: async (request) => {
       calls.push({ action: "stage", request });
@@ -288,6 +292,22 @@ void test("renderer fixture: Copy works without destinations and Done returns to
     await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
     await page.getByRole("button", { name: "Done", exact: true }).press("Enter");
+    await page.getByRole("button", { name: "Capture region" }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), [
+      "copy",
+    ]);
+  });
+});
+
+void test("renderer fixture: Done gains keyboard focus only after a pending result settles", async () => {
+  await withPage({ editing: true, delayCopy: true }, async (page) => {
+    await editingReady(page);
+    await page.getByRole("button", { name: "Copy only" }).click();
+    await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Done", exact: true }).isEnabled(), false);
+    await page.evaluate(() => window.fixture.releaseCopy());
+    await page.waitForFunction(() => document.activeElement?.textContent === "Done");
+    await page.keyboard.press("Enter");
     await page.getByRole("button", { name: "Capture region" }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), [
       "copy",
