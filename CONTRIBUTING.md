@@ -113,6 +113,13 @@ current host. Local macOS directory packages use an explicit ad-hoc signature so
 they can be launched without a Developer ID; release artifacts still require the
 signed and notarized path tracked in Milestone 2.
 
+The Check workflow explicitly enables ad-hoc signing for the `package:mac` step
+and verifies the resulting bundle and ACL helper with `codesign`. The step fixes
+the signing identity to `-` and disables automatic certificate discovery. Do not
+add signing credentials or publishing flags to this pull-request workflow.
+A passed ad-hoc signature check does not prove Gatekeeper trust, notarization, or
+stable Screen Recording permission behavior on an operator's Mac.
+
 ### Browser fixtures and packaged lifecycle smoke
 
 On macOS, install Apple's Command Line Tools before building. `build:native`

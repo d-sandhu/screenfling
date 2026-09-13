@@ -12,8 +12,8 @@ forward only when its exit criteria are met.
 
 | Horizon | Outcome |
 | --- | --- |
-| **Now** | Finish native acceptance for the joined capture-to-Stage workflow. |
-| **Next** | Harden and ship one narrow macOS alpha. |
+| **Now** | Finish native acceptance for the hardened capture-to-Stage workflow. |
+| **Next** | Ship one narrow macOS alpha after its remaining gates pass. |
 | **Then** | Harden the macOS release and add a second destination surface. |
 | **After that** | Deliver the same core product contract on Windows. |
 | **Demand-driven** | Managed agent sessions, browser context, remote delivery, and multi-capture tasks. |
@@ -48,28 +48,24 @@ or platforms.
 For Milestone 1, Gate A and Gate B apply to the macOS tuple proposed for release.
 Windows native rows remain required for the later Windows milestone; they do not
 block the macOS alpha. Public signing/notarization remains distinct from a local
-ad-hoc dogfood package.
+ad-hoc dogfood package. A green CI run is not a native acceptance pass.
 
 ## Milestone 0 — feasibility gates
 
-Status: **In progress**
+Status: **Implementation complete; macOS native acceptance remains open**
 
-Goal: retire the two highest-risk technical questions before building polished
-product UI.
+Goal: retire the two highest-risk technical questions before claiming a supported
+capture-to-destination product. The harnesses and production integration exist;
+do not rebuild them as new milestones. Use the remaining acceptance sequence at
+the end of this document.
 
 ### Gate A: capture harness
 
-Build a disposable Electron harness that:
-
-1. captures one display at full physical resolution;
-2. records the actual returned image dimensions;
-3. displays the frozen image in a selection overlay;
-4. maps a display-local selection to image pixels using measured ratios;
-5. crops the region and writes an in-memory PNG to the image clipboard;
-6. records capture, overlay-ready, crop, and clipboard timings separately.
-
-Test Retina/scaled displays, mixed-scale multiple displays, negative origins,
-rotation, display reconnect, sleep/wake, cancellation, and permission denial.
+The implemented harness and production path cover full-resolution capture of one
+display, returned-image dimensions, a frozen selection overlay, measured-ratio
+mapping to physical pixels, an in-memory crop, and explicit image clipboard
+output. Production writes are verified by pixel read-back. Cancellation, display
+changes, suspend/resume, startup timeouts, and stale completions fail closed.
 
 Gate A passes when:
 
@@ -77,90 +73,50 @@ Gate A passes when:
 - the overlay never appears in the captured result;
 - warm shortcut to interactive overlay is p95 <= 150 ms on the reference host,
   or profiling identifies a credible path to that target;
-- selection release to clipboard-ready is p95 <= 150 ms;
+- selection release to clipboard-ready is p95 <= 150 ms, subject to the open
+  measurement-boundary issue below;
 - cancellation and failures before clipboard writes leave the previous clipboard
   unchanged; failed write verification must not claim the old clipboard survived;
 - 200 capture/cancel cycles show no monotonic image, window, or listener growth;
 - all checks run in a packaged application with a stable identity.
 
+Test Retina/scaled displays, mixed-scale multiple displays, negative origins,
+rotation, display reconnect, sleep/wake, cancellation, and permission denial.
+The old selection-release-to-clipboard row predates the explicit review step.
+It remains open: do not bypass review or silently substitute a component timing
+for the physical end-to-end row. The operator protocol records release-to-review,
+human review dwell, and explicit Copy-to-verified-clipboard separately pending a
+reviewed measurement definition.
+
 Compare Electron's full-resolution source-thumbnail path with a first-frame
 display-media path only if necessary. Native ScreenCaptureKit is considered only
 if both practical Electron paths fail the agreed quality or latency target.
 
-**Historical prototype evidence:** the packaged macOS prototype passed the single-display
-Retina path on Electron 43.4.1: 20/20 non-empty captures, p95 overlay readiness
-124.73 ms, p95 crop 0.0571 ms, p95 clipboard write 23.63 ms, and a 200-cycle
-cancel run with unchanged clipboard and no monotonic RSS growth. The permanent
-fixture grid covers measured independent ratios and fractional crop edges. Gate
-A remains open for end-to-end selection-release timing, mixed-scale/negative
-origin hardware, rotation, reconnect, sleep/wake, permission denial/revocation,
-and native Windows capture. See the
-[Phase 3 results](research/phase-3-feasibility-results.md).
+#### Capture evidence retained
 
-The production capture path now wires exact display-source selection, a hidden
-snapshot-first overlay, bounded renderer previews, measured-geometry cropping,
-explicit image-clipboard writes with pixel read-back verification, display-event
-invalidation, and a registered global shortcut through one main-owned
-controller. A packaged macOS dogfood run completed Capture, fast region drag,
-review, verified Copy, and Escape cancellation with clean renderer diagnostics.
-This closes the implementation gap, but not the remaining Gate A hardware,
-latency, permission, or soak rows. See the
-[Phase 5 packaged dogfood record](research/phase-5-packaged-capture-dogfood.md).
+| Evidence | What it proves, and what remains open |
+| --- | --- |
+| [Phase 3](research/phase-3-feasibility-results.md) and [Phase 5](research/phase-5-packaged-capture-dogfood.md) | Historical Retina prototype and packaged Capture/Copy dogfood results. Not acceptance of every later artifact or display configuration. |
+| [Phase 18](research/phase-18-packaged-capture-results.md) | The hardened packaged default and a separate **200-Copy/200-cancel** soak ran. The larger run recorded 66.72 ms p95 from validated bridge selection to verified clipboard, one window after every cancel, zero workflow failures, and a cooled working set below its pre-cancel sample. This supersedes provisional Phase 8 timings, not physical-input, listener, or native-allocation acceptance. |
+| [Phase 19](research/phase-19-native-capture-results.md) | A physical mixed-scale failure exposed a 33-DIP overlay-origin constraint. The production fix aligned the rebuilt overlay at `(1920, 0)` and accepted a scale-2 selection. Exact crop-pixel comparison and the rest of the hardware matrix remain open. |
+| [Phase 20](research/phase-20-shortcut-latency-results.md) | The second unchanged 20-sample physical-shortcut run passed narrowly at **149.25 ms p95** on the reference Mac; the first run missed at 153.20 ms. All 40 attempts reached selecting and cancelled cleanly. This is an exact-candidate reference-host result, not a cross-machine guarantee. |
+| [Phase 21](research/phase-21-macos-alpha-hardening-results.md) | Startup/cancellation, renderer recovery, browser interaction, native ACL fixtures, build/package, and ad-hoc signature checks pass in CI. The packaged lifecycle smoke exercises idle recovery without screen capture or permission changes. |
 
-Phase 8 added fail-closed suspend/resume handling and a repeatable packaged
-production runner. On the reference arm64 Mac, a pre-hardening 20-workflow run
-without operator selection measured p95 18.24 ms from validated selection
-completion to review and p95 106.51 ms through verified image-clipboard
-completion. Those timings are historical and superseded by the hardened Phase 18
-runner results below; they are not current production acceptance. A separate 200-cancel run returned `cancelled` every cycle, retained
-exactly one window after each cancel, and cooled from 638,112 KiB at its first
-sample to 546,288 KiB after two minutes. The runner now compares packaged
-`Info.plist` identity with expected ScreenFling metadata, verifies `app.asar`, the
-internal application URL, and requested/returned capture dimensions. Missing
-overlays and rejected or hung overlay actions fail and terminate the packaged
-process; any operator-assisted run is discarded.
-After a later smoke required the operator to press Escape, the runner added a
-second cleanup boundary: a settled bridge response is not accepted until the
-overlay page closes, and readiness/action failures explicitly close any retained
-overlay before application termination. That operator-assisted smoke is also
-discarded evidence.
-The runner does not automate the physical drag, real global shortcut, direct
-cancel-clipboard fingerprint, hardware/lifecycle matrix, stable signing, or
-Windows, so Gate A remains open. See the
-[Phase 8 results](research/phase-8-capture-lifecycle-results.md).
-
-Phase 10 extracted the macOS Screen Recording status policy from Electron and
-added actionable denied/restricted result copy. Denial closes the prepared
-overlay, releases capture state, restores the main surface, and performs no
-clipboard write. `not-determined`, `granted`, and `unknown` still attempt the
-real capture path; non-macOS platforms do not fabricate a macOS permission
-failure. Repository tests cover the policy and recovery contract, but stable-
-identity TCC denial, grant, revocation, Settings labeling, and restart behavior
-remain native human-operated rows. See the
-[Phase 10 results](research/phase-10-permission-recovery-results.md).
-
-Phase 20 closed the warm physical-shortcut latency row narrowly on the reference
-Mac. Sanitized profiling first measured the serial packaged path at 197.95 ms
-p95, then justified overlapping hidden overlay navigation with a fresh display
-capture. The production candidate measured 123.11 ms p95 in the main-owned
-scripted control. Its first 20-sample physical run missed at 153.20 ms p95; a
-second unchanged 20-sample run passed at 149.25 ms p95, with all 40 shortcuts
-reaching selecting, all 40 cancelling cleanly, and zero recorded failures. This
-is a reference-host pass with little headroom, not a cross-machine guarantee.
-Gate A remains open for the other hardware, lifecycle, permission, end-to-end
-clipboard, signing, and Windows rows. See the
-[Phase 20 results](research/phase-20-shortcut-latency-results.md).
+Permission policy and readiness UI are implemented. Actual grant, denial,
+revocation, restart, managed restrictions, physical clipboard preservation, and
+hardware observations still require the
+[macOS operator protocol](docs/acceptance/macos-operator-acceptance.md).
+Earlier implementation and acceptance reports remain in the
+[research index](research/README.md); their dated open-item lists do not override
+this roadmap.
 
 ### Gate B: exact-routing harness
 
-Build a separate developer harness around the destination contract in
-[ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-Evaluate one documented terminal control surface that provides an exact stable
-locator and targeted input. Ghostty, tmux, and WezTerm were evaluated; WezTerm
-is selected for the first production adapter. The choice is based on target
-safety, supported input, verification, maintainability, and contributor reach—not
-on which terminal is currently focused or installed on one developer's computer.
+WezTerm is the first selected production surface adapter, as recorded in
+[ADR 0001](docs/adr/0001-wezterm-first-stage-adapter.md). Ghostty and tmux were
+evaluated; no additional adapter is needed to complete this alpha. Selection was
+based on target safety, supported input, verification, and maintainability, not
+which terminal happened to be focused or installed.
 
 Gate B passes when:
 
@@ -186,125 +142,38 @@ Run at least 30 observed Stage trials for each agent/version combination propose
 for support. Record attachment behavior honestly. A surface without read-back may
 pass as **dispatched-unverified**; it cannot claim verified staging.
 
-**Current evidence:** the checksum-pinned WezTerm stable routing primitive passed
-100 alternating two-pane dispatches on both native macOS and Windows with exact
-bytes, zero wrong-target writes, zero Enter bytes, stale refusal before send, and
-no active-pane or activation command. The production-tree adapter now adds
-runtime-validated discovery, explicit executable/config/socket selection,
-generation-scoped stable pane routes, one combined image-binding-and-note write,
-bounded subprocesses, a final pre-spawn generation guard, and conservative
-uncertain-result handling. Its automated suite repeats 100 alternating exact
-routes and covers malformed discovery, endpoint replacement, timeout, literal
-input, and no-retry behavior. Gate B remains open for visible no-focus trials and
-30 actual attachment trials on every terminal/agent/version combination proposed
-for support. WezTerm has no macOS Automation/TCC dependency; ScreenFling must not
-add a fallback automation path. See
-[ADR 0001](docs/adr/0001-wezterm-first-stage-adapter.md), the
-[Phase 3 results](research/phase-3-feasibility-results.md), and the
-[Phase 6 results](research/phase-6-wezterm-adapter-results.md).
+#### Routing evidence retained
 
-The joined product path now exposes operation-scoped discovery, explicit exact
-destination selection, an optional bounded one-line note, verified clipboard
-fallback before one-shot Stage, and honest unverified results. The renderer sends
-only a destination ID; executable and mux configuration remain in the main
-process. The adapter is available only through a complete opt-in macOS developer
-configuration.
+The checksum-pinned WezTerm primitive passed 100 alternating two-pane dispatches
+on native macOS and Windows with exact bytes, no wrong-target writes or Enter,
+and stale refusal before send. See the
+[Phase 3 results](research/phase-3-feasibility-results.md). This is routing-primitive
+evidence, not real-agent image attachment acceptance.
 
-Phase 9 added a macOS selector policy for canonical file/socket types, owner and
-mode, lexical and canonical ancestors, executable/config access, a private
-socket parent, and generation evidence that is checked before every version,
-list, and send subprocess. Unsafe or replaced selectors expose no destination or
-send zero bytes, preserving Copy. This closes the repository-testable
-owner/mode/type portion of the configured-selector row, not Gate B: extended ACL
-inspection, exact WezTerm config semantics, visible no-focus trials, native
-endpoint replacement, and real-agent attachment trials remain open. See the
-[Phase 7 results](research/phase-7-joined-flow-results.md) and
-[Phase 9 results](research/phase-9-trusted-selector-results.md).
-
-Phase 11 added a shared Stage-capability policy and a distinct unsupported result
-without expanding the privileged bridge. Copy-only destinations are labeled and
-cannot enable Stage; empty discovery keeps Copy only visible. Unsupported,
-stale, failed, and uncertain post-copy results give explicit manual-paste
-guidance, while clipboard verification failure does not claim that fallback.
-Adapter dispatch remains single-shot and is not invoked for an unsupported
-request. Exact user-triggered Reveal was implemented in Phase 12 below; its native
-activation/visibility acceptance remains separate and open. See the
-[Phase 11 results](research/phase-11-routing-recovery-results.md).
-
-Phase 12 added exact, user-triggered Reveal as a transaction separate from Stage.
-The renderer sends only the current operation ID; the main process consumes the
-retained selected route, revalidates the endpoint generation and pane, and asks
-WezTerm to activate that explicit pane with no input bytes, Enter, Stage retry,
-active-pane fallback, or generic window focus. The Stage result remains
-unchanged. Repository tests cover routing, lifetime, command shape, typed
-outcomes, and no-data behavior. Packaged macOS/Windows foreground, minimized-
-window, pinned-flag, exit-status, and endpoint-race observations remain native
-acceptance rows. See the [Phase 12 plan](research/phase-12-exact-reveal-plan.md).
-Repository results are recorded in the
+The production adapter and joined workflow implement explicit operation-scoped
+discovery/selection, generation-scoped exact panes, bounded subprocesses, one
+combined image-binding-and-note write, a final pre-spawn generation guard, and no
+retry on uncertainty. Copy is verified before Stage; unsupported or failed Stage
+has honest fallback guidance. Exact Reveal is implemented as a separate one-shot
+operation with no input data or Stage retry. See the
+[Phase 6 results](research/phase-6-wezterm-adapter-results.md),
+[Phase 7 results](research/phase-7-joined-flow-results.md), and
 [Phase 12 results](research/phase-12-exact-reveal-results.md).
 
-Phase 13 adds main-owned, sanitized workflow diagnostics. The controller records
-button versus shortcut starts, bounded phase timings, fixed delivery/failure
-categories, and validated Reveal outcomes without retaining content, operation
-IDs, or destination identities in its snapshot. A strict read-only bridge lets
-the packaged acceptance runner include the in-memory snapshot in its local
-report; this phase adds no telemetry, persistence, history, or diagnostics UI.
-See the
-[Phase 13 audit](research/phase-13-next-slice-audit.md) and
-[Phase 13 results](research/phase-13-sanitized-diagnostics-results.md).
+Owner/mode/type, lexical and canonical ancestors, private socket parent, and
+selector-generation checks are implemented. Extended ACL inspection is also
+implemented and tested with actual disposable macOS file/socket/ancestor grants,
+clean files, deny-only ACLs, and denied security reads. It is no longer an
+unimplemented repository task. The narrow native boundary is documented in
+[ADR 0002](docs/adr/0002-macos-selector-acl.md). Actual operator selectors and
+config semantics still require acceptance.
 
-Phase 14 replaces the fixed capture accelerator with one bounded, main-owned
-configuration transaction. The renderer chooses only from portable modifier and
-key options; strict IPC carries the structured value, while Electron registration
-and a versioned `userData` preference remain in main. A candidate is registered
-and verified before persistence, the old binding remains active until commit,
-and registration or write failure retains it. Repository tests cover startup,
-rollback, concurrency, cleanup, strict schemas, the production filesystem
-adapter, and accessible static markup. This closes the repository seam only:
-packaged shortcut delivery, real conflict, restart persistence, non-QWERTY, and
-Windows observations remain native acceptance. See the
-[Phase 14 research](research/phase-14-shortcut-configuration-research.md) and
-[Phase 14 results](research/phase-14-configurable-shortcut-results.md).
-
-Phase 15 adds a main-owned Screen Recording readiness readout. A strict bridge
-version 8 reports Electron's closed macOS status values, while other platforms
-return `not-applicable` rather than a fabricated grant. The idle surface gives
-honest guidance and a manual recheck without requesting permission, opening a
-native settings app, disabling Capture, or treating status as pixel evidence.
-See the [Phase 15 research](research/phase-15-product-readiness-research.md),
-[next-slice audit](research/phase-15-next-slice-audit.md), and
-[results](research/phase-15-screen-recording-readiness-results.md).
-
-Phase 16 freezes a versioned
-[macOS operator acceptance protocol](docs/acceptance/macos-operator-acceptance.md)
-for the remaining native rows. It separates packaged-runner, physical-input, and
-human-observed evidence; defines stop, cleanup, and redaction rules; and does not
-close any Gate A, Gate B, or milestone row by itself. A launch wizard or new GUI
-automation would weaken that evidence boundary, so this phase adds neither.
-
-Phase 18 repeated the hardened runner on the exact packaged arm64 artifact. The
-canonical default completed 20 measured Copy workflows and 200 cancellations;
-the separate soak completed 200 measured Copy workflows and 200 cancellations.
-The larger run measured 66.72 ms p95 from validated bridge selection to verified
-clipboard, retained one window after every cancel, recorded zero workflow
-failures, and cooled below its pre-cancel process working set. This replaces the
-provisional pre-hardening runner measurement for that narrow component. Physical
-shortcut and drag timing, Cancel clipboard preservation, listener and native
-allocation stability, hardware/lifecycle rows, permissions, Stage, and real-agent
-evidence remain open. See the
-[Phase 18 results](research/phase-18-packaged-capture-results.md).
-
-Phase 19 began the authorized physical-input matrix on a two-display macOS host.
-One shortcut delivered exactly one operation while another app was frontmost,
-and 20 warm shortcut attempts reached selecting and cancelled without a recorded
-workflow failure, but their 206.78 ms p95 missed the 150 ms target. A physical
-mixed-scale attempt failed closed, and diagnosis found that macOS constrained
-the frameless right-display overlay 33 DIP below the display origin. The capture
-window now opts out of that constraint; the rebuilt package aligned at the exact
-`(1920, 0)` origin and accepted a physical scale-2 selection. The original row
-remains failed, exact crop-pixel comparison and the remaining native matrix stay
-open, and no native capture helper is justified. See the
-[Phase 19 results](research/phase-19-native-capture-results.md).
+The integration remains opt-in and experimental. Native final-boundary endpoint
+replacement, visible no-focus and Reveal behavior, exact config/binding semantics,
+and real-agent trials remain release blockers. The CLI does not provide atomic
+compare-and-send; the pre-spawn guard alone cannot prove native race conformance.
+Do not replace a failed test with an active-window or GUI-automation fallback.
+The WezTerm CLI does not require macOS Automation/TCC permission.
 
 ### Milestone 0 deliverables
 
@@ -328,12 +197,14 @@ open, and no native capture helper is justified. See the
   acceptance rows pass.
 
 Do not build a general settings framework, history, remote transfer, browser
-integration, native helpers, or a public plugin system during these spikes. The
-single versioned shortcut preference above is the bounded Milestone 1 exception.
+integration, speculative native helpers, or a public plugin system during these
+spikes. The single versioned shortcut preference is the bounded Milestone 1
+settings exception. The ACL inspector is the measured security exception in
+ADR 0002, not authorization for a capture or application rewrite.
 
 ## Milestone 1 — useful macOS alpha
 
-Status: **Blocked by Milestone 0**
+Status: **Implemented and hardened; release blocked by native M0/M1 acceptance**
 
 Goal: ship the smallest version that proves ScreenFling is more than a screenshot
 tool.
@@ -343,11 +214,10 @@ User flow:
 ~~~text
 global shortcut
 -> frozen one-display region selection
--> optional single-line note
+-> review and optional single-line note
 -> choose one exact local destination
--> image copied to clipboard
--> image and note staged without submission
--> review or explicitly reveal destination
+-> explicit Copy or Stage with verified image clipboard output
+-> review or explicitly reveal the staged destination
 ~~~
 
 Scope:
@@ -368,6 +238,11 @@ Scope:
   in-memory recorder and acceptance-report bridge are implemented, while
   release measurements remain part of packaged acceptance;
 - packaged, signed development builds suitable for repeated dogfooding.
+
+The repository-level hardening and verification results are recorded in
+[Phase 21](research/phase-21-macos-alpha-hardening-results.md). Native acceptance
+can still reveal implementation defects; passing repository tests is not a claim
+that only paperwork remains.
 
 Exit criteria:
 
@@ -558,45 +433,38 @@ These items are not on the committed roadmap:
 
 ## Immediate implementation sequence
 
-The repository implements capture/review, explicit Copy/Stage, separate exact
-Reveal, permission/readiness guidance, configurable shortcuts, sanitized local
-diagnostics, bounded startup, single-instance behavior, and presentation-only
-renderer recovery. Built-renderer fixtures cover the visible workflow. The macOS
-selector gate now checks extended ACLs as well as owner/mode/type. Tests and a
-packaged idle-lifecycle runner do not close the native rows below.
-
-The Phase 18 **200-complete/200-cancel packaged soak already ran**. Do not reopen
-that completed component measurement as if it never happened. Its working-set
-and window evidence does not prove listener or native image-allocation stability,
-and does not transfer automatically to a changed release candidate. Phase 20's
-149.25 ms reference-host physical shortcut pass is also historical evidence for
-its exact candidate, not a promise for every host or this new package.
+Repository-level checks passed for implementation commit `e64328d` on macOS and
+Windows, including the built-renderer fixtures and macOS packaged lifecycle and
+ad-hoc signature checks. The exact run, tests, limitations, and fixes are in the
+[Phase 21 evidence record](research/phase-21-macos-alpha-hardening-results.md).
+Repeat these checks for a changed candidate; do not mistake a historical green
+run for verification of new code.
 
 Remaining macOS alpha gates, in execution order:
 
-1. Run the static checks, browser fixtures, dependency audit, package build, and
-   packaged lifecycle smoke on the exact candidate. Record actual CI results.
-2. Run the operator protocol's Screen Recording grant/denial/revocation/restart
+1. Run the operator protocol's Screen Recording grant/denial/revocation/restart
    rows on a stable package identity. Record managed/unknown states as unavailable
    when the host cannot produce them. Developer signing credentials and public
    notarization are not supplied by an ad-hoc CI signature.
-3. Finish physical crop-pixel, mixed-scale, negative-origin, rotation when
+2. Finish physical crop-pixel, mixed-scale, negative-origin, rotation when
    available, reconnect, sleep/wake, cancel-clipboard, shortcut conflict and
-   persistence, and renderer-recovery observations. Repeat candidate performance
-   and resource checks as affected by changes. Retain unavailable hardware rows.
-4. Resolve the physical selection-release-to-clipboard measurement boundary:
+   persistence, and active renderer-recovery observations. Repeat candidate
+   performance and resource checks as affected by changes. Retain unavailable
+   hardware rows. The completed Phase 18 soak and Phase 20 reference-host shortcut
+   result remain valid for their recorded artifacts, not automatically this one.
+3. Resolve the physical selection-release-to-clipboard measurement boundary:
    review and explicit Copy are intentional user steps. Report release-to-review,
    human review dwell, and Copy-to-verified-clipboard separately. Do not automate
    Copy or relabel scripted component timing as the physical <=150 ms row. That
    row remains open until its reviewed definition and direct evidence agree.
-5. Run exact WezTerm selector/config, final endpoint replacement, no-focus,
+4. Run exact WezTerm selector/config, final endpoint replacement, no-focus,
    literal/control-input, stale/fallback, and separate Reveal visibility rows.
-   The CLI has no atomic compare-and-send primitive; native race conformance is
-   a release blocker, not something the pre-spawn guard alone proves.
-6. Observe at least 30 alternating trials per proposed agent/version/binding
+   Native race conformance is a release blocker; a unit-tested guard does not
+   establish it. Any failure requires an implementation fix, not a relaxed claim.
+5. Observe at least 30 alternating trials per proposed agent/version/binding
    tuple, with zero wrong-target writes and submissions. Unsupported/remapped
    bindings must remain safe. No agent support is claimed before this evidence.
-7. Compare at least five complete workflows with five manual screenshot/paste
+6. Compare at least five complete workflows with five manual screenshot/paste
    workflows, then record repeated dogfooding and outstanding listener/native
    allocation evidence. Release only after all applicable M0/M1 criteria pass.
 
