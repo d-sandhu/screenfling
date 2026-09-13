@@ -9,18 +9,32 @@ Date: 2026-09-13
 The configured WezTerm executable, config, socket, and their ancestors must not
 be mutable through an extended ACL grant that Unix owner/mode checks miss.
 Node's stat metadata does not expose macOS ACL entries. Parsing `ls -le` is not
-an adequate substitute: Apple's implementation treats `acl_get_link_np` failure
-as an absent ACL. A security check must distinguish that failure from no grants.
+an adequate substitute: an omitted ACL is not proof that its security metadata
+was read successfully. Depending on the macOS version, a denied read can also
+make `ls` fail. Neither behavior is the security contract.
+
+Darwin's `acl_get_link_np` returns NULL both when no extended ACL is present and
+when reading it fails. Treating every NULL as failure incorrectly rejects clean
+selectors; treating every NULL as absence would weaken the boundary.
 
 ## Decision
 
-Use one small unprivileged C executable calling the documented Darwin ACL APIs.
-It accepts only a bounded list of absolute paths. It validates ACLs and permits
-only deny entries; all allow entries, including owner-only grants, fail closed.
-An unreadable/malformed ACL, changed identity during inspection, missing helper,
-nonzero exit, timeout, or unexpected response disables this destination. Copy
-remains available. The helper prints one fixed versioned success token and no
-paths, principal identities, ACL text, screenshots, or notes.
+Use one small unprivileged C executable calling the documented Darwin security
+APIs. Require a successful `lstatx_np` security read, then use
+`filesec_query_property(FILESEC_ACL)` to distinguish absent ACLs from present
+ones. A read or presence-query failure is never accepted as absence. Compare
+file identity before, during, and after inspection.
+
+For a present ACL, retrieve and validate it, then permit only deny entries. All
+allow entries, including owner-only grants, fail closed. Darwin's entry iterator
+returns zero for an entry and -1/EINVAL at its end; this is not the portable
+POSIX iterator convention.
+
+The helper accepts only a bounded list of absolute paths. An unreadable or
+malformed ACL, changed identity, missing helper, nonzero exit, timeout, or
+unexpected response disables this destination. Copy remains available. The
+helper prints one fixed versioned success token and no paths, principal
+identities, ACL text, screenshots, or notes.
 
 Main continues to enforce owner, mode, type, canonical/lexical ancestors, private
 socket parent, and generation checks. No permanent file, elevated runtime,
@@ -30,10 +44,11 @@ package resource. Windows does not build or run it.
 
 ## Evidence and limits
 
-`macos-selector-acl.test.ts` contains real disposable-file checks for an extended
-grant with unchanged private mode bits, default deny-only ACLs, missing paths,
-and an ACL-read failure hidden by `ls`. The last fixture is CI-only and changes
-ownership of its own disposable file, not a user's selector or host settings.
+`macos-selector-acl.test.ts` contains real disposable-file checks for a clean
+file without an extended ACL, a grant with unchanged private mode bits,
+deny-only ACLs, missing paths, and a denied security read. The last fixture is
+CI-only and changes ownership of its own disposable file, not a user's selector
+or host settings. It tests rejection independently of `ls` output or exit status.
 `trusted-wezterm-acl.test.ts` exercises grants on actual file/socket/ancestor
 fixtures through the production selector reader. The packaged lifecycle runner
 also executes the shipped helper against a disposable grant fixture.
@@ -46,5 +61,7 @@ interpreting an unproven effective-access policy for the experimental alpha.
 ## Sources
 
 - [Apple ACL and BSD permission model](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/FileSystemProgrammingGuide/FileSystemDetails/FileSystemDetails.html)
-- [Apple ls ACL-read implementation](https://github.com/apple-oss-distributions/file_cmds/blob/main/ls/ls.c)
+- [Apple ACL file-read implementation](https://github.com/apple-oss-distributions/Libc/blob/main/posix1e/acl_file.c)
+- [Apple security-property implementation](https://github.com/apple-oss-distributions/Libc/blob/main/gen/filesec.c)
+- [Apple ACL entry-iterator implementation](https://github.com/apple-oss-distributions/Libc/blob/main/posix1e/acl_entry.c)
 - [Architecture native-code gate](../ARCHITECTURE.md#native-code-gate)
