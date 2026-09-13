@@ -8,6 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const { chromium } = require("playwright");
+const { z } = require("zod");
 
 const { readArtifactEvidence, readDiagnostics } = require("./capture.cjs");
 
@@ -53,8 +54,9 @@ async function reservePort() {
   });
   const address = server.address();
   await new Promise((resolve) => server.close(resolve));
-  if (address === null || typeof address === "string") throw new Error("devtools-unavailable");
-  return address.port;
+  const parsed = z.object({ port: z.number().int().min(1).max(65535) }).safeParse(address);
+  if (!parsed.success) throw new Error("devtools-unavailable");
+  return parsed.data.port;
 }
 
 async function connect(port, child) {
@@ -74,14 +76,14 @@ async function verifyIdle(page) {
   assert.ok(page.url().startsWith("screenfling://"));
   const boundary = await page.evaluate(async () => ({
     snapshot: await window.screenFling.getSnapshot(),
-    requireType: typeof window.require,
-    processType: typeof window.process,
-    captureBridgeType: typeof window.captureOverlay,
+    requireAbsent: window.require === undefined,
+    processAbsent: window.process === undefined,
+    captureBridgeAbsent: window.captureOverlay === undefined,
   }));
   assert.equal(boundary.snapshot.phase, "idle");
-  assert.equal(boundary.requireType, "undefined");
-  assert.equal(boundary.processType, "undefined");
-  assert.equal(boundary.captureBridgeType, "undefined");
+  assert.equal(boundary.requireAbsent, true);
+  assert.equal(boundary.processAbsent, true);
+  assert.equal(boundary.captureBridgeAbsent, true);
 }
 
 async function verifyPackagedAcl(executable) {

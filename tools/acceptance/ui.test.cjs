@@ -243,7 +243,7 @@ async function editingReady(page) {
   );
 }
 
-test("renderer fixture: bootstrap failure is visible with recovery guidance", async () => {
+void test("renderer fixture: bootstrap failure is visible with recovery guidance", async () => {
   await withPage({ failBootstrap: true }, async (page) => {
     await page.getByRole("alert").waitFor();
     assert.match(await page.getByRole("alert").innerText(), /Restart ScreenFling/);
@@ -251,14 +251,14 @@ test("renderer fixture: bootstrap failure is visible with recovery guidance", as
   });
 });
 
-test("renderer fixture: failed shortcut status does not block the capture button", async () => {
+void test("renderer fixture: failed shortcut status does not block the capture button", async () => {
   await withPage({ failShortcut: true }, async (page) => {
     await page.getByRole("button", { name: "Capture region" }).click();
     await editingReady(page);
   });
 });
 
-test("renderer fixture: a delayed initial snapshot cannot replace a live workflow", async () => {
+void test("renderer fixture: a delayed initial snapshot cannot replace a live workflow", async () => {
   await withPage({ delayBootstrap: true }, async (page) => {
     await page.waitForFunction(() => window.fixture !== undefined);
     await page.evaluate(() => window.fixture.emitEditing());
@@ -269,7 +269,7 @@ test("renderer fixture: a delayed initial snapshot cannot replace a live workflo
   });
 });
 
-test("renderer fixture: a late Start response cannot regress the editing surface", async () => {
+void test("renderer fixture: a late Start response cannot regress the editing surface", async () => {
   await withPage({ delayStart: true }, async (page) => {
     await page.getByRole("button", { name: "Capture region" }).click();
     await page.getByRole("heading", { name: "Ready to hand off" }).waitFor();
@@ -280,7 +280,7 @@ test("renderer fixture: a late Start response cannot regress the editing surface
   });
 });
 
-test("renderer fixture: Copy works without destinations and Done returns to idle", async () => {
+void test("renderer fixture: Copy works without destinations and Done returns to idle", async () => {
   await withPage({ editing: true, noDestinations: true }, async (page) => {
     await editingReady(page);
     assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
@@ -295,7 +295,7 @@ test("renderer fixture: Copy works without destinations and Done returns to idle
   });
 });
 
-test("renderer fixture: explicit target, literal note, one Stage, then separate Reveal", async () => {
+void test("renderer fixture: explicit target, literal note, one Stage, then separate Reveal", async () => {
   await withPage({ editing: true }, async (page) => {
     await editingReady(page);
     assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
@@ -323,7 +323,7 @@ test("renderer fixture: explicit target, literal note, one Stage, then separate 
   });
 });
 
-test("renderer fixture: stale Stage gives manual fallback without Reveal or retry", async () => {
+void test("renderer fixture: stale Stage gives manual fallback without Reveal or retry", async () => {
   await withPage({ editing: true, stale: true }, async (page) => {
     await editingReady(page);
     await page.getByRole("radio", { name: /pane 7/ }).check();
@@ -337,7 +337,7 @@ test("renderer fixture: stale Stage gives manual fallback without Reveal or retr
   });
 });
 
-test("renderer fixture: Copy-only capability never enables Stage", async () => {
+void test("renderer fixture: Copy-only capability never enables Stage", async () => {
   await withPage({ editing: true, copyOnly: true }, async (page) => {
     await editingReady(page);
     await page.getByRole("radio", { name: /pane 7/ }).check();
@@ -347,7 +347,7 @@ test("renderer fixture: Copy-only capability never enables Stage", async () => {
   });
 });
 
-test("renderer fixture: refresh removes a stale selection rather than choosing another", async () => {
+void test("renderer fixture: refresh removes a stale selection rather than choosing another", async () => {
   await withPage({ editing: true }, async (page) => {
     await editingReady(page);
     await page.getByRole("radio", { name: /pane 7/ }).check();
@@ -361,7 +361,7 @@ test("renderer fixture: refresh removes a stale selection rather than choosing a
   });
 });
 
-test("renderer fixture: scripted pointer drag completes selection exactly once", async () => {
+void test("renderer fixture: scripted pointer drag completes selection exactly once", async () => {
   await withPage({ overlay: true }, async (page) => {
     await page.waitForFunction(() => window.fixture.calls.some((call) => call.action === "ready"));
     await page.mouse.move(100, 100);
@@ -380,7 +380,7 @@ test("renderer fixture: scripted pointer drag completes selection exactly once",
   });
 });
 
-test("renderer fixture: Escape cancels without selection or delivery", async () => {
+void test("renderer fixture: Escape cancels without selection or delivery", async () => {
   await withPage({ overlay: true }, async (page) => {
     await page.waitForFunction(() => window.fixture.calls.some((call) => call.action === "ready"));
     await page.keyboard.press("Escape");

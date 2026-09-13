@@ -5,10 +5,10 @@ import { runBoundedProcess } from "./bounded-process";
 import type { BoundedProcessRunner } from "./bounded-process";
 
 const TRUSTED_RESPONSE = "screenfling-acl-v1:trusted\n";
-const PATH_CONTROL = /[\u0000-\u001f\u007f]/u;
+const PATH_CONTROL = /\p{Cc}/u;
 
 function helperExecutable(): string {
-  if (typeof process.resourcesPath === "string" && process.defaultApp !== true) {
+  if (process.versions.electron !== undefined && process.defaultApp !== true) {
     return join(process.resourcesPath, "screenfling-selector-acl");
   }
   return resolve("out/native/screenfling-selector-acl");
