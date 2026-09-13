@@ -13,6 +13,7 @@ jobs:
   check:
     name: Check on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -36,3 +37,6 @@ jobs:
         run: npm run package:mac
       - if: runner.os == 'Windows'
         run: npm run package:win
+      - run: npx playwright install chromium
+      - name: Built renderer fixture acceptance (not native capture)
+        run: node --test tools/acceptance/ui.test.cjs
