@@ -40,3 +40,9 @@ jobs:
       - run: npx playwright install chromium
       - name: Built renderer fixture acceptance (not native capture)
         run: node --test tools/acceptance/ui.test.cjs
+      - name: Static gate diagnostics
+        if: failure() && runner.os == 'macOS'
+        run: |
+          npm run format
+          git diff
+          npm audit --json
