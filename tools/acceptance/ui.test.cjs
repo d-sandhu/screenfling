@@ -206,7 +206,11 @@ function installFixture(options) {
     },
     failed: async (request) => {
       calls.push({ action: "failed", request });
-      return { phase: "result", operationId, result: { status: "failed", reason: "capture-failed" } };
+      return {
+        phase: "result",
+        operationId,
+        result: { status: "failed", reason: "capture-failed" },
+      };
     },
   };
 }
@@ -234,7 +238,9 @@ async function withPage(options, run) {
 async function editingReady(page) {
   await page.getByRole("heading", { name: "Ready to hand off" }).waitFor();
   await page.getByAltText("Selected screen region").waitFor();
-  await page.waitForFunction(() => !document.querySelector(".actions--review button + button").disabled);
+  await page.waitForFunction(
+    () => !document.querySelector(".actions--review button + button").disabled,
+  );
 }
 
 test("renderer fixture: bootstrap failure is visible with recovery guidance", async () => {
@@ -283,7 +289,9 @@ test("renderer fixture: Copy works without destinations and Done returns to idle
     assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
     await page.getByRole("button", { name: "Done", exact: true }).press("Enter");
     await page.getByRole("button", { name: "Capture region" }).waitFor();
-    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["copy"]);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), [
+      "copy",
+    ]);
   });
 });
 
@@ -307,7 +315,10 @@ test("renderer fixture: explicit target, literal note, one Stage, then separate 
     await page.getByRole("button", { name: "Reveal destination" }).click();
     await page.getByText("Reveal requested.", { exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Reveal attempted" }).isEnabled(), false);
-    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["stage", "reveal"]);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), [
+      "stage",
+      "reveal",
+    ]);
     assert.equal(await page.getByRole("heading", { name: "Staged — unverified" }).count(), 1);
   });
 });
@@ -320,7 +331,9 @@ test("renderer fixture: stale Stage gives manual fallback without Reveal or retr
     await page.getByRole("heading", { name: "Capture stopped" }).waitFor();
     assert.match(await page.locator(".summary").innerText(), /clipboard for manual paste/);
     assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
-    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["stage"]);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), [
+      "stage",
+    ]);
   });
 });
 
@@ -340,7 +353,9 @@ test("renderer fixture: refresh removes a stale selection rather than choosing a
     await page.getByRole("radio", { name: /pane 7/ }).check();
     await page.evaluate(() => window.fixture.removeDestinations());
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
-    await page.getByText("No supported exact destination is available. Copy only still works.").waitFor();
+    await page
+      .getByText("No supported exact destination is available. Copy only still works.")
+      .waitFor();
     assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
     assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
   });
@@ -353,9 +368,14 @@ test("renderer fixture: scripted pointer drag completes selection exactly once",
     await page.mouse.down();
     await page.mouse.move(350, 250);
     await page.mouse.up();
-    await page.waitForFunction(() => window.fixture.calls.some((call) => call.action === "selection"));
+    await page.waitForFunction(() =>
+      window.fixture.calls.some((call) => call.action === "selection"),
+    );
     const calls = await page.evaluate(() => window.fixture.calls);
-    assert.deepEqual(calls.map((call) => call.action), ["ready", "selection"]);
+    assert.deepEqual(
+      calls.map((call) => call.action),
+      ["ready", "selection"],
+    );
     assert.deepEqual(calls[1].request.selection, { x: 100, y: 100, width: 250, height: 150 });
   });
 });
@@ -365,6 +385,9 @@ test("renderer fixture: Escape cancels without selection or delivery", async () 
     await page.waitForFunction(() => window.fixture.calls.some((call) => call.action === "ready"));
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => window.fixture.calls.some((call) => call.action === "cancel"));
-    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["ready", "cancel"]);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), [
+      "ready",
+      "cancel",
+    ]);
   });
 });
