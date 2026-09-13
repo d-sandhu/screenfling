@@ -421,7 +421,10 @@ void test("renderer fixture: invalid notes block Stage with guidance and allow c
       await input.fill(invalid);
       assert.equal(await input.getAttribute("aria-invalid"), "true");
       assert.match(await page.getByRole("alert").innerText(), /Edit the note or use Copy only/);
-      assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
+      assert.equal(
+        await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(),
+        false,
+      );
       assert.equal(await page.getByRole("button", { name: "Copy only" }).isEnabled(), true);
       await input.press("Enter");
       assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
