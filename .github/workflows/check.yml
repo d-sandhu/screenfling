@@ -41,6 +41,9 @@ jobs:
       - run: npx playwright install chromium
       - name: Built renderer fixture acceptance (not native capture)
         run: node --test tools/acceptance/ui.test.cjs
+      - name: Packaged macOS lifecycle acceptance (no capture or permission changes)
+        if: runner.os == 'macOS'
+        run: node tools/acceptance/lifecycle.cjs
       - name: Static gate diagnostics
         if: failure() && runner.os == 'macOS'
         run: |
