@@ -114,6 +114,7 @@ export class DestinationRegistry {
     operationId: string,
     destinationId: string,
     note: Note | null,
+    verifyClipboard: () => boolean,
   ): Promise<StageDeliveryResult> {
     const safeOperationId = operationIdSchema.parse(operationId);
     const safeDestinationId = destinationIdSchema.parse(destinationId);
@@ -132,7 +133,7 @@ export class DestinationRegistry {
     const adapter = this.#adapters.get(destination.adapter);
     if (adapter === undefined) return { status: "failed", reason: "dispatch-failed" };
     this.#pendingOperationId = safeOperationId;
-    const result = await stageDestination(adapter, destination, safeNote);
+    const result = await stageDestination(adapter, destination, safeNote, verifyClipboard);
     if (this.#revision === revision) {
       this.#pendingOperationId = null;
       if (result.status === "dispatched-unverified" || result.status === "staged-verified") {

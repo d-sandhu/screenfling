@@ -336,7 +336,11 @@ export class WezTermAdapter implements DestinationAdapter {
     if (current.status !== "ready") return { status: "failed" };
 
     const safeNote = note === null ? null : note.data;
-    return this.#sendText(current.route, joinInput(this.#config.imagePasteInput, safeNote));
+    return this.#sendText(
+      current.route,
+      joinInput(this.#config.imagePasteInput, safeNote),
+      request.verifyClipboard,
+    );
   }
 
   async revealIfCurrent(request: AdapterRevealRequest): Promise<RevealResult> {
@@ -414,17 +418,35 @@ export class WezTermAdapter implements DestinationAdapter {
     return { status: "ready", snapshot: { ...preflight, panes: paneList.panes } };
   }
 
-  async #sendText(route: WezTermRoute, input: Uint8Array): Promise<AdapterStageResult> {
+  async #sendText(
+    route: WezTermRoute,
+    input: Uint8Array,
+    verifyClipboard: () => boolean,
+  ): Promise<AdapterStageResult> {
+    const generationGuard = this.#generationGuard(route.generation);
+    let clipboardRejected = false;
     const result = await this.#dependencies.runProcess(
       this.#processRequest(
         this.#cliArguments(["send-text", "--no-paste", "--pane-id", String(route.paneId)]),
         input,
         MAX_PROCESS_OUTPUT_BYTES,
-        this.#generationGuard(route.generation),
+        async () => {
+          if (!(await generationGuard())) return false;
+          // The pinned transport repeats this guard after connecting. Check the
+          // image last, without yielding or rewriting the clipboard. This is not
+          // an OS clipboard lock: later agent consumption remains unverified.
+          try {
+            if (verifyClipboard() === true) return true;
+          } catch { /* Failed reads are not evidence that the image is current. */ }
+          clipboardRejected = true;
+          return false;
+        },
       ),
     );
     if (result.status === "success") return { status: "dispatched-unverified" };
-    if (result.reason === "guard-rejected") return { status: "stale" };
+    if (result.reason === "guard-rejected") {
+      return { status: clipboardRejected ? "clipboard-failed" : "stale" };
+    }
     if (result.reason === "spawn") return { status: "failed" };
     return { status: "dispatched-unverified" };
   }

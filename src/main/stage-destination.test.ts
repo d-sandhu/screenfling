@@ -10,6 +10,9 @@ import type {
   DestinationAdapter,
 } from "./destination-adapter";
 
+// Synthetic input fixtures: real clipboard ownership is supplied by CaptureController.
+const verifyClipboard = () => true;
+
 const selected = parseDestination({
   id: "instrumented:7",
   adapter: "instrumented",
@@ -53,25 +56,26 @@ describe("destination staging orchestration", () => {
     const stageRequests: AdapterStageRequest[] = [];
     const adapter = createAdapter({ status: "dispatched-unverified" }, stageRequests);
 
-    await expect(stageDestination(adapter, selected, parseNote("literal note"))).resolves.toEqual({
+    await expect(stageDestination(adapter, selected, parseNote("literal note"), verifyClipboard)).resolves.toEqual({
       status: "dispatched-unverified",
       destination: destinationReceipt,
     });
-    expect(stageRequests).toEqual([{ destination: selected, note: "literal note" }]);
+    expect(stageRequests).toEqual([{ destination: selected, note: "literal note", verifyClipboard }]);
   });
 
   it.each([
     [{ status: "stale" }, "target-stale"],
+    [{ status: "clipboard-failed" }, "clipboard-failed"],
     [{ status: "permission-blocked" }, "permission-blocked"],
     [{ status: "failed" }, "dispatch-failed"],
   ] satisfies readonly (readonly [
     AdapterStageResult,
-    "target-stale" | "permission-blocked" | "dispatch-failed",
+    "target-stale" | "permission-blocked" | "dispatch-failed" | "clipboard-failed",
   ])[])("fails closed when the adapter transaction returns %j", async (stageResult, reason) => {
     const stageRequests: AdapterStageRequest[] = [];
 
     await expect(
-      stageDestination(createAdapter(stageResult, stageRequests), selected, null),
+      stageDestination(createAdapter(stageResult, stageRequests), selected, null, verifyClipboard),
     ).resolves.toEqual({ status: "failed", reason });
     expect(stageRequests).toHaveLength(1);
   });
@@ -89,7 +93,7 @@ describe("destination staging orchestration", () => {
       },
     };
 
-    await expect(stageDestination(adapter, selected, null)).resolves.toEqual({
+    await expect(stageDestination(adapter, selected, null, verifyClipboard)).resolves.toEqual({
       status: "failed",
       reason: "target-stale",
     });
@@ -104,11 +108,11 @@ describe("destination staging orchestration", () => {
       stageDestination(
         createAdapter({ status: "dispatched-unverified" }, uncertainRequests),
         selected,
-        null,
+        null, verifyClipboard,
       ),
     ).resolves.toEqual({ status: "dispatched-unverified", destination: destinationReceipt });
     await expect(
-      stageDestination(createAdapter({ status: "failed" }, failedRequests), selected, null),
+      stageDestination(createAdapter({ status: "failed" }, failedRequests), selected, null, verifyClipboard),
     ).resolves.toEqual({ status: "failed", reason: "dispatch-failed" });
     expect(uncertainRequests).toHaveLength(1);
     expect(failedRequests).toHaveLength(1);
@@ -125,7 +129,7 @@ describe("destination staging orchestration", () => {
       stageDestination(
         createAdapter({ status: "dispatched-unverified" }, stageRequests),
         noText,
-        parseNote("not allowed"),
+        parseNote("not allowed"), verifyClipboard,
       ),
     ).resolves.toEqual({ status: "failed", reason: "unsupported" });
     expect(stageRequests).toHaveLength(0);
@@ -136,7 +140,7 @@ describe("destination staging orchestration", () => {
     const adapter = createAdapter({ status: "dispatched-unverified" }, stageRequests);
     const wrongAdapter = { ...adapter, id: "another-adapter" };
 
-    await expect(stageDestination(wrongAdapter, selected, null)).resolves.toEqual({
+    await expect(stageDestination(wrongAdapter, selected, null, verifyClipboard)).resolves.toEqual({
       status: "failed",
       reason: "dispatch-failed",
     });
@@ -154,7 +158,7 @@ describe("destination staging orchestration", () => {
       stageDestination(
         createAdapter({ status: "dispatched-unverified" }, stageRequests),
         malformed,
-        null,
+        null, verifyClipboard,
       ),
     ).resolves.toEqual({ status: "failed", reason: "dispatch-failed" });
     expect(stageRequests).toHaveLength(0);
@@ -167,7 +171,7 @@ describe("destination staging orchestration", () => {
       stageDestination(
         createAdapter({ status: "dispatched-unverified" }, stageRequests),
         selected,
-        "two\nlines",
+        "two\nlines", verifyClipboard,
       ),
     ).resolves.toEqual({ status: "failed", reason: "dispatch-failed" });
     expect(stageRequests).toHaveLength(0);
@@ -177,7 +181,7 @@ describe("destination staging orchestration", () => {
     const stageRequests: AdapterStageRequest[] = [];
 
     await expect(
-      stageDestination(createAdapter({ status: "staged-verified" }, stageRequests), selected, null),
+      stageDestination(createAdapter({ status: "staged-verified" }, stageRequests), selected, null, verifyClipboard),
     ).resolves.toEqual({ status: "failed", reason: "dispatch-failed" });
     expect(stageRequests).toHaveLength(1);
   });
@@ -197,7 +201,7 @@ describe("destination staging orchestration", () => {
       stageDestination(
         createAdapter({ status: "staged-verified" }, stageRequests),
         verifiable,
-        null,
+        null, verifyClipboard,
       ),
     ).resolves.toEqual({ status: "staged-verified", destination: destinationReceipt });
   });
@@ -213,7 +217,7 @@ describe("destination staging orchestration", () => {
       },
     };
 
-    await expect(stageDestination(adapter, selected, null)).resolves.toEqual({
+    await expect(stageDestination(adapter, selected, null, verifyClipboard)).resolves.toEqual({
       status: "failed",
       reason: "dispatch-failed",
     });

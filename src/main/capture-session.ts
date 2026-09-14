@@ -229,6 +229,23 @@ export class CaptureSession {
     }
   }
 
+  // Read-only recheck for the final Stage boundary. Never restore or overwrite
+  // clipboard contents another application wrote while target checks were pending.
+  isClipboardCurrent(operationId: string): boolean {
+    try {
+      const active = this.#requireActive(operationId);
+      if (active.croppedImage === null) return false;
+      const expected = {
+        bitmap: active.croppedImage.toBitmap(),
+        size: active.croppedImage.getSize(),
+      };
+      return expected.bitmap.byteLength > 0 &&
+        hasSameImageEvidence(expected, this.#clipboard.readImageEvidence());
+    } catch {
+      return false;
+    }
+  }
+
   release(operationId: string): void {
     const safeOperationId = operationIdSchema.parse(operationId);
     if (this.#pendingOperationId === safeOperationId) {

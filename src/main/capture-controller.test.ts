@@ -277,6 +277,34 @@ async function prepareEditingCapture(
 }
 
 describe("capture workflow controller", () => {
+  it("passes an operation-scoped clipboard recheck and preserves replacement content on refusal", async () => {
+    const adapter = new ControllerDestinationAdapter();
+    adapter.waitForFinish = true;
+    const harness = createHarness(adapter);
+    const pixels = await prepareEditingCapture(harness);
+    await harness.controller.discoverDestinations(OPERATION_ID);
+    const pending = harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, "literal note");
+    const request = adapter.staged[0];
+    if (request === undefined) throw new Error("Expected pending adapter transaction.");
+    expect(request.verifyClipboard()).toBe(true);
+    const replacement = { bitmap: Uint8Array.from([9, 8, 7, 6]), size: pixels };
+    harness.clipboard.evidence = replacement;
+    expect(request.verifyClipboard()).toBe(false);
+    adapter.finish({ status: "clipboard-failed" });
+    await expect(pending).resolves.toMatchObject({
+      phase: "result", result: { status: "failed", reason: "clipboard-failed" },
+    });
+    expect(harness.clipboard.writes).toBe(1);
+    expect(harness.clipboard.evidence).toBe(replacement);
+    expect(harness.session.activeOperationId).toBeNull();
+    expect(request.verifyClipboard()).toBe(false);
+    await expect(harness.controller.revealDestination(OPERATION_ID)).resolves.toEqual({ status: "unsupported" });
+    expect(adapter.revealed).toHaveLength(0);
+    expect(adapter.staged).toHaveLength(1);
+    harness.controller.dismissResult(OPERATION_ID);
+    expect(harness.controller.snapshot.phase).toBe("idle");
+  });
+
   it("records sanitized shortcut, phase, result, and Reveal diagnostics once", async () => {
     const adapter = new ControllerDestinationAdapter();
     const harness = createHarness(adapter);
@@ -571,7 +599,8 @@ describe("capture workflow controller", () => {
     });
 
     expect(harness.clipboard.writes).toBe(1);
-    expect(adapter.staged).toEqual([{ destination: DESTINATION, note: "literal note" }]);
+    expect(adapter.staged).toMatchObject([{ destination: DESTINATION, note: "literal note" }]);
+    expect(adapter.staged[0]?.verifyClipboard).toEqual(expect.any(Function));
     expect(harness.session.activeOperationId).toBeNull();
     expect(harness.mainSurface.published.slice(-4).map((snapshot) => snapshot.phase)).toEqual([
       "target-selected",

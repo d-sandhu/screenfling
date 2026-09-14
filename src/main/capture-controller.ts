@@ -221,7 +221,9 @@ export class CaptureController {
     this.#publish(this.#workflow.advance(operationId, "staging"));
     let result: DeliveryResult;
     try {
-      result = await this.#destinations.stage(operationId, destinationId, note);
+      result = await this.#destinations.stage(operationId, destinationId, note, () =>
+        this.#capture.isClipboardCurrent(operationId),
+      );
     } catch {
       result = { status: "failed", reason: "dispatch-failed" };
     }

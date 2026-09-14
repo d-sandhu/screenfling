@@ -38,6 +38,9 @@ function mapAdapterResult(
       ? { ...result, destination: receiptForDestination(destination) }
       : { status: "failed", reason: "dispatch-failed" };
   }
+  if (result.status === "clipboard-failed") {
+    return { status: "failed", reason: "clipboard-failed" };
+  }
   if (result.status === "stale") {
     return { status: "failed", reason: "target-stale" };
   }
@@ -51,6 +54,7 @@ export async function stageDestination(
   adapter: DestinationAdapter,
   selected: Destination,
   note: Note | null,
+  verifyClipboard: () => boolean,
 ): Promise<StageDeliveryResult> {
   const parsedDestination = destinationSchema.safeParse(selected);
   const parsedNote = note === null ? null : noteSchema.safeParse(note);
@@ -67,7 +71,7 @@ export async function stageDestination(
     return { status: "failed", reason: "unsupported" };
   }
 
-  const request: AdapterStageRequest = { destination, note: safeNote };
+  const request: AdapterStageRequest = { destination, note: safeNote, verifyClipboard };
   try {
     const result = adapterStageResultSchema.safeParse(await adapter.stageIfCurrent(request));
     if (!result.success) {

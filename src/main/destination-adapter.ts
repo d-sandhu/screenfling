@@ -11,6 +11,8 @@ export type AdapterRevealRequest = {
 export type AdapterStageRequest = {
   readonly destination: Destination;
   readonly note: Note | null;
+  /** Main-owned, read-only check after awaited target validation and before input. */
+  readonly verifyClipboard: () => boolean;
 };
 
 export const adapterStageResultSchema = z
@@ -18,6 +20,7 @@ export const adapterStageResultSchema = z
     z.strictObject({ status: z.literal("dispatched-unverified") }),
     z.strictObject({ status: z.literal("staged-verified") }),
     z.strictObject({ status: z.literal("stale") }),
+    z.strictObject({ status: z.literal("clipboard-failed") }),
     z.strictObject({ status: z.literal("permission-blocked") }),
     z.strictObject({ status: z.literal("failed") }),
   ])
