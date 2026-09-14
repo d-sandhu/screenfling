@@ -36,9 +36,10 @@
     "format:check": "prettier --check \".github/**/*.{yml,yaml}\" \"src/**/*.{ts,tsx,css,html}\" \"tools/**/*.cjs\" \"*.{json,ts,mts}\"",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build:native",
-    "test": "vitest run && node --test tools/acceptance/capture.test.cjs",
+    "test": "vitest run && node --test tools/acceptance/capture.test.cjs tools/release-macos.test.cjs",
     "check": "npm run lint && npm run typecheck && npm test",
-    "check:all": "npm run check && npm run package"
+    "check:all": "npm run check && npm run package",
+    "release:mac": "node tools/release-macos.cjs"
   },
   "build": {
     "appId": "com.dsandhu.screenfling",
@@ -69,7 +70,8 @@
       ],
       "target": [
         "zip"
-      ]
+      ],
+      "category": "public.app-category.developer-tools"
     },
     "win": {
       "target": [
@@ -85,6 +87,9 @@
       "onlyLoadAppFromAsar": true,
       "loadBrowserProcessSpecificV8Snapshot": false,
       "grantFileProtocolExtraPrivileges": false
+    },
+    "extraMetadata": {
+      "version": "0.1.0-alpha.1"
     }
   },
   "dependencies": {

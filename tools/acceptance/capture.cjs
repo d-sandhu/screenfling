@@ -39,7 +39,10 @@ const expectedArtifact = z
     productName: z.string().min(1),
     version: z.string().min(1),
   })
-  .parse(packageMetadata);
+  .parse({
+    ...packageMetadata,
+    version: packageMetadata.build.extraMetadata?.version ?? packageMetadata.version,
+  });
 
 function parseIntegerFlag(name, fallback, maximum = MAX_RUNS) {
   const prefix = `--${name}=`;
