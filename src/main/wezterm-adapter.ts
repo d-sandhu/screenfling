@@ -127,8 +127,8 @@ function parsePaneList(bytes: Uint8Array): PaneListResult {
     const parsed = wezTermPaneListSchema.safeParse(JSON.parse(text));
     if (!parsed.success) return { status: "invalid" };
     const paneIds = parsed.data.map((pane) => pane.pane_id);
-    if (new Set(paneIds).size === paneIds.length) return { status: "ready", panes: parsed.data };
-    return { status: "ambiguous" };
+    if (new Set(paneIds).size !== paneIds.length) return { status: "ambiguous" };
+    return { status: "ready", panes: parsed.data };
   } catch {
     return { status: "invalid" };
   }
@@ -180,7 +180,7 @@ function boundedGenerationReader(read: WezTermGenerationReader): WezTermGenerati
         }),
       ]);
       if (performance.now() >= expiresAt) {
-        throw new Error("WezTerm selector inspection timed out."));
+        throw new Error("WezTerm selector inspection timed out.");
       }
       return generation;
     } finally {
