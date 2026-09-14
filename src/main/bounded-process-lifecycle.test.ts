@@ -141,6 +141,20 @@ describe("bounded process lifecycle", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it.each(["stdout", "stderr"] as const)(
+    "settles a %s read error without an uncaught main-process exception",
+    async (stream) => {
+      const child = new ProcessFixture();
+      const result = runBoundedProcess(request, () => child);
+      child[stream].emit("error", new Error("synthetic-pipe-read-error"));
+      await vi.advanceTimersByTimeAsync(200);
+      await expect(result).resolves.toEqual({ status: "failed", reason: "exit" });
+      expect(child[stream].destroyed).toBe(true);
+      child[stream].emit("error", new Error("synthetic-late-pipe-error"));
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
   it("retains the proven no-spawn result when the child never acquired a PID", async () => {
     const child = new ProcessFixture();
     child.pid = undefined;

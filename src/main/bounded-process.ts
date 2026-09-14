@@ -114,6 +114,8 @@ export async function runBoundedProcess(
     deadline = setTimeout(() => stopFor("timeout"), Math.max(0, expiresAt - performance.now()));
     child.stdout.on("data", (chunk: Buffer) => countOutput(chunk, true));
     child.stderr.on("data", (chunk: Buffer) => countOutput(chunk, false));
+    child.stdout.on("error", () => stopFor("exit"));
+    child.stderr.on("error", () => stopFor("exit"));
     child.on("error", () => {
       if (child.pid === undefined) finish({ status: "failed", reason: "spawn" });
       // A kill/control error after launch cannot prove that no input was sent.
