@@ -4,7 +4,7 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 import { destinationSchema, noteSchema } from "../shared/domain";
-import { runBoundedProcess } from "./bounded-process";
+import { runWezTermProcess } from "./wezterm-process";
 import { readTrustedWezTermSelectorEvidence } from "./trusted-wezterm-selectors";
 
 import type { BoundedProcessRequest, BoundedProcessRunner } from "./bounded-process";
@@ -21,7 +21,7 @@ export const WEZTERM_ADAPTER_ID = "wezterm";
 export const WEZTERM_INSPECTION_TIMEOUT_MS = 3_000;
 export const SUPPORTED_WEZTERM_VERSION = "20240203-110809-5046fc22";
 
-const VERSION_OUTPUT = `wezterm ${SUPPORTED_WEZTERM_VERSION}`;
+const VERSION_OUTPUT = `wezterm ${SUPPORTED_WEZZTERM_VERSION}`;
 const MAX_LIST_BYTES = 1024 * 1024;
 const MAX_PROCESS_OUTPUT_BYTES = 16 * 1024;
 const MAX_PANES = 4_096;
@@ -450,6 +450,6 @@ export function createWezTermAdapter(config: WezTermAdapterConfig): WezTermAdapt
   return new WezTermAdapter(config, {
     now: () => new Date(),
     readGeneration: readWezTermGeneration,
-    runProcess: runBoundedProcess,
+    runProcess: runWezTermProcess,
   });
 }
