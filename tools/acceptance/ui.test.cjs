@@ -42,7 +42,8 @@ after(async () => {
 });
 
 function installFixture(options) {
-  const operationId = "550e8400-e29b-41d4-a716-446655440000";
+  let operationId = "550e8400-e29b-41d4-a716-446655440000";
+  let nextOperation = 1;
   const calls = [];
   const listeners = new Set();
   const initial = { phase: options.editing ? "editing" : "idle" };
@@ -51,6 +52,16 @@ function installFixture(options) {
   let bootstrapResolvers = [];
   let startResolver = null;
   let copyResolver = null;
+  let revealResolver = null;
+  let heldPreview = null;
+  // Delay the actual image's load notification, not its validity or dimensions.
+  document.addEventListener("load", (event) => {
+    if (options.holdPreview && event.target instanceof HTMLImageElement &&
+        event.target.alt === "Selected screen region") {
+      event.stopImmediatePropagation();
+      heldPreview = event.target;
+    }
+  }, true);
   let destinations = ["7", "8"].map((locator) => ({
     id: `wezterm:fixture:${locator}`,
     adapter: "wezterm",
@@ -100,6 +111,16 @@ function installFixture(options) {
 
   window.fixture = {
     calls,
+    repairPreview: () => { options.previewFault = null; },
+    holdNextPreview: () => { options.holdPreview = true; heldPreview = null; },
+    previewLoadHeld: () => heldPreview !== null,
+    releasePreview: () => {
+      options.holdPreview = false;
+      const image = heldPreview;
+      heldPreview = null;
+      if (image !== null) image.dispatchEvent(new Event("load"));
+    },
+    releaseReveal: () => revealResolver?.({ status: "revealed" }),
     emitEditing: () => publish({ phase: "editing", operationId }),
     releaseBootstrap: () => {
       for (const resolve of bootstrapResolvers) resolve(initial);
@@ -151,17 +172,21 @@ function installFixture(options) {
     },
     startCapture: async () => {
       calls.push({ action: "start" });
+      operationId = `550e8400-e29b-41d4-a716-${String(nextOperation++).padStart(12, "0")}`;
       publish({ phase: "snapshotting", operationId });
       publish({ phase: "editing", operationId });
       if (options.delayStart) return new Promise((resolve) => (startResolver = resolve));
       return state;
     },
-    getCaptureDraft: async () => ({
-      operationId,
-      selection: { x: 10, y: 10, width: 200, height: 100 },
-      pixels: { width: 200, height: 100 },
-      preview: jpeg(200, 100),
-    }),
+    getCaptureDraft: async () => {
+      if (options.previewFault === "unreadable") throw new Error("synthetic-draft-failure");
+      return {
+        operationId,
+        selection: { x: 10, y: 10, width: 200, height: 100 },
+        pixels: { width: 200, height: 100 },
+        preview: options.previewFault === "invalid" ? new Uint8Array([255, 216, 0]) : jpeg(200, 100),
+      };
+    },
     discoverDestinations: async () => ({
       destinations,
       status: options.discoveryStatus ?? (destinations.length === 0 ? "not-configured" : "ready"),
@@ -185,6 +210,7 @@ function installFixture(options) {
     },
     revealDestination: async (request) => {
       calls.push({ action: "reveal", request });
+      if (options.delayReveal) return new Promise((resolve) => { revealResolver = resolve; });
       return { status: "revealed" };
     },
     cancelOperation: async (request) => {
@@ -325,6 +351,8 @@ void test("renderer fixture: Done gains keyboard focus only after a pending resu
     await page.getByRole("button", { name: "Copy only" }).click();
     await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Done", exact: true }).isEnabled(), false);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.getByRole("heading", { name: "Copied", exact: true }).count(), 1);
     await page.evaluate(() => window.fixture.releaseCopy());
     await page.waitForFunction(() => document.activeElement?.textContent === "Done");
     await page.keyboard.press("Enter");
@@ -587,5 +615,81 @@ void test("renderer fixture: reachable empty instance has actionable review guid
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await page.getByText(/WezTerm is reachable, but this instance has no panes/).waitFor();
     assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+  });
+});
+
+
+void test("renderer fixture: every capture waits for its own preview load before delivery", async () => {
+  await withPage({ editing: true, holdPreview: true }, async (page) => {
+    for (let capture = 0; capture < 2; capture += 1) {
+      await page.waitForFunction(() => window.fixture.previewLoadHeld());
+      await page.getByRole("radio", { name: /pane 7/ }).check();
+      assert.equal(await page.getByRole("button", { name: "Copy only" }).isEnabled(), false);
+      assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
+      await page.evaluate(() => window.fixture.releasePreview());
+      await editingReady(page);
+      assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), true);
+      await page.getByRole("button", { name: "Copy only" }).click();
+      await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+      if (capture === 0) {
+        await page.evaluate(() => window.fixture.holdNextPreview());
+        await page.getByRole("button", { name: "Capture another", exact: true }).click();
+      }
+    }
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["copy", "start", "copy"]);
+  });
+});
+
+void test("renderer fixture: unreadable or broken previews block delivery and allow a fresh capture", async () => {
+  for (const previewFault of ["unreadable", "invalid"]) {
+    await withPage({ editing: true, previewFault }, async (page) => {
+      await page.getByRole("alert").filter({ hasText: "preview could not be displayed" }).waitFor();
+      await page.getByRole("radio", { name: /pane 7/ }).check();
+      assert.equal(await page.getByRole("button", { name: "Copy only" }).isEnabled(), false);
+      assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
+      assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await page.getByRole("button", { name: "Done", exact: true }).waitFor();
+      await page.evaluate(() => window.fixture.repairPreview());
+      await page.getByRole("button", { name: "Capture another", exact: true }).click();
+      await editingReady(page);
+      assert.equal(await page.getByRole("alert").count(), 0);
+      await page.getByRole("button", { name: "Copy only" }).click();
+      await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+      assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["cancel", "start", "copy"]);
+    });
+  }
+});
+
+void test("renderer fixture: Escape cancels review and dismisses the result without sending", async () => {
+  await withPage({ editing: true }, async (page) => {
+    await editingReady(page);
+    const note = page.getByPlaceholder("What should the agent notice?");
+    await note.fill("synthetic context");
+    await note.dispatchEvent("keydown", { key: "Escape", isComposing: true });
+    await note.dispatchEvent("keydown", { key: "Escape", repeat: true });
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+    await note.press("Escape");
+    await page.getByRole("button", { name: "Done", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Capture region" }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["cancel"]);
+  });
+});
+
+void test("renderer fixture: Escape cannot dismiss or repeat an in-flight Reveal", async () => {
+  await withPage({ editing: true, delayReveal: true }, async (page) => {
+    await editingReady(page);
+    await page.getByRole("radio", { name: /pane 8/ }).check();
+    await page.getByRole("button", { name: "Stage, don’t send" }).click();
+    await page.getByRole("button", { name: "Reveal destination" }).click();
+    await page.keyboard.press("Escape");
+    assert.equal(await page.getByRole("heading", { name: "Staged — unverified" }).count(), 1);
+    assert.equal(await page.getByRole("button", { name: "Done", exact: true }).isEnabled(), false);
+    await page.evaluate(() => window.fixture.releaseReveal());
+    await page.getByText("Reveal requested.", { exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Capture region" }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["stage", "reveal"]);
   });
 });
