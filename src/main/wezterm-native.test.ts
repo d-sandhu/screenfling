@@ -125,6 +125,8 @@ describe.skipIf(process.platform !== "darwin" || EXECUTABLE === undefined || SER
           (
             await cli([
               "spawn",
+              "--pane-id",
+              String(first.pane_id),
               "--cwd",
               directory,
               "--",

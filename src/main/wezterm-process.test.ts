@@ -42,6 +42,9 @@ async function openEndpoint(path: string) {
   return {
     received,
     connections: () => connections,
+    disconnect: () => {
+      for (const peer of peers) peer.destroy();
+    },
     close: () => {
       for (const peer of peers) peer.destroy();
       return new Promise<void>((resolve) => server.close(() => resolve()));
@@ -218,6 +221,63 @@ describe.skipIf(process.platform !== "darwin")("pinned WezTerm command transport
       });
       expect(result).toEqual({ status: "failed", reason: "guard-rejected" });
       expect(first.connections()).toBe(0);
+      expect(await readdir(directory)).toEqual(["mux"]);
+    });
+  });
+
+  it("does not reconnect when the original upstream dies after validation", async () => {
+    await withFixture(async ({ directory, first, replace, request }) => {
+      const replacements: Endpoint[] = [];
+      const interleave: BoundedProcessRunner = async (command) => {
+        const { beforeSpawn, ...checked } = command;
+        if (beforeSpawn === undefined || !(await beforeSpawn())) {
+          return { status: "failed", reason: "guard-rejected" };
+        }
+        replacements.push(await replace());
+        first.disconnect();
+        return runBoundedProcess(checked);
+      };
+      await runPinnedWezTermProcess(request, interleave);
+      expect(first.received).toEqual([]);
+      expect(replacements).toHaveLength(1);
+      expect(replacements[0]?.received).toEqual([]);
+      expect(replacements[0]?.connections()).toBe(0);
+      expect(await readdir(directory)).toEqual(["mux", "old"]);
+    });
+  });
+
+  it("bounds traffic in the relay even when the client does not print stdout", async () => {
+    await withFixture(async ({ directory, first, request }) => {
+      const input = new Uint8Array(2 * 1024 * 1024).fill(120);
+      const result = await runPinnedWezTermProcess({
+        ...request,
+        input,
+        arguments: ["-e", CLIENT.replace("process.stdout.write(chunk)", "undefined")],
+      });
+      expect(result.status).toBe("failed");
+      expect(first.received.length).toBeLessThan(input.length);
+      expect(first.received.length).toBeLessThanOrEqual(1024 * 1024);
+      expect(await readdir(directory)).toEqual(["mux"]);
+    });
+  });
+
+  it("cleans up a timed-out ACL read and ignores its eventual approval", async () => {
+    await withFixture(async ({ directory, first, request }) => {
+      let approve: (value: boolean) => void = () => undefined;
+      const deferred = new Promise<boolean>((resolve) => {
+        approve = resolve;
+      });
+      const result = await runPinnedWezTermProcess(
+        { ...request, timeoutMs: 500 },
+        runBoundedProcess,
+        () => deferred,
+      );
+      expect(result).toEqual({ status: "failed", reason: "guard-rejected" });
+      expect(first.received).toEqual([]);
+      expect(await readdir(directory)).toEqual(["mux"]);
+      approve(true);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(first.received).toEqual([]);
       expect(await readdir(directory)).toEqual(["mux"]);
     });
   });
