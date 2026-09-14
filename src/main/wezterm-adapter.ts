@@ -21,7 +21,7 @@ export const WEZTERM_ADAPTER_ID = "wezterm";
 export const WEZTERM_INSPECTION_TIMEOUT_MS = 3_000;
 export const SUPPORTED_WEZTERM_VERSION = "20240203-110809-5046fc22";
 
-const VERSION_OUTPUT = `wezterm ${SUPPORTED_WEZZTERM_VERSION}`;
+const VERSION_OUTPUT = `wezterm ${SUPPORTED_WEZTERM_VERSION}`;
 const MAX_LIST_BYTES = 1024 * 1024;
 const MAX_PROCESS_OUTPUT_BYTES = 16 * 1024;
 const MAX_PANES = 4_096;
@@ -127,8 +127,8 @@ function parsePaneList(bytes: Uint8Array): PaneListResult {
     const parsed = wezTermPaneListSchema.safeParse(JSON.parse(text));
     if (!parsed.success) return { status: "invalid" };
     const paneIds = parsed.data.map((pane) => pane.pane_id);
-    if (new Set(paneIds).size !== paneIds.length) return { status: "ambiguous" };
-    return { status: "ready", panes: parsed.data };
+    if (new Set(paneIds).size === paneIds.length) return { status: "ready", panes: parsed.data };
+    return { status: "ambiguous" };
   } catch {
     return { status: "invalid" };
   }
@@ -180,7 +180,7 @@ function boundedGenerationReader(read: WezTermGenerationReader): WezTermGenerati
         }),
       ]);
       if (performance.now() >= expiresAt) {
-        throw new Error("WezTerm selector inspection timed out.");
+        throw new Error("WezTerm selector inspection timed out."));
       }
       return generation;
     } finally {
