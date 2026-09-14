@@ -21,6 +21,9 @@ import type { ChildProcess } from "node:child_process";
 import type { Socket } from "node:net";
 import type { BoundedProcessRequest } from "./bounded-process";
 
+// Synthetic input fixtures: real clipboard ownership is supplied by CaptureController.
+const verifyClipboard = () => true;
+
 const EXECUTABLE = process.env.SCREENFLING_TEST_WEZTERM_EXECUTABLE;
 const SERVER = process.env.SCREENFLING_TEST_WEZTERM_MUX_SERVER;
 const RECEIVER = `
@@ -153,6 +156,20 @@ describe.skipIf(process.platform !== "darwin" || EXECUTABLE === undefined || SER
           }
           return target;
         });
+        // Simulate clipboard replacement between the two real transport guards.
+        // This is native dispatch refusal, not an OS clipboard/agent acceptance claim.
+        let clipboardChecks = 0;
+        const guardedTarget = targets[0];
+        if (guardedTarget === undefined) throw new Error("Missing guarded target.");
+        expect(await adapter.stageIfCurrent({
+          destination: guardedTarget, note: NOTE,
+          verifyClipboard: () => ++clipboardChecks === 1,
+        })).toEqual({ status: "clipboard-failed" });
+        expect(clipboardChecks).toBe(2);
+        expect((await readFile(outputs[0])).length).toBe(0);
+        expect((await readFile(outputs[1])).length).toBe(0);
+        expect((await readdir(directory)).some((entry) => entry.startsWith(".sf-"))).toBe(false);
+
         const payloads: [Buffer[], Buffer[]] = [[], []];
         for (let trial = 0; trial < 100; trial += 1) {
           const index = trial % 2 === 0 ? 0 : 1;
@@ -160,7 +177,7 @@ describe.skipIf(process.platform !== "darwin" || EXECUTABLE === undefined || SER
           if (target === undefined) throw new Error("Missing alternating target.");
           const note = `${NOTE} trial-${trial}`;
           payloads[index].push(Buffer.concat([BINDING, Buffer.from(note)]));
-          expect(await adapter.stageIfCurrent({ destination: target, note })).toEqual({
+          expect(await adapter.stageIfCurrent({ destination: target, note, verifyClipboard })).toEqual({
             status: "dispatched-unverified",
           });
         }
@@ -198,7 +215,7 @@ describe.skipIf(process.platform !== "darwin" || EXECUTABLE === undefined || SER
           (destination) => destination.surface.locator === String(first.pane_id),
         );
         if (target === undefined) throw new Error("Missing interleaving target.");
-        expect(await racedAdapter.stageIfCurrent({ destination: target, note: NOTE })).toEqual({
+        expect(await racedAdapter.stageIfCurrent({ destination: target, note: NOTE, verifyClipboard })).toEqual({
           status: "dispatched-unverified",
         });
         await waitUntil(

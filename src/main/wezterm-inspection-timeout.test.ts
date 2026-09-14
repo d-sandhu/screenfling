@@ -10,6 +10,9 @@ import {
 
 import type { BoundedProcessRequest, BoundedProcessResult } from "./bounded-process";
 
+// Synthetic input fixtures: real clipboard ownership is supplied by CaptureController.
+const verifyClipboard = () => true;
+
 const GENERATION = "a".repeat(64);
 const ROOT = process.platform === "win32" ? "C:\\synthetic" : "/synthetic";
 const TIMEOUT = WEZTERM_INSPECTION_TIMEOUT_MS;
@@ -97,7 +100,7 @@ describe("WezTerm selector inspection deadlines", () => {
       const dispatched = fixture.dispatched.length;
       const result =
         action === "stage"
-          ? fixture.adapter.stageIfCurrent({ destination, note: null })
+          ? fixture.adapter.stageIfCurrent({ destination, note: null, verifyClipboard })
           : fixture.adapter.revealIfCurrent({ destination });
       await vi.advanceTimersByTimeAsync(TIMEOUT);
       await expect(result).resolves.toEqual({
@@ -119,7 +122,7 @@ describe("WezTerm selector inspection deadlines", () => {
       fixture.stallRead = fixture.reads + 6;
       const result =
         action === "stage"
-          ? fixture.adapter.stageIfCurrent({ destination, note: null })
+          ? fixture.adapter.stageIfCurrent({ destination, note: null, verifyClipboard })
           : fixture.adapter.revealIfCurrent({ destination });
       await vi.advanceTimersByTimeAsync(TIMEOUT);
       await expect(result).resolves.toEqual({ status: "stale" });

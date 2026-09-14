@@ -88,9 +88,11 @@ class FakeBackend implements CaptureBackend {
 class FakeClipboard implements ImageClipboard {
   readback: ClipboardImageEvidence | null = null;
   throwOnWrite = false;
+  throwOnRead = false;
   writes: Uint8Array[] = [];
 
   readImageEvidence(): ClipboardImageEvidence | null {
+    if (this.throwOnRead) throw new Error("synthetic-clipboard-read-failure");
     return this.readback;
   }
 
@@ -115,6 +117,32 @@ function beginAtPointer(session: CaptureSession, operationId = OPERATION_ID) {
 }
 
 describe("production capture session", () => {
+  it("rechecks exact current pixels without writing and refuses stale, missing, or unreadable evidence", async () => {
+    const { clipboard, session } = createCapture();
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    await beginAtPointer(session);
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    const { pixels } = session.complete(OPERATION_ID, { x: 10, y: 10, width: 20, height: 20 });
+    const bitmap = Uint8Array.from([4, 3, 2, 1]);
+    clipboard.readback = { bitmap, size: pixels };
+    session.copy(OPERATION_ID);
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(true);
+    expect(session.isClipboardCurrent(STALE_OPERATION_ID)).toBe(false);
+    clipboard.readback = { bitmap, size: { width: pixels.width + 1, height: pixels.height } };
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    clipboard.readback = { bitmap: Uint8Array.from([9, 8, 7, 6]), size: pixels };
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    clipboard.readback = null;
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    clipboard.readback = { bitmap, size: pixels };
+    clipboard.throwOnRead = true;
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    clipboard.throwOnRead = false;
+    session.release(OPERATION_ID);
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    expect(clipboard.writes).toHaveLength(1);
+  });
+
   it("retains a lossless capture while exposing only a bounded overlay preview", async () => {
     const { backend, session } = createCapture();
 

@@ -12,6 +12,9 @@ import type {
 import type { Destination } from "../shared/domain";
 import type { RevealResult } from "../shared/workflow";
 
+// Synthetic input fixtures: real clipboard ownership is supplied by CaptureController.
+const verifyClipboard = () => true;
+
 const OPERATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const OTHER_OPERATION_ID = "a6f35ec1-15d7-4c64-9843-0b97a10d20ef";
 
@@ -83,7 +86,7 @@ describe("destination registry", () => {
     const registry = new DestinationRegistry([adapter]);
 
     await expect(registry.discover(OPERATION_ID)).resolves.toEqual([destination("pane-7")]);
-    await expect(registry.stage(OPERATION_ID, "pane-7", "literal note")).resolves.toEqual({
+    await expect(registry.stage(OPERATION_ID, "pane-7", "literal note", verifyClipboard)).resolves.toEqual({
       status: "dispatched-unverified",
       destination: {
         id: "pane-7",
@@ -91,7 +94,7 @@ describe("destination registry", () => {
         surface: { kind: "pane", locator: "pane-7" },
       },
     });
-    expect(adapter.staged).toEqual([{ destination: destination("pane-7"), note: "literal note" }]);
+    expect(adapter.staged).toEqual([{ destination: destination("pane-7"), note: "literal note", verifyClipboard }]);
   });
 
   it("consumes a discovery before dispatch so duplicate Stage requests fail stale", async () => {
@@ -99,8 +102,8 @@ describe("destination registry", () => {
     const registry = new DestinationRegistry([adapter]);
     await registry.discover(OPERATION_ID);
 
-    await registry.stage(OPERATION_ID, "pane-7", null);
-    await expect(registry.stage(OPERATION_ID, "pane-7", null)).resolves.toEqual({
+    await registry.stage(OPERATION_ID, "pane-7", null, verifyClipboard);
+    await expect(registry.stage(OPERATION_ID, "pane-7", null, verifyClipboard)).resolves.toEqual({
       status: "failed",
       reason: "target-stale",
     });
@@ -112,7 +115,7 @@ describe("destination registry", () => {
     const adapter = new InstrumentedAdapter("instrumented", [selected]);
     const registry = new DestinationRegistry([adapter]);
     await registry.discover(OPERATION_ID);
-    await registry.stage(OPERATION_ID, selected.id, null);
+    await registry.stage(OPERATION_ID, selected.id, null, verifyClipboard);
 
     await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({
       status: "revealed",
@@ -127,7 +130,7 @@ describe("destination registry", () => {
     const adapter = new InstrumentedAdapter("instrumented", [selected]);
     const registry = new DestinationRegistry([adapter]);
     await registry.discover(OPERATION_ID);
-    await registry.stage(OPERATION_ID, selected.id, null);
+    await registry.stage(OPERATION_ID, selected.id, null, verifyClipboard);
 
     await expect(registry.reveal(OTHER_OPERATION_ID, selected.id)).resolves.toEqual({
       status: "stale",
@@ -140,7 +143,7 @@ describe("destination registry", () => {
     const stageOnly = destination("pane-stage-only");
     adapter.discovered = [stageOnly];
     await registry.discover(OTHER_OPERATION_ID);
-    await registry.stage(OTHER_OPERATION_ID, stageOnly.id, null);
+    await registry.stage(OTHER_OPERATION_ID, stageOnly.id, null, verifyClipboard);
     await expect(registry.reveal(OTHER_OPERATION_ID, stageOnly.id)).resolves.toEqual({
       status: "unsupported",
     });
@@ -156,7 +159,7 @@ describe("destination registry", () => {
     };
     const registry = new DestinationRegistry([adapter]);
     await registry.discover(OPERATION_ID);
-    await registry.stage(OPERATION_ID, selected.id, null);
+    await registry.stage(OPERATION_ID, selected.id, null, verifyClipboard);
 
     await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({
       status: "unsupported",
@@ -168,12 +171,12 @@ describe("destination registry", () => {
     const adapter = new InstrumentedAdapter("instrumented", [selected]);
     const registry = new DestinationRegistry([adapter]);
     await registry.discover(OPERATION_ID);
-    await registry.stage(OPERATION_ID, selected.id, null);
+    await registry.stage(OPERATION_ID, selected.id, null, verifyClipboard);
     registry.clear(OPERATION_ID);
     await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({ status: "stale" });
 
     await registry.discover(OPERATION_ID);
-    await registry.stage(OPERATION_ID, selected.id, null);
+    await registry.stage(OPERATION_ID, selected.id, null, verifyClipboard);
     await registry.discover(OTHER_OPERATION_ID);
     await expect(registry.reveal(OPERATION_ID, selected.id)).resolves.toEqual({ status: "stale" });
     expect(adapter.revealed).toHaveLength(0);
@@ -184,7 +187,7 @@ describe("destination registry", () => {
     const registry = new DestinationRegistry([adapter]);
     await registry.discover(OPERATION_ID);
 
-    await expect(registry.stage(OTHER_OPERATION_ID, "pane-7", null)).resolves.toEqual({
+    await expect(registry.stage(OTHER_OPERATION_ID, "pane-7", null, verifyClipboard)).resolves.toEqual({
       status: "failed",
       reason: "target-stale",
     });
@@ -197,7 +200,7 @@ describe("destination registry", () => {
     const registry = new DestinationRegistry([first, second]);
 
     await expect(registry.discover(OPERATION_ID)).resolves.toEqual([]);
-    await expect(registry.stage(OPERATION_ID, "same", null)).resolves.toEqual({
+    await expect(registry.stage(OPERATION_ID, "same", null, verifyClipboard)).resolves.toEqual({
       status: "failed",
       reason: "target-stale",
     });
@@ -227,7 +230,7 @@ describe("destination registry", () => {
     await registry.discover(OTHER_OPERATION_ID);
     registry.clear(OPERATION_ID);
 
-    await expect(registry.stage(OTHER_OPERATION_ID, "pane-7", null)).resolves.toEqual({
+    await expect(registry.stage(OTHER_OPERATION_ID, "pane-7", null, verifyClipboard)).resolves.toEqual({
       status: "dispatched-unverified",
       destination: {
         id: "pane-7",
@@ -245,7 +248,7 @@ describe("destination registry", () => {
     adapter.finish();
 
     await expect(pending).resolves.toEqual([]);
-    await expect(registry.stage(OPERATION_ID, "pane-7", null)).resolves.toEqual({
+    await expect(registry.stage(OPERATION_ID, "pane-7", null, verifyClipboard)).resolves.toEqual({
       status: "failed",
       reason: "target-stale",
     });
@@ -259,7 +262,7 @@ describe("destination registry", () => {
 
     adapter.pending = true;
     const refresh = registry.discover(OPERATION_ID);
-    await expect(registry.stage(OPERATION_ID, "pane-7", null)).resolves.toEqual({
+    await expect(registry.stage(OPERATION_ID, "pane-7", null, verifyClipboard)).resolves.toEqual({
       status: "failed",
       reason: "target-stale",
     });

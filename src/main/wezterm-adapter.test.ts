@@ -20,6 +20,9 @@ import type {
 import type { WezTermAdapterConfig, WezTermAdapterDependencies } from "./wezterm-adapter";
 import type { Destination } from "../shared/domain";
 
+// Synthetic input fixtures: real clipboard ownership is supplied by CaptureController.
+const verifyClipboard = () => true;
+
 const encoder = new TextEncoder();
 const GENERATION_A = "a".repeat(64);
 const GENERATION_B = "b".repeat(64);
@@ -157,6 +160,33 @@ function revealArguments(paneId: number): readonly string[] {
 }
 
 describe("WezTerm destination adapter", () => {
+  it.each(["changed", "unreadable"] as const)(
+    "refuses %s clipboard evidence after the final asynchronous target check",
+    async (failure) => {
+      const runner = new FakeWezTermRunner();
+      let finalCheck = false;
+      let clipboardCurrent = true;
+      let clipboardChecks = 0;
+      const adapter = createAdapter(runner, async () => {
+        if (finalCheck) clipboardCurrent = false;
+        return GENERATION_A;
+      });
+      const destination = await firstDestination(adapter);
+      runner.beforeSendGuard = () => { finalCheck = true; };
+      await expect(adapter.stageIfCurrent({
+        destination, note: "literal note",
+        verifyClipboard: () => {
+          clipboardChecks += 1;
+          if (failure === "unreadable") throw new Error("synthetic-private-clipboard-error");
+          return clipboardCurrent;
+        },
+      })).resolves.toEqual({ status: "clipboard-failed" });
+      expect(clipboardChecks).toBe(1);
+      expect(runner.spawnedSendRequests).toHaveLength(0);
+      expect(runner.spawnedRevealRequests).toHaveLength(0);
+    },
+  );
+
   it("discovers exact generation-bound panes through the pinned instance", async () => {
     const runner = new FakeWezTermRunner();
     runner.listResult = success(JSON.stringify([paneFixture(7), paneFixture(8, null)]));
@@ -294,7 +324,7 @@ describe("WezTerm destination adapter", () => {
     const destination = await firstDestination(adapter);
     const note = "quotes ' \" · Unicode ☃ · $PATH · <C-v>";
 
-    await expect(adapter.stageIfCurrent({ destination, note })).resolves.toEqual({
+    await expect(adapter.stageIfCurrent({ destination, note, verifyClipboard })).resolves.toEqual({
       status: "dispatched-unverified",
     });
 
@@ -402,7 +432,7 @@ describe("WezTerm destination adapter", () => {
     for (let index = 0; index < 100; index += 1) {
       const destination = destinations[index % 2];
       if (destination === undefined) throw new Error("Expected both pane destinations.");
-      await expect(adapter.stageIfCurrent({ destination, note: null })).resolves.toEqual({
+      await expect(adapter.stageIfCurrent({ destination, note: null, verifyClipboard })).resolves.toEqual({
         status: "dispatched-unverified",
       });
     }
@@ -421,7 +451,7 @@ describe("WezTerm destination adapter", () => {
     const destination = await firstDestination(adapter);
     runner.listResult = success("[]");
 
-    await expect(adapter.stageIfCurrent({ destination, note: null })).resolves.toEqual({
+    await expect(adapter.stageIfCurrent({ destination, note: null, verifyClipboard })).resolves.toEqual({
       status: "stale",
     });
     expect(runner.spawnedSendRequests).toEqual([]);
@@ -434,7 +464,7 @@ describe("WezTerm destination adapter", () => {
     const destination = await firstDestination(adapter);
     generation = GENERATION_B;
 
-    await expect(adapter.stageIfCurrent({ destination, note: null })).resolves.toEqual({
+    await expect(adapter.stageIfCurrent({ destination, note: null, verifyClipboard })).resolves.toEqual({
       status: "stale",
     });
     expect(runner.spawnedSendRequests).toEqual([]);
@@ -449,7 +479,7 @@ describe("WezTerm destination adapter", () => {
       generation = GENERATION_B;
     };
 
-    await expect(adapter.stageIfCurrent({ destination, note: null })).resolves.toEqual({
+    await expect(adapter.stageIfCurrent({ destination, note: null, verifyClipboard })).resolves.toEqual({
       status: "stale",
     });
     expect(runner.spawnedSendRequests).toEqual([]);
@@ -461,7 +491,7 @@ describe("WezTerm destination adapter", () => {
     const adapter = createAdapter(runner);
     const destination = await firstDestination(adapter);
 
-    await expect(adapter.stageIfCurrent({ destination, note: null })).resolves.toEqual({
+    await expect(adapter.stageIfCurrent({ destination, note: null, verifyClipboard })).resolves.toEqual({
       status: "dispatched-unverified",
     });
     expect(runner.spawnedSendRequests).toHaveLength(1);
@@ -473,7 +503,7 @@ describe("WezTerm destination adapter", () => {
     const adapter = createAdapter(runner);
     const destination = await firstDestination(adapter);
 
-    await expect(adapter.stageIfCurrent({ destination, note: null })).resolves.toEqual({
+    await expect(adapter.stageIfCurrent({ destination, note: null, verifyClipboard })).resolves.toEqual({
       status: "failed",
     });
     expect(runner.spawnedSendRequests).toHaveLength(1);
@@ -486,7 +516,7 @@ describe("WezTerm destination adapter", () => {
     await adapter.discover();
 
     await expect(
-      adapter.stageIfCurrent({ destination: oldDestination, note: null }),
+      adapter.stageIfCurrent({ destination: oldDestination, note: null, verifyClipboard }),
     ).resolves.toEqual({ status: "dispatched-unverified" });
     expect(runner.spawnedSendRequests).toHaveLength(1);
   });
