@@ -26,6 +26,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Retain exact review source (not acceptance evidence)
+        if: runner.os == 'macOS'
+        run: git archive --format=tar --output="$RUNNER_TEMP/screenfling-source.tar" HEAD
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: runner.os == 'macOS'
+        with:
+          name: screenfling-source-${{ github.sha }}
+          path: ${{ runner.temp }}/screenfling-source.tar
+          retention-days: 7
+          if-no-files-found: error
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
@@ -60,3 +71,15 @@ jobs:
       - name: Packaged macOS lifecycle acceptance (no capture or permission changes)
         if: runner.os == 'macOS'
         run: node tools/acceptance/lifecycle.cjs
+      - name: Archive verified macOS test candidate (not a release)
+        if: runner.os == 'macOS'
+        env:
+          SCREENFLING_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node tools/acceptance/archive-macos.cjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: runner.os == 'macOS'
+        with:
+          name: screenfling-macos-${{ runner.arch }}-${{ github.sha }}
+          path: release/candidate/
+          retention-days: 7
+          if-no-files-found: error
