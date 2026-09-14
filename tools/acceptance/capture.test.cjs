@@ -14,6 +14,7 @@ const {
   waitForOverlay,
 } = require("./capture.cjs");
 const packageMetadata = require("../../package.json");
+const applicationVersion = packageMetadata.build.extraMetadata?.version ?? packageMetadata.version;
 
 const originalWindow = globalThis.window;
 const temporaryDirectories = [];
@@ -28,7 +29,7 @@ afterEach(() => {
 async function createMacArtifact(
   bundleIdentifier,
   bundleName = packageMetadata.productName,
-  version = packageMetadata.version,
+  version = applicationVersion,
 ) {
   const plist = await import("plist");
   const root = mkdtempSync(path.join(os.tmpdir(), "screenfling-acceptance-"));
@@ -196,8 +197,8 @@ void test(
   { skip: process.platform !== "darwin" },
   async () => {
     const wrongIdentities = [
-      ["com.example.not-screenfling", packageMetadata.productName, packageMetadata.version],
-      [packageMetadata.build.appId, "Not ScreenFling", packageMetadata.version],
+      ["com.example.not-screenfling", packageMetadata.productName, applicationVersion],
+      [packageMetadata.build.appId, "Not ScreenFling", applicationVersion],
       [packageMetadata.build.appId, packageMetadata.productName, "999.0.0"],
     ];
     for (const identity of wrongIdentities) {
