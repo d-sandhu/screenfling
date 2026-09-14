@@ -1,6 +1,6 @@
-import { ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 
-import { wezTermSetupConfigurationSchema } from "../shared/wezterm-setup";
+import { wezTermFileFieldSchema, wezTermPathSchema, wezTermSetupConfigurationSchema } from "../shared/wezterm-setup";
 import type { WezTermSetup } from "./wezterm-setup";
 
 import {
@@ -62,11 +62,54 @@ export function registerWorkflowIpc(
   };
 
   ipcMain.handle(
+    IPC_CHANNELS.checkWezTermSetup,
+    (event: IpcMainInvokeEvent, ...payloads: SerializedIpcValue[]) => {
+      authorizeMain(event);
+      if (payloads.length !== 1) throw new Error("Invalid connection check.");
+      const parsed = wezTermSetupConfigurationSchema.safeParse(payloads[0]);
+      if (!parsed.success) throw new Error("Invalid connection check.");
+      return weztermSetup.check(parsed.data);
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.chooseWezTermFile,
+    (event: IpcMainInvokeEvent, ...payloads: SerializedIpcValue[]) => {
+      authorizeMain(event);
+      if (payloads.length !== 1) throw new Error("Invalid file selection.");
+      const field = wezTermFileFieldSchema.safeParse(payloads[0]);
+      if (!field.success) throw new Error("Invalid file selection.");
+      return weztermSetup.chooseFile(async () => {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (window === null || window.isDestroyed()) return null;
+        const chosen = await dialog.showOpenDialog(window, {
+          title: field.data === "executable" ? "Choose the WezTerm executable" : "Choose your WezTerm configuration",
+          defaultPath: field.data === "executable" ? "/Applications/WezTerm.app/Contents/MacOS" : app.getPath("home"),
+          properties: ["openFile", "showHiddenFiles", "treatPackageAsDirectory", "noResolveAliases"],
+        });
+        if (chosen.canceled || window.isDestroyed() || event.sender.isDestroyed()) return null;
+        authorizeMain(event);
+        const path = wezTermPathSchema.safeParse(chosen.filePaths[0]);
+        return path.success ? path.data : null;
+      }).catch(() => { throw new Error("File selection failed."); });
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openScreenRecordingSettings,
+    createAuthorizedNoPayloadHandler(authorizeMain, async () => {
+      if (process.platform !== "darwin" || controller.snapshot.phase !== "idle") return false;
+      try {
+        // Fixed destination only: renderer input never becomes an external URL.
+        await shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
+        return true;
+      } catch { return false; }
+    }),
+  );
+  ipcMain.handle(
     IPC_CHANNELS.getWezTermSetup,
     createAuthorizedNoPayloadHandler(authorizeMain, () => weztermSetup.getSnapshot()),
   );
   ipcMain.handle(
-    IPC_CHANNELS.restartForWezTermSetup,
+    IPC_CHANNELS.restartApplication,
     createAuthorizedNoPayloadHandler(authorizeMain, () => weztermSetup.restart()),
   );
   ipcMain.handle(

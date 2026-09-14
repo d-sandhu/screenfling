@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from "electron";
 import { z } from "zod";
 
 import {
+  wezTermConnectionStatusSchema,
+  wezTermFileFieldSchema,
+  wezTermPathSchema,
   wezTermSetupConfigurationSchema,
   wezTermSetupOutcomeSchema,
   wezTermSetupSnapshotSchema,
@@ -137,6 +140,16 @@ function onWorkflowSnapshot(listener: (snapshot: WorkflowSnapshot) => void): Uns
 
 const mainBridge: ScreenFlingBridge = Object.freeze({
   apiVersion: BRIDGE_VERSION,
+  checkWezTermSetup: async (configuration) =>
+    wezTermConnectionStatusSchema.parse(await ipcRenderer.invoke(
+      IPC_CHANNELS.checkWezTermSetup, wezTermSetupConfigurationSchema.parse(configuration),
+    )),
+  chooseWezTermFile: async (field) =>
+    wezTermPathSchema.nullable().parse(await ipcRenderer.invoke(
+      IPC_CHANNELS.chooseWezTermFile, wezTermFileFieldSchema.parse(field),
+    )),
+  openScreenRecordingSettings: async () =>
+    z.boolean().parse(await ipcRenderer.invoke(IPC_CHANNELS.openScreenRecordingSettings)),
   getWezTermSetup: async () =>
     wezTermSetupSnapshotSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.getWezTermSetup)),
   saveWezTermSetup: async (configuration) =>
@@ -146,8 +159,8 @@ const mainBridge: ScreenFlingBridge = Object.freeze({
         wezTermSetupConfigurationSchema.nullable().parse(configuration),
       ),
     ),
-  restartForWezTermSetup: async () =>
-    z.boolean().parse(await ipcRenderer.invoke(IPC_CHANNELS.restartForWezTermSetup)),
+  restartApplication: async () =>
+    z.boolean().parse(await ipcRenderer.invoke(IPC_CHANNELS.restartApplication)),
   cancelOperation: (request) => invokeOperationWorkflow(IPC_CHANNELS.cancelOperation, request),
   copyCapture: (request) => invokeOperationWorkflow(IPC_CHANNELS.copyCapture, request),
   dismissResult: (request) => invokeOperationWorkflow(IPC_CHANNELS.dismissResult, request),

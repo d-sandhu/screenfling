@@ -45,7 +45,7 @@ export function DestinationPicker({
         <p className="empty-state">
           {loading
             ? "Looking for configured exact panes…"
-            : "No supported exact destination is available. Copy only still works."}
+            : "No supported exact destination is available. Copy only still works. After copying, use Connect WezTerm on the start screen to check the connection."}
         </p>
       ) : (
         <div className="destination-list">

@@ -59,7 +59,7 @@ jobs:
         env:
           CSC_FOR_PULL_REQUEST: "true"
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npx --no-install electron-builder --dir --mac --config.mac.identity=- --config.mac.hardenedRuntime=false
+        run: npx --no-install electron-builder --publish never --dir --mac --config.mac.identity=- --config.mac.hardenedRuntime=false
       - name: Verify local ad-hoc macOS signatures (not signing trust or notarization)
         if: runner.os == 'macOS' && github.event_name == 'push'
         shell: bash
@@ -71,7 +71,7 @@ jobs:
           grep -qx 'Signature=adhoc' <<< "$SIGNATURE"
           echo 'Ad-hoc bundle and helper signature verification passed. No Developer ID or notarization claim.'
       - if: runner.os == 'Windows' && github.event_name == 'push'
-        run: npx --no-install electron-builder --dir --win --x64
+        run: npx --no-install electron-builder --publish never --dir --win --x64
       - run: npx --no-install playwright install chromium --only-shell
       - name: Built renderer fixture acceptance (not native capture)
         run: node --test tools/acceptance/ui.test.cjs

@@ -111,16 +111,25 @@ function installFixture(options) {
       destinations = [];
     },
   };
-  let setup = { supported: true, source: "none", configuration: null, restartRequired: false };
+  let setup = { supported: true, source: "none", configuration: null, restartRequired: false, activeConfiguration: null };
   window.screenFling = {
     getWezTermSetup: async () => setup,
+    checkWezTermSetup: async () => {
+      calls.push({ action: "check-connection" });
+      return options.failSetup ? "instance-unavailable" : "ready";
+    },
+    chooseWezTermFile: async (field) => {
+      calls.push({ action: "choose-file", field });
+      return options.cancelChoice ? null : field === "executable" ? "/synthetic/wezterm" : "/synthetic/config.lua";
+    },
+    openScreenRecordingSettings: async () => { calls.push({ action: "settings" }); return true; },
     saveWezTermSetup: async (configuration) => {
       calls.push({ action: "save-connection", configuration });
-      if (options.failSetup) return "unavailable";
-      setup = { supported: true, source: configuration === null ? "none" : "saved", configuration, restartRequired: true };
+      if (options.failSetup) return "instance-unavailable";
+      setup = { supported: true, source: configuration === null ? "none" : "saved", configuration, restartRequired: true, activeConfiguration: null };
       return "saved";
     },
-    restartForWezTermSetup: async () => { calls.push({ action: "restart" }); return true; },
+    restartApplication: async () => { calls.push({ action: "restart" }); return true; },
     onWorkflowSnapshot: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -136,11 +145,10 @@ function installFixture(options) {
       if (options.failShortcut) throw new Error("synthetic-shortcut-failure");
       return shortcut;
     },
-    getScreenCaptureReadiness: async () => ({
-      version: 1,
-      platform: "macos",
-      status: "granted",
-    }),
+    getScreenCaptureReadiness: async () => {
+      if (options.failReadiness) throw new Error("synthetic-readiness-error");
+      return { version: 1, platform: "macos", status: options.denied ? "denied" : "granted" };
+    },
     startCapture: async () => {
       calls.push({ action: "start" });
       publish({ phase: "snapshotting", operationId });
@@ -383,7 +391,7 @@ void test("renderer fixture: refresh removes a stale selection rather than choos
     await page.evaluate(() => window.fixture.removeDestinations());
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await page
-      .getByText("No supported exact destination is available. Copy only still works.")
+      .getByText(/No supported exact destination is available/)
       .waitFor();
     assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
     assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
@@ -471,14 +479,19 @@ void test("renderer fixture: connection setup requires explicit binding confirma
   await withPage({}, async (page) => {
     await page.getByText("Connect WezTerm · optional", { exact: true }).click();
     await page.getByLabel("WezTerm executable", { exact: true }).fill("/synthetic/wezterm");
-    await page.getByLabel("WezTerm configuration file").fill("/synthetic/config.lua");
+    await page.getByLabel("WezTerm configuration file", { exact: true }).fill("/synthetic/config.lua");
     await page.getByLabel("Exact mux socket").fill("/synthetic/mux");
     await page.getByLabel("Image attachment key (hex bytes)").fill("16");
-    assert.equal(await page.getByRole("button", { name: "Check and save" }).isEnabled(), false);
+    assert.equal(await page.getByRole("button", { name: "Save connection" }).isEnabled(), false);
+    await page.getByRole("button", { name: "Check connection", exact: true }).click();
+    await page.getByText(/Exact panes found. Nothing was sent or saved/).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["check-connection"]);
+    assert.equal(await page.getByRole("button", { name: "Restart ScreenFling", exact: true }).count(), 0);
     await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Check and save" }).click();
+    await page.getByRole("button", { name: "Save connection" }).click();
+    await page.getByText(/Copy-only mode is still active until restart/).waitFor();
     await page.getByRole("button", { name: "Restart ScreenFling", exact: true }).click();
-    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["save-connection", "restart"]);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["check-connection", "save-connection", "restart"]);
   });
 });
 
@@ -486,17 +499,68 @@ void test("renderer fixture: connection failure leaves capture and Copy usable",
   await withPage({ failSetup: true }, async (page) => {
     await page.getByText("Connect WezTerm · optional", { exact: true }).click();
     await page.getByLabel("WezTerm executable", { exact: true }).fill("/synthetic/wezterm");
-    await page.getByLabel("WezTerm configuration file").fill("/synthetic/config.lua");
+    await page.getByLabel("WezTerm configuration file", { exact: true }).fill("/synthetic/config.lua");
     await page.getByLabel("Exact mux socket").fill("/synthetic/mux");
     await page.getByLabel("Image attachment key (hex bytes)").fill("16");
     await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Check and save" }).click();
-    await page.getByText(/No safe exact panes were found/).waitFor();
+    await page.getByRole("button", { name: "Save connection" }).click();
+    await page.getByText(/instance did not return a usable pane list/).waitFor();
     await page.getByRole("button", { name: "Capture region" }).click();
     await editingReady(page);
     await page.getByRole("button", { name: "Copy only" }).click();
     await page.getByRole("button", { name: "Capture another", exact: true }).click();
     await editingReady(page);
     assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["save-connection", "start", "copy", "start"]);
+  });
+});
+
+void test("renderer fixture: Browse fills only the explicitly selected field, with no save or dispatch", async () => {
+  await withPage({}, async (page) => {
+    await page.getByText("Connect WezTerm · optional", { exact: true }).click();
+    await page.getByRole("button", { name: "Browse for wezterm executable", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector("#connection-executable").value === "/synthetic/wezterm");
+    assert.equal(await page.getByLabel("WezTerm configuration file", { exact: true }).inputValue(), "");
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["choose-file"]);
+  });
+  await withPage({ cancelChoice: true }, async (page) => {
+    await page.getByText("Connect WezTerm · optional", { exact: true }).click();
+    await page.getByLabel("WezTerm executable", { exact: true }).fill("/synthetic/keep");
+    await page.getByRole("button", { name: "Browse for wezterm executable", exact: true }).click();
+    assert.equal(await page.getByLabel("WezTerm executable", { exact: true }).inputValue(), "/synthetic/keep");
+  });
+});
+
+void test("renderer fixture: permission recovery is explicit and never starts capture", async () => {
+  await withPage({ denied: true }, async (page) => {
+    await page.getByRole("button", { name: "Open System Settings", exact: true }).click();
+    await page.getByRole("button", { name: "Restart ScreenFling", exact: true }).click();
+    await page.waitForFunction(() => window.fixture.calls.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["settings", "restart"]);
+    assert.equal(await page.getByRole("button", { name: "Capture region" }).isEnabled(), false);
+  });
+});
+
+void test("renderer fixture: a failed permission query offers retry instead of an endless loading state", async () => {
+  await withPage({ failReadiness: true }, async (page) => {
+    await page.getByText(/Screen Recording status could not be checked/).waitFor();
+    await page.getByRole("button", { name: "Check again", exact: true }).click();
+    await page.getByText(/Screen Recording status could not be checked/).waitFor();
+    await page.getByRole("button", { name: "Capture region" }).click();
+    await editingReady(page);
+  });
+});
+
+void test("renderer fixture: setup and review remain reachable in a short narrow window", async () => {
+  await withPage({}, async (page) => {
+    await page.setViewportSize({ width: 520, height: 480 });
+    await page.getByText("Connect WezTerm · optional", { exact: true }).click();
+    await page.getByLabel("WezTerm executable", { exact: true }).fill("relative-path");
+    await page.getByText(/Use an absolute path without/).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.getByRole("button", { name: "Capture region" }).click();
+    await editingReady(page);
+    await page.getByRole("button", { name: "Copy only", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.waitForFunction(() => document.activeElement?.textContent?.includes("Capture region"));
   });
 });

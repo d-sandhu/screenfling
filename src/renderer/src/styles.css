@@ -51,8 +51,9 @@ button {
 
 .app {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 100vh;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  overflow: auto;
   padding: 28px 32px 24px;
 }
 
@@ -597,6 +598,7 @@ h1 {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 26px;
 }
@@ -885,4 +887,11 @@ h1 {
   .button {
     transition: none;
   }
+}
+
+.permission-recovery {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }

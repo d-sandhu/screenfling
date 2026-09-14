@@ -14,6 +14,7 @@ import type {
   AdapterStageResult,
   DestinationAdapter,
 } from "./destination-adapter";
+import type { WezTermConnectionStatus } from "../shared/wezterm-setup";
 import type { Destination } from "../shared/domain";
 import type { RevealResult } from "../shared/workflow";
 
@@ -92,7 +93,7 @@ type WezTermSnapshotResult =
   | { readonly status: "ready"; readonly snapshot: WezTermSnapshot }
   | { readonly status: "ambiguous" }
   | { readonly status: "generation-changed" }
-  | { readonly status: "unavailable" }
+  | { readonly status: "unavailable"; readonly reason: "selectors-rejected" | "executable-unavailable" | "instance-unavailable" }
   | { readonly status: "unsupported" };
 
 type WezTermRoute = {
@@ -259,6 +260,18 @@ export class WezTermAdapter implements DestinationAdapter {
     }
   }
 
+  async checkConnection(): Promise<WezTermConnectionStatus> {
+    // Same validated read-only inspection as discovery. No routes or input are issued.
+    const result = await this.#snapshot();
+    switch (result.status) {
+      case "ready": return result.snapshot.panes.length === 0 ? "no-panes" : "ready";
+      case "unavailable": return result.reason;
+      case "unsupported": return "unsupported-version";
+      case "ambiguous":
+      case "generation-changed": return "selectors-rejected";
+    }
+  }
+
   async discover(): Promise<readonly Destination[]> {
     this.#routes.clear();
     const snapshotResult = await this.#snapshot();
@@ -358,7 +371,7 @@ export class WezTermAdapter implements DestinationAdapter {
     if (preflight.status !== "ready") {
       return preflight.reason === "unsupported-version"
         ? { status: "unsupported" }
-        : { status: "unavailable" };
+        : { status: "unavailable", reason: preflight.reason === "binary" ? "executable-unavailable" : "selectors-rejected" };
     }
     const listResult = await this.#dependencies.runProcess(
       this.#processRequest(
@@ -371,11 +384,11 @@ export class WezTermAdapter implements DestinationAdapter {
     if (listResult.status !== "success") {
       return listResult.reason === "guard-rejected"
         ? { status: "generation-changed" }
-        : { status: "unavailable" };
+        : { status: "unavailable", reason: "instance-unavailable" };
     }
     const paneList = parsePaneList(listResult.stdout);
     if (paneList.status === "ambiguous") return paneList;
-    if (paneList.status === "invalid") return { status: "unavailable" };
+    if (paneList.status === "invalid") return { status: "unavailable", reason: "instance-unavailable" };
     try {
       const generationAfterList = await this.#dependencies.readGeneration(
         this.#config,
@@ -385,7 +398,7 @@ export class WezTermAdapter implements DestinationAdapter {
         return { status: "generation-changed" };
       }
     } catch {
-      return { status: "unavailable" };
+      return { status: "unavailable", reason: "selectors-rejected" };
     }
     return { status: "ready", snapshot: { ...preflight, panes: paneList.panes } };
   }

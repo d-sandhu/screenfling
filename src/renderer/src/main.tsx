@@ -253,8 +253,9 @@ function ScreenFlingApp() {
   const [screenCaptureReadiness, setScreenCaptureReadiness] =
     useState<ScreenCaptureReadinessSnapshot | null>(null);
   const [screenCaptureReadinessRequest, setScreenCaptureReadinessRequest] = useState<
-    "checking" | "idle"
-  >("idle");
+    "checking" | "idle" | "failed"
+  >("checking");
+  const [recoveryPending, setRecoveryPending] = useState(false);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutMessage, setShortcutMessage] = useState<string | null>(null);
   const [shortcutPending, setShortcutPending] = useState(false);
@@ -299,10 +300,13 @@ function ScreenFlingApp() {
     void bridge
       .getScreenCaptureReadiness()
       .then((nextScreenCaptureReadiness) => {
-        if (current) setScreenCaptureReadiness(nextScreenCaptureReadiness);
+        if (current) {
+          setScreenCaptureReadiness(nextScreenCaptureReadiness);
+          setScreenCaptureReadinessRequest("idle");
+        }
       })
       .catch(() => {
-        if (current) setError("ScreenFling could not check Screen Recording status.");
+        if (current) setScreenCaptureReadinessRequest("failed");
       });
     return () => {
       current = false;
@@ -474,9 +478,39 @@ function ScreenFlingApp() {
     setError(null);
     void bridge
       .getScreenCaptureReadiness()
-      .then(setScreenCaptureReadiness)
-      .catch(() => setError("ScreenFling could not check Screen Recording status."))
-      .finally(() => setScreenCaptureReadinessRequest("idle"));
+      .then((readiness) => {
+        setScreenCaptureReadiness(readiness);
+        setScreenCaptureReadinessRequest("idle");
+      })
+      .catch(() => {
+        setScreenCaptureReadiness(null);
+        setScreenCaptureReadinessRequest("failed");
+      });
+  };
+
+  const openSettings = () => {
+    if (recoveryPending || snapshot.phase !== "idle") return;
+    setRecoveryPending(true);
+    setError(null);
+    void bridge.openScreenRecordingSettings().then((opened) => {
+      if (!opened) setError("Open System Settings manually: Privacy & Security → Screen & System Audio Recording.");
+    }).catch(() => setError("System Settings could not be opened. Open it manually to change Screen Recording."))
+      .finally(() => setRecoveryPending(false));
+  };
+
+  const restartForPermissions = () => {
+    if (recoveryPending || snapshot.phase !== "idle") return;
+    setRecoveryPending(true);
+    setError(null);
+    void bridge.restartApplication().then((restarting) => {
+      if (!restarting) {
+        setError("Finish the current action, then restart ScreenFling.");
+        setRecoveryPending(false);
+      }
+    }).catch(() => {
+      setError("Restart could not be requested. Quit and reopen ScreenFling.");
+      setRecoveryPending(false);
+    });
   };
 
   return (
@@ -616,10 +650,13 @@ function ScreenFlingApp() {
           <>
             <IdleCaptureActions
               onRefresh={refreshScreenCaptureReadiness}
+              onOpenSettings={openSettings}
+              onRestart={restartForPermissions}
+              recoveryPending={recoveryPending}
               onStartCapture={() => runAction(() => bridge.startCapture())}
               readiness={screenCaptureReadiness}
               refreshState={screenCaptureReadinessRequest}
-              startState={pending ? "starting" : "idle"}
+              startState={pending || recoveryPending ? "starting" : "idle"}
             />
             <WezTermSetupPanel bridge={bridge} />
           </>
