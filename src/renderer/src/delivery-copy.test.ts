@@ -30,7 +30,7 @@ describe("delivery result copy", () => {
     ],
     [
       { status: "failed", reason: "dispatch-failed" },
-      "ScreenFling could not confirm the destination operation. The image remains on your clipboard for manual paste.",
+      "ScreenFling could not confirm the destination operation. Check the chosen destination before pasting again. The image remains on your clipboard for manual paste.",
     ],
   ] satisfies readonly (readonly [DeliveryResult, string])[])(
     "preserves explicit manual fallback for %j",
@@ -43,7 +43,7 @@ describe("delivery result copy", () => {
     expect(deliveryCopy({ status: "dispatched-unverified", destination: DESTINATION })).toEqual({
       title: "Staged — unverified",
       detail:
-        "Input was dispatched to WezTerm · pane 7 without submission. Attachment could not be verified; the image remains on your clipboard for manual paste.",
+        "Stage was attempted once for WezTerm · pane 7 without Enter. Attachment could not be verified. Check that destination before pasting again. The image was verified on your clipboard.",
     });
   });
 
@@ -51,7 +51,8 @@ describe("delivery result copy", () => {
     const copy = deliveryCopy({ status: "failed", reason: "clipboard-failed" });
     expect(copy).toEqual({
       title: "Capture stopped",
-      detail: "ScreenFling could not verify the image on the clipboard, so Stage stopped.",
+      detail:
+        "ScreenFling could not verify the image on the clipboard. No Stage was attempted. Check the clipboard before trying again.",
     });
     expect(copy.detail).not.toContain("remains on your clipboard");
   });
@@ -74,4 +75,10 @@ describe("Reveal result copy", () => {
       expect(revealCopy({ status }).detail).toContain("Stage result is unchanged");
     },
   );
+});
+
+it("does not claim that an unexpected outcome had no side effects", () => {
+  const copy = deliveryCopy({ status: "failed", reason: "unexpected" });
+  expect(copy.detail).toContain("Check the clipboard and chosen destination");
+  expect(copy.detail).not.toContain("before delivering anything");
 });

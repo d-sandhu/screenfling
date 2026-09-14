@@ -10,18 +10,20 @@ type FailureReason = Extract<DeliveryResult, { readonly status: "failed" }>["rea
 
 export function failureCopy(reason: FailureReason): UiCopy {
   const details = {
-    "capture-failed": "The display changed or ScreenFling could not read its pixels.",
+    "capture-failed":
+      "Capture could not become ready, or the display changed. Choose Done and try again. Nothing was copied or staged.",
     "clipboard-failed":
-      "ScreenFling could not verify the image on the clipboard, so Stage stopped.",
+      "ScreenFling could not verify the image on the clipboard. No Stage was attempted. Check the clipboard before trying again.",
     "dispatch-failed":
-      "ScreenFling could not confirm the destination operation. The image remains on your clipboard for manual paste.",
+      "ScreenFling could not confirm the destination operation. Check the chosen destination before pasting again. The image remains on your clipboard for manual paste.",
     "permission-blocked":
       "Screen Recording access is off for ScreenFling. Enable it in System Settings → Privacy & Security → Screen & System Audio Recording, then restart ScreenFling.",
     "target-stale":
       "The selected destination changed before Stage. The image remains on your clipboard for manual paste.",
     unsupported:
       "This destination does not support the requested Stage action. The image remains on your clipboard for manual paste.",
-    unexpected: "ScreenFling stopped safely before delivering anything.",
+    unexpected:
+      "ScreenFling could not confirm the outcome. Check the clipboard and chosen destination before trying again.",
   } as const;
   return { detail: details[reason], title: "Capture stopped" };
 }
@@ -36,7 +38,7 @@ export function deliveryCopy(result: DeliveryResult): UiCopy {
   if (result.status === "failed") return failureCopy(result.reason);
   if (result.status === "dispatched-unverified") {
     return {
-      detail: `Input was dispatched to ${destinationName(result.destination)} without submission. Attachment could not be verified; the image remains on your clipboard for manual paste.`,
+      detail: `Stage was attempted once for ${destinationName(result.destination)} without Enter. Attachment could not be verified. Check that destination before pasting again. The image was verified on your clipboard.`,
       title: "Staged — unverified",
     };
   }

@@ -28,7 +28,7 @@ Use only these row statuses:
 | `open-native` | The row has repository support but still lacks direct native evidence. |
 | `dispatched-unverified` | Exact dispatch was observed, but image attachment could not be verified authoritatively. |
 
-Every row also names one evidence class: `unit`, `packaged-runner`,
+Every row also names one evidence class: `unit`, `browser-fixture`, `packaged-runner`,
 `human-shortcut`, `human-pointer`, or `human-observed`. Never merge different
 classes into one pass. In particular:
 
@@ -119,6 +119,16 @@ application. Any manual intervention makes the attempt `discarded`. Do not call
 its button timing a physical-shortcut measurement or its bridge selection a
 physical-drag measurement.
 
+### Non-capture automated checks
+
+Separately run the built-renderer fixtures and packaged lifecycle smoke from
+[Contributing](../../CONTRIBUTING.md#browser-fixtures-and-packaged-lifecycle-smoke).
+Browser fixtures use synthetic bridges; packaged lifecycle checks the real idle
+app, duplicate launch, one renderer crash, window reopen, and shipped ACL helper.
+Neither is a capture, physical-input, permission, focus, or agent acceptance pass.
+The v1 protocol's earlier rows do not inherit these new observations or transfer
+a historical pass to a different artifact.
+
 ## Stage 3 — Screen Recording matrix
 
 Confirm before every permission change:
@@ -161,6 +171,14 @@ reversible.
 | `A.display.rotation` | On an available rotated display, orientation and crop are correct. Otherwise `unavailable`. |
 | `A.display.reconnect` | Change or reconnect a display during a pre-side-effect capture; it fails closed, leaves no stale overlay/write, and a fresh capture works after settling. |
 | `A.lifecycle.sleep-wake` | Sleep/wake during snapshotting or selection; observe safe termination, no stale overlay or clipboard mutation, then a clean fresh workflow. |
+| `A.lifecycle.second-instance` | Launch the exact app again during review and selection; it restores only the existing surface and creates no new capture, write, or shortcut owner. |
+| `A.lifecycle.renderer-recovery` | In a controlled synthetic session, crash the main renderer during review and an in-flight Stage. The main-owned operation/result survives, no delivery replays, and the old renderer cannot act. Re-enter renderer-only note/selection before a new Stage. |
+
+The selection-release-to-clipboard row predates explicit review. Keep it open
+rather than skipping user review to meet a stopwatch target. Report physical
+release-to-review, human dwell, and explicit Copy-to-verified-clipboard separately
+until the reviewed acceptance definition resolves this boundary. A scripted
+bridge-to-clipboard sample is not physical-selection evidence.
 
 Record the exact topology for each display row. Synthetic geometry tests or a
 different monitor cannot substitute for unavailable hardware.
@@ -178,7 +196,7 @@ active-pane, title, working-directory, or most-recent fallback.
 | `B.stage.literal-input` | Stage the synthetic quotes, backslashes, Unicode, and key-like word note; it remains literal and appears once without submission. |
 | `B.stage.control-input` | Attempt notes containing newlines and representative control characters through the normal product boundary; each is rejected or normalized exactly as documented, with no unsafe dispatch or submission. |
 | `B.stage.endpoint-replacement` | Replace/restart the selected endpoint before dispatch; ScreenFling refuses the stale route and sends zero bytes to the replacement. |
-| `B.selector.acl` | Record owner/mode/type plus extended ACL behavior on the actual selectors. Repository owner/mode tests are supporting evidence only. |
+| `B.selector.acl` | Record the actual selector policy, including the bundled helper and extended ACL inspection. An allow grant or inspection error must expose no route; use disposable fixtures, never modify real selectors merely to force a test. Native CI fixtures are supporting evidence, not approval of the installed tuple. |
 | `B.selector.config-semantics` | Confirm the exact config and socket tuple used by discovery and dispatch; no implicit/default config participates. |
 | `B.reveal.foreground` | Invoke Reveal separately across visible, minimized, hidden, and other-app-frontmost states. Record CLI/result acceptance separately from observed OS visibility/frontmost behavior. |
 | `B.stage.fallback` | Make the CLI/route unavailable; no retry or GUI fallback occurs and Copy remains usable. |
@@ -305,7 +323,8 @@ operator rescue or harness contamination is `discarded`.
 
 - [Roadmap Gate A and Gate B](../../ROADMAP.md)
 - [Architecture verification strategy](../ARCHITECTURE.md#verification-strategy)
-- [Packaged runner result](../../research/phase-8-capture-lifecycle-results.md)
+- [Hardened packaged runner result](../../research/phase-18-packaged-capture-results.md)
+- [Historical, superseded provisional runner evidence](../../research/phase-8-capture-lifecycle-results.md)
 - [Electron `systemPreferences`](https://www.electronjs.org/docs/latest/api/system-preferences)
 - [Electron `globalShortcut`](https://www.electronjs.org/docs/latest/api/global-shortcut)
 - [Electron `powerMonitor`](https://www.electronjs.org/docs/latest/api/power-monitor)

@@ -21,7 +21,7 @@ import type { RevealResult, WorkflowSnapshot } from "../../shared/workflow";
 import type { ScreenCaptureReadinessSnapshot } from "../../shared/screen-capture-readiness";
 import type { CaptureDrag, CapturePoint } from "./capture-drag";
 import type { UiCopy } from "./delivery-copy";
-import { MAX_NOTE_LENGTH, supportsStage } from "../../shared/domain";
+import { MAX_NOTE_LENGTH, noteSchema, supportsStage } from "../../shared/domain";
 
 function useJpegUrl(bytes: Uint8Array | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -267,21 +267,33 @@ function ScreenFlingApp() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const discoverySequence = useRef(0);
+  const workflowRevision = useRef(0);
+  const focusedResultOperation = useRef<string | null>(null);
 
   useEffect(() => {
     if (bridge === undefined) return;
     let current = true;
+    const revision = workflowRevision.current;
     const unsubscribe = bridge.onWorkflowSnapshot((nextSnapshot) => {
-      if (current) setSnapshot(nextSnapshot);
+      if (!current) return;
+      workflowRevision.current += 1;
+      setSnapshot(nextSnapshot);
     });
-    void Promise.all([bridge.getSnapshot(), bridge.getShortcutStatus()])
-      .then(([nextSnapshot, nextShortcut]) => {
-        if (!current) return;
-        setSnapshot(nextSnapshot);
-        setShortcut(nextShortcut);
+    void bridge
+      .getSnapshot()
+      .then((nextSnapshot) => {
+        if (current && workflowRevision.current === revision) setSnapshot(nextSnapshot);
       })
       .catch(() => {
         if (current) setError("ScreenFling could not connect to its secure main process.");
+      });
+    void bridge
+      .getShortcutStatus()
+      .then((nextShortcut) => {
+        if (current) setShortcut(nextShortcut);
+      })
+      .catch(() => {
+        if (current) setShortcutMessage("ScreenFling could not check its capture shortcut.");
       });
     void bridge
       .getScreenCaptureReadiness()
@@ -298,9 +310,21 @@ function ScreenFlingApp() {
   }, [bridge]);
 
   const editingOperationId = snapshot?.phase === "editing" ? snapshot.operationId : null;
-  const focusResultAction = useCallback((button: HTMLButtonElement | null) => {
-    button?.focus();
-  }, []);
+  const focusResultAction = useCallback(
+    (button: HTMLButtonElement | null) => {
+      if (
+        button === null ||
+        pending ||
+        snapshot?.phase !== "result" ||
+        focusedResultOperation.current === snapshot.operationId
+      ) {
+        return;
+      }
+      button.focus();
+      focusedResultOperation.current = snapshot.operationId;
+    },
+    [pending, snapshot],
+  );
 
   useEffect(() => {
     if (bridge === undefined || editingOperationId === null) {
@@ -371,6 +395,7 @@ function ScreenFlingApp() {
   }
 
   if (snapshot === null) {
+    if (error !== null) return <RendererFailure message={error} />;
     return <main className="app app--loading">Opening ScreenFling…</main>;
   }
 
@@ -382,6 +407,7 @@ function ScreenFlingApp() {
   );
   const stageSupported =
     selectedDestination !== undefined && supportsStage(selectedDestination, note.length > 0);
+  const noteIsValid = noteSchema.safeParse(note).success;
   const revealTarget = revealDestinationForResult(snapshot, stagedDestination);
   const revealStatusCopy = revealResult === null ? null : revealCopy(revealResult);
   const canCancel =
@@ -392,10 +418,14 @@ function ScreenFlingApp() {
 
   const runAction = (action: () => Promise<WorkflowSnapshot>) => {
     if (pending) return;
+    const revision = workflowRevision.current;
     setPending(true);
     setError(null);
     void action()
-      .then(setSnapshot)
+      .then((nextSnapshot) => {
+        // Main-process events can overtake an older invocation response.
+        if (workflowRevision.current === revision) setSnapshot(nextSnapshot);
+      })
       .catch(() => setError("That action could not be completed safely."))
       .finally(() => setPending(false));
   };
@@ -456,7 +486,7 @@ function ScreenFlingApp() {
             SF
           </span>
           <span>ScreenFling</span>
-          <span className="alpha">alpha</span>
+          <span className="alpha">pre-alpha</span>
         </div>
         <ShortcutSettings
           message={shortcutMessage}
@@ -501,7 +531,10 @@ function ScreenFlingApp() {
                   </span>
                 </span>
                 <input
-                  aria-describedby="note-counter"
+                  aria-describedby={
+                    noteIsValid ? "note-counter note-scope" : "note-counter note-scope note-error"
+                  }
+                  aria-invalid={!noteIsValid}
                   autoComplete="off"
                   name="note"
                   onChange={(event) => {
@@ -517,12 +550,26 @@ function ScreenFlingApp() {
                   value={note}
                 />
               </label>
+              <p id="note-scope" className="empty-state">
+                Stage includes your note. Copy only copies the image.
+              </p>
+              {noteIsValid ? null : (
+                <p id="note-error" className="error" role="alert">
+                  Use one line without control characters. Edit the note or use Copy only.
+                </p>
+              )}
               <div className="actions actions--review">
                 <button
                   className="button button--primary"
-                  disabled={pending || destinationsLoading || draft === null || !stageSupported}
+                  disabled={
+                    pending ||
+                    destinationsLoading ||
+                    draft === null ||
+                    !stageSupported ||
+                    !noteIsValid
+                  }
                   onClick={() => {
-                    if (selectedDestination === undefined) return;
+                    if (selectedDestination === undefined || !noteIsValid) return;
                     setStagedDestination(selectedDestination);
                     setRevealResult(null);
                     runAction(() =>
@@ -637,10 +684,11 @@ function ScreenFlingApp() {
 
 function RendererFailure({ message }: { readonly message: string }) {
   return (
-    <main className="failure">
+    <main className="failure" role="alert">
       <p className="eyebrow">ScreenFling stopped</p>
       <h1>Secure bridge unavailable</h1>
       <p className="summary">{message}</p>
+      <p>Restart ScreenFling. No action will be retried automatically.</p>
     </main>
   );
 }

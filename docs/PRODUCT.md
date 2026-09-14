@@ -2,7 +2,7 @@
 
 Status: Accepted direction for the pre-alpha
 
-Last reviewed: 2026-08-20
+Last reviewed: 2026-09-13
 
 ## Product statement
 
@@ -61,7 +61,7 @@ no generic “activate a window and press Enter” implementation.
 The main interaction should remain small:
 
 ```text
-capture -> describe -> choose -> stage -> review
+capture -> select -> review -> optional note -> choose -> Copy/Stage -> optional Reveal
 ```
 
 The user should be able to rely on the following:
@@ -76,9 +76,11 @@ The user should be able to rely on the following:
 5. Stage does not submit, press Enter, or steal focus.
 6. The result names the selected destination and states the strongest result the
    adapter can prove.
-7. The image remains on the clipboard when staging is unsupported, uncertain, or
-   unsuccessful.
-8. Cancel leaves the clipboard and destinations unchanged.
+7. After a verified clipboard write, unsupported, uncertain, or unsuccessful
+   staging keeps a manual-paste fallback. A failed clipboard verification cannot
+   claim the same guarantee. Inspect uncertain destinations before pasting again.
+8. Cancel leaves the clipboard and destinations unchanged before the side-effect
+   boundary; cancellation is unavailable once clipboard or Stage work starts.
 
 ## Product principles
 
@@ -149,7 +151,8 @@ The first useful alpha includes:
 - explicit selection of one live, exactly addressable local destination;
 - destination-specific image and text staging without submission;
 - a user-triggered Reveal action when staging cannot be verified;
-- clear Screen Recording and automation-permission guidance;
+- clear Screen Recording and adapter-availability guidance; the current WezTerm
+  CLI adapter does not require macOS Automation permission;
 - packaged-build testing, not development-mode testing alone;
 - local diagnostic timings and failure categories.
 

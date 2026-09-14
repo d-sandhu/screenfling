@@ -4,7 +4,7 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 import { destinationSchema, noteSchema } from "../shared/domain";
-import { runBoundedProcess } from "./bounded-process";
+import { runWezTermProcess } from "./wezterm-process";
 import { readTrustedWezTermSelectorEvidence } from "./trusted-wezterm-selectors";
 
 import type { BoundedProcessRequest, BoundedProcessRunner } from "./bounded-process";
@@ -18,6 +18,7 @@ import type { Destination } from "../shared/domain";
 import type { RevealResult } from "../shared/workflow";
 
 export const WEZTERM_ADAPTER_ID = "wezterm";
+export const WEZTERM_INSPECTION_TIMEOUT_MS = 3_000;
 export const SUPPORTED_WEZTERM_VERSION = "20240203-110809-5046fc22";
 
 const VERSION_OUTPUT = `wezterm ${SUPPORTED_WEZTERM_VERSION}`;
@@ -163,6 +164,31 @@ function sameRoute(destination: Destination, route: WezTermRoute): boolean {
   );
 }
 
+function boundedGenerationReader(read: WezTermGenerationReader): WezTermGenerationReader {
+  return async (config, version) => {
+    const expiresAt = performance.now() + WEZTERM_INSPECTION_TIMEOUT_MS;
+    let deadline: NodeJS.Timeout | undefined;
+    try {
+      // Only the read-only inspection is raced. Never race an outer dispatch:
+      // its abandoned continuation could otherwise send after a timeout result.
+      const generation = await Promise.race([
+        Promise.resolve().then(() => read(config, version)),
+        new Promise<string>((_resolve, reject) => {
+          deadline = setTimeout(() => {
+            reject(new Error("WezTerm selector inspection timed out."));
+          }, WEZTERM_INSPECTION_TIMEOUT_MS);
+        }),
+      ]);
+      if (performance.now() >= expiresAt) {
+        throw new Error("WezTerm selector inspection timed out.");
+      }
+      return generation;
+    } finally {
+      clearTimeout(deadline);
+    }
+  };
+}
+
 export class WezTermAdapter implements DestinationAdapter {
   readonly id = WEZTERM_ADAPTER_ID;
   readonly #config: Readonly<WezTermAdapterConfig>;
@@ -175,7 +201,10 @@ export class WezTermAdapter implements DestinationAdapter {
       ...parsedConfig,
       imagePasteInput: Uint8Array.from(parsedConfig.imagePasteInput),
     };
-    this.#dependencies = dependencies;
+    this.#dependencies = {
+      ...dependencies,
+      readGeneration: boundedGenerationReader(dependencies.readGeneration),
+    };
   }
 
   async preflight(): Promise<WezTermPreflightResult> {
@@ -421,6 +450,6 @@ export function createWezTermAdapter(config: WezTermAdapterConfig): WezTermAdapt
   return new WezTermAdapter(config, {
     now: () => new Date(),
     readGeneration: readWezTermGeneration,
-    runProcess: runBoundedProcess,
+    runProcess: runWezTermProcess,
   });
 }
