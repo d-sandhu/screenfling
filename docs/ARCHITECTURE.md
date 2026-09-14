@@ -374,7 +374,11 @@ Terminal or application automation uses argument-array subprocess APIs, not
 shell-concatenated commands. Notes are data, never code. The first note format is
 at most 500 Unicode code points on one line; Unicode controls and line separators
 are rejected. Destination identifiers reject those characters as well.
-Subprocesses have timeouts, capped output, and explicit error mapping.
+Subprocesses have timeouts, capped output, and explicit error mapping. The
+process deadline includes its pre-spawn guard. Selector reads outside a process
+request have their own three-second deadline. Late inspection results cannot
+resume a timed-out Stage or Reveal. Process and pipe errors after launch remain
+uncertain dispatch evidence, not proof that nothing was sent.
 
 The first WezTerm implementation keeps its executable, config file, and mux
 socket in main-owned adapter configuration. Discovery accepts only the pinned
@@ -402,11 +406,21 @@ note bytes, and never falls back to Electron window focus. Process success means
 the selected endpoint accepted activation; it does not prove host-window
 foreground or visibility.
 
-WezTerm does not provide an atomic compare-and-send operation. The generation
-guard narrows but cannot remove the final endpoint replacement race, so visible
-native acceptance remains release-blocking and Copy remains available. The
-adapter never inherits `WEZTERM_PANE`, chooses the focused pane, activates a
-window, or claims that CLI acceptance proves an agent attachment.
+WezTerm does not provide atomic compare-and-send. Production Stage and Reveal
+now use a one-command local transport: connect to the validated mux socket,
+revalidate after connecting, then run the unchanged exact-pane CLI through a
+private temporary socket connected only to that established endpoint. Replacing
+the original pathname after authorization cannot retarget the connection. There
+is no reconnect, retry, TCP listener, payload file, or persistent service. The
+transport has a byte cap, shared process deadline, ACL gate, and bounded cleanup.
+See [ADR 0003](adr/0003-pinned-wezterm-transport.md) for the measured failure,
+implementation boundary, native CLI evidence, and remaining limits.
+
+The recorded headless macOS CLI test proves the tested pathname-replacement
+interleaving, not real-agent attachment or visible focus. Installed selector and
+config semantics, GUI-hosted behavior, separate Reveal observations, and agent
+trials remain release-blocking. The adapter never inherits `WEZTERM_PANE`, chooses
+a focused pane, or claims that CLI acceptance proves an agent attachment.
 
 The current product wiring exposes this adapter only through a complete,
 explicit macOS developer environment configuration. Missing or invalid values
@@ -533,7 +547,9 @@ The project separates these evidence classes:
   contracts;
 - built-renderer browser fixtures with synthetic bridges (not native capture);
 - integration harnesses for clipboard and destination dispatch;
-- disposable native ACL fixtures and packaged idle-lifecycle smoke checks;
+- disposable native ACL and Unix-socket fixtures;
+- checksum-pinned headless native WezTerm CLI trials with synthetic receivers;
+- packaged idle-lifecycle smoke checks;
 - packaged-application acceptance runs on native macOS and Windows hosts.
 
 Capture acceptance includes scaled displays, negative display origins, rotation,

@@ -168,12 +168,20 @@ unimplemented repository task. The narrow native boundary is documented in
 [ADR 0002](docs/adr/0002-macos-selector-acl.md). Actual operator selectors and
 config semantics still require acceptance.
 
-The integration remains opt-in and experimental. Native final-boundary endpoint
-replacement, visible no-focus and Reveal behavior, exact config/binding semantics,
-and real-agent trials remain release blockers. The CLI does not provide atomic
-compare-and-send; the pre-spawn guard alone cannot prove native race conformance.
-Do not replace a failed test with an active-window or GUI-automation fallback.
-The WezTerm CLI does not require macOS Automation/TCC permission.
+The integration remains opt-in and experimental. A pathname-only guard was
+reproduced delivering to a replacement socket in a negative control. Production
+Stage and Reveal now pin an established local connection before authorizing the
+CLI. The recorded macOS run passed 20 synthetic socket-replacement interleavings
+and 100 alternating, uniquely identified payloads through the actual pinned
+WezTerm CLI; a final-boundary replacement received zero connections and bytes.
+[ADR 0003](docs/adr/0003-pinned-wezterm-transport.md) records that narrow evidence.
+Do not describe the old pathname-only race as still unimplemented, or mistake
+these headless results for complete GUI/agent acceptance.
+
+Visible no-focus and Reveal behavior, installed config/binding semantics, and
+real-agent trials remain release blockers. Repeat the applicable operator rows
+on the release tuple. There is no active-window or GUI-automation fallback. The
+WezTerm CLI does not require macOS Automation/TCC permission.
 
 ### Milestone 0 deliverables
 
@@ -433,12 +441,19 @@ These items are not on the committed roadmap:
 
 ## Immediate implementation sequence
 
-Repository-level checks passed for implementation commit `e64328d` on macOS and
-Windows, including the built-renderer fixtures and macOS packaged lifecycle and
-ad-hoc signature checks. The exact run, tests, limitations, and fixes are in the
-[Phase 21 evidence record](research/phase-21-macos-alpha-hardening-results.md).
-Repeat these checks for a changed candidate; do not mistake a historical green
-run for verification of new code.
+Repository-level checks passed for implementation commit `68476f1` in
+[Check run 34800803518](https://github.com/d-sandhu/screenfling/actions/runs/34800803518)
+on macOS and Windows. The macOS run passed 381 tests, 12 runner tests, 14 browser
+fixtures, the headless native WezTerm trial, packaged lifecycle smoke, ad-hoc
+signature verification, and archive/extract verification. The downloadable CI
+candidate remains explicitly pre-alpha. See [ADR 0003](docs/adr/0003-pinned-wezterm-transport.md)
+for the transport change and evidence. The [Phase 21 record](research/phase-21-macos-alpha-hardening-results.md)
+is the earlier hardening pass, not verification of subsequent code.
+
+Repeat these checks after changes and verify post-merge CI for the actual main
+commit. Merging engineering work does not itself close release acceptance.
+[Issue #32](https://github.com/d-sandhu/screenfling/issues/32) tracks the remaining
+operator work; this roadmap and the protocol remain the canonical criteria.
 
 Remaining macOS alpha gates, in execution order:
 
@@ -457,10 +472,11 @@ Remaining macOS alpha gates, in execution order:
    human review dwell, and Copy-to-verified-clipboard separately. Do not automate
    Copy or relabel scripted component timing as the physical <=150 ms row. That
    row remains open until its reviewed definition and direct evidence agree.
-4. Run exact WezTerm selector/config, final endpoint replacement, no-focus,
-   literal/control-input, stale/fallback, and separate Reveal visibility rows.
-   Native race conformance is a release blocker; a unit-tested guard does not
-   establish it. Any failure requires an implementation fix, not a relaxed claim.
+4. Run the installed-tuple WezTerm selector/config, endpoint replacement,
+   no-focus, literal/control-input, stale/fallback, and separate Reveal rows.
+   The headless CLI pathname-replacement check has passed with pinned transport;
+   it does not replace GUI-hosted, restart, or agent observations. Any failure
+   requires an implementation fix, not a relaxed claim.
 5. Observe at least 30 alternating trials per proposed agent/version/binding
    tuple, with zero wrong-target writes and submissions. Unsupported/remapped
    bindings must remain safe. No agent support is claimed before this evidence.

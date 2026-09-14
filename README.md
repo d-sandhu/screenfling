@@ -23,9 +23,11 @@ Images and notes are not persisted or sent to a ScreenFling service.
 
 WezTerm remains an opt-in macOS developer experiment. Its native selector checks
 reject unsafe ownership, modes, extended ACL grants, and unreadable ACLs. No
-agent compatibility or verified attachment is claimed. Hardware, permissions,
-endpoint replacement, visible focus, real-agent trials, and comparative dogfood
-acceptance still gate the release.
+agent compatibility or verified attachment is claimed. Stage and Reveal use a
+one-command pinned local connection, with native CLI pathname-replacement
+coverage recorded in [ADR 0003](docs/adr/0003-pinned-wezterm-transport.md). Hardware,
+permissions, installed-tuple routing, visible focus, real-agent trials, and
+comparative dogfood acceptance still gate the release.
 
 The [roadmap](ROADMAP.md#immediate-implementation-sequence) is the current release
 checklist. The [macOS operator protocol](docs/acceptance/macos-operator-acceptance.md)
@@ -125,6 +127,27 @@ discovery, and send subprocesses. The bundled read-only ACL gate permits no exte
 inspection errors. Actual selector/config semantics, visible focus behavior, and
 real-agent attachment still require native acceptance; repository tests are not
 support claims.
+
+## macOS test candidate
+
+A successful macOS Check job retains a `screenfling-macos-ARM64-...` artifact for
+seven days. It contains `ScreenFling-macos-arm64.zip`, `SHA256SUMS`, and
+`candidate.json`. Use the latest successful **main push** run after merging,
+not an older PR run. The manifest distinguishes the source commit from the
+commit actually tested, and records the architecture, ad-hoc signature, and
+archive hash. Packaging verifies identity and signatures again after extraction.
+
+This is a controlled pre-alpha candidate, not a notarized public release or an
+agent compatibility promise. Verify its checksum before extracting the app:
+
+```bash
+shasum -a 256 -c SHA256SUMS
+```
+
+Use the [operator protocol](docs/acceptance/macos-operator-acceptance.md) with
+synthetic content. Do not disable Gatekeeper or change permissions just to turn
+a failed acceptance row into a pass. Local build commands remain in
+[Contributing](CONTRIBUTING.md).
 
 ## Project documents
 
