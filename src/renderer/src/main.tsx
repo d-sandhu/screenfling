@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { CaptureDragTracker, selectionFromDrag } from "./capture-drag";
 import { deliveryCopy, revealCopy } from "./delivery-copy";
 import { DestinationPicker } from "./destination-picker";
+import { WezTermSetupPanel } from "./wezterm-setup";
 import { revealDestinationForResult } from "./reveal-result";
 import { IdleCaptureActions } from "./screen-capture-readiness";
 import { ShortcutSettings, shortcutUpdateMessage } from "./shortcut-settings";
@@ -612,13 +613,16 @@ function ScreenFlingApp() {
         ) : null}
 
         {snapshot.phase === "idle" ? (
-          <IdleCaptureActions
-            onRefresh={refreshScreenCaptureReadiness}
-            onStartCapture={() => runAction(() => bridge.startCapture())}
-            readiness={screenCaptureReadiness}
-            refreshState={screenCaptureReadinessRequest}
-            startState={pending ? "starting" : "idle"}
-          />
+          <>
+            <IdleCaptureActions
+              onRefresh={refreshScreenCaptureReadiness}
+              onStartCapture={() => runAction(() => bridge.startCapture())}
+              readiness={screenCaptureReadiness}
+              refreshState={screenCaptureReadinessRequest}
+              startState={pending ? "starting" : "idle"}
+            />
+            <WezTermSetupPanel bridge={bridge} />
+          </>
         ) : null}
 
         {canCancel && operationId !== null && snapshot.phase !== "editing" ? (
@@ -653,6 +657,21 @@ function ScreenFlingApp() {
                 type="button"
               >
                 Done
+              </button>
+              <button
+                className="button button--secondary"
+                disabled={pending}
+                onClick={() =>
+                  runAction(async () => {
+                    const dismissed = await bridge.dismissResult({
+                      operationId: snapshot.operationId,
+                    });
+                    return dismissed.phase === "idle" ? bridge.startCapture() : dismissed;
+                  })
+                }
+                type="button"
+              >
+                Capture another
               </button>
             </div>
             {revealStatusCopy === null ? null : (

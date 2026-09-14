@@ -1,0 +1,66 @@
+/* Connection setup stays within the idle surface; the capture overlay remains fixed. */
+.app:has(.connection-setup) {
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  overflow: auto;
+}
+
+.connection-setup {
+  width: 100%;
+  max-width: 760px;
+  margin-top: 20px;
+  text-align: left;
+}
+
+.connection-setup summary {
+  cursor: pointer;
+  color: var(--signal);
+  padding: 10px 0;
+}
+
+.connection-setup fieldset {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.connection-setup legend {
+  color: var(--mist);
+  font-size: 13px;
+}
+
+.connection-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.connection-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.connection-fields input {
+  min-width: 0;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--graphite);
+  color: inherit;
+  font: inherit;
+}
+
+.connection-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 13px;
+}
+
+.connection-setup .empty-state {
+  margin: 12px 0;
+}

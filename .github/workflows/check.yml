@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -26,25 +30,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Retain exact review source (not acceptance evidence)
-        if: runner.os == 'macOS'
-        run: git archive --format=tar --output="$RUNNER_TEMP/screenfling-source.tar" HEAD
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: runner.os == 'macOS'
-        with:
-          name: screenfling-source-${{ github.sha }}
-          path: ${{ runner.temp }}/screenfling-source.tar
-          retention-days: 7
-          if-no-files-found: error
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
           cache: npm
 
       - run: npm install --global npm@11.19.0
-      - run: npm --version
-      - run: npm ci
+      - run: npm ci --no-audit
       - run: npm audit --audit-level=high
       - name: Prepare pinned headless WezTerm fixture (no installation or GUI)
         if: runner.os == 'macOS'
@@ -61,14 +53,15 @@ jobs:
           printf 'SCREENFLING_TEST_WEZTERM_EXECUTABLE=%s\n' "$BIN/wezterm" >> "$GITHUB_ENV"
           printf 'SCREENFLING_TEST_WEZTERM_MUX_SERVER=%s\n' "$BIN/wezterm-mux-server" >> "$GITHUB_ENV"
       - run: npm run check
-      - if: runner.os == 'macOS'
+      - run: npm run build
+      - if: runner.os == 'macOS' && github.event_name == 'push'
         # package:mac fixes identity to '-'. Never provide certificates or secrets here.
         env:
           CSC_FOR_PULL_REQUEST: "true"
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run package:mac
+        run: npx --no-install electron-builder --dir --mac --config.mac.identity=- --config.mac.hardenedRuntime=false
       - name: Verify local ad-hoc macOS signatures (not signing trust or notarization)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.event_name == 'push'
         shell: bash
         run: |
           APP="release/$(node -p 'process.arch === "arm64" ? "mac-arm64" : "mac"')/ScreenFling.app"
@@ -77,23 +70,24 @@ jobs:
           SIGNATURE="$(/usr/bin/codesign --display --verbose=2 "$APP" 2>&1)"
           grep -qx 'Signature=adhoc' <<< "$SIGNATURE"
           echo 'Ad-hoc bundle and helper signature verification passed. No Developer ID or notarization claim.'
-      - if: runner.os == 'Windows'
-        run: npm run package:win
-      - run: npx playwright install chromium
+      - if: runner.os == 'Windows' && github.event_name == 'push'
+        run: npx --no-install electron-builder --dir --win --x64
+      - run: npx --no-install playwright install chromium --only-shell
       - name: Built renderer fixture acceptance (not native capture)
         run: node --test tools/acceptance/ui.test.cjs
       - name: Packaged macOS lifecycle acceptance (no capture or permission changes)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.event_name == 'push'
         run: node tools/acceptance/lifecycle.cjs
       - name: Archive verified macOS test candidate (not a release)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.event_name == 'push'
         env:
           SCREENFLING_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node tools/acceptance/archive-macos.cjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && github.event_name == 'push'
         with:
           name: screenfling-macos-${{ runner.arch }}-${{ github.sha }}
           path: release/candidate/
-          retention-days: 7
+          compression-level: 0
+          retention-days: 14
           if-no-files-found: error
