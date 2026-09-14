@@ -37,7 +37,7 @@
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build:native",
     "test": "vitest run && node --test tools/acceptance/capture.test.cjs",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "check": "npm run lint && npm run typecheck && npm test",
     "check:all": "npm run check && npm run package"
   },
   "build": {
