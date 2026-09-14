@@ -71,7 +71,9 @@
       "target": [
         "zip"
       ],
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "bundleShortVersion": "0.1.0",
+      "bundleVersion": "1"
     },
     "win": {
       "target": [

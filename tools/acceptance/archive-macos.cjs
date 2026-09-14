@@ -71,6 +71,7 @@ async function main() {
         testedCommit,
         architecture: process.arch,
         application: identity,
+        applicationVersion: metadata.build.extraMetadata.version,
         electron: metadata.devDependencies.electron,
         node: process.version,
         signature: "adhoc",

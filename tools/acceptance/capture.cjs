@@ -32,16 +32,19 @@ const macBundleSchema = z.object({
   CFBundleIdentifier: z.string().min(1),
   CFBundleName: z.string().min(1),
   CFBundleShortVersionString: z.string().min(1),
+  CFBundleVersion: z.string().min(1),
 });
 const expectedArtifact = z
   .object({
     build: z.object({ appId: z.string().min(1) }),
     productName: z.string().min(1),
     version: z.string().min(1),
+    buildVersion: z.string().min(1),
   })
   .parse({
     ...packageMetadata,
-    version: packageMetadata.build.extraMetadata?.version ?? packageMetadata.version,
+    version: packageMetadata.build.mac.bundleShortVersion,
+    buildVersion: packageMetadata.build.mac.bundleVersion,
   });
 
 function parseIntegerFlag(name, fallback, maximum = MAX_RUNS) {
@@ -97,7 +100,8 @@ async function readArtifactEvidence(executable) {
     if (
       bundle.CFBundleIdentifier !== expectedArtifact.build.appId ||
       bundle.CFBundleName !== expectedArtifact.productName ||
-      bundle.CFBundleShortVersionString !== expectedArtifact.version
+      bundle.CFBundleShortVersionString !== expectedArtifact.version ||
+      bundle.CFBundleVersion !== expectedArtifact.buildVersion
     ) {
       throw new Error("artifact-identity-mismatch");
     }
@@ -107,6 +111,7 @@ async function readArtifactEvidence(executable) {
       metadataSource: "packaged-info-plist",
       name: bundle.CFBundleName,
       version: bundle.CFBundleShortVersionString,
+      buildVersion: bundle.CFBundleVersion,
     };
   }
   if (process.platform === "win32") {
