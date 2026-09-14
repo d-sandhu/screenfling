@@ -64,5 +64,8 @@ void test("release packaging retains existing security fuses and explicitly sign
   assert.equal(options.electronFuses.runAsNode, false);
   assert.equal(options.electronFuses.onlyLoadAppFromAsar, true);
   assert.equal(options.electronFuses.enableNodeOptionsEnvironmentVariable, false);
-  assert.match(options.extraMetadata.version, /^\d+\.\d+\.\d+-alpha\.\d+$/);
+  const version = /^(\d+\.\d+\.\d+)-alpha\.(\d+)$/.exec(options.extraMetadata.version);
+  assert.ok(version);
+  assert.equal(options.mac.bundleShortVersion, version[1]);
+  assert.equal(options.mac.bundleVersion, version[2]);
 });
