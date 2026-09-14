@@ -46,14 +46,15 @@ export async function runPinnedWezTermProcess(
   }
 
   const lifetime = new AbortController();
-  const upstream = new Socket();
+  // EOF in one direction must not discard a response still arriving in the other.
+  const upstream = new Socket({ allowHalfOpen: true });
   upstream.pause();
   let downstream: Socket | null = null;
   let authorized = false;
   let transportFailed = false;
   let relayedBytes = 0;
   const pipes: Transform[] = [];
-  const server = createServer({ pauseOnConnect: true }, (client) => {
+  const server = createServer({ allowHalfOpen: true, pauseOnConnect: true }, (client) => {
     if (lifetime.signal.aborted || !authorized || downstream !== null) {
       client.destroy();
       stopTransport();
