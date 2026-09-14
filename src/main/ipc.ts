@@ -1,5 +1,8 @@
 import { ipcMain } from "electron";
 
+import { wezTermSetupConfigurationSchema } from "../shared/wezterm-setup";
+import type { WezTermSetup } from "./wezterm-setup";
+
 import {
   CAPTURE_OVERLAY_CHANNELS,
   IPC_CHANNELS,
@@ -49,6 +52,7 @@ export function registerWorkflowIpc(
   diagnostics: DiagnosticsProvider,
   screenCaptureReadiness: ScreenCaptureReadinessProvider,
   shortcut: ShortcutOperations,
+  weztermSetup: WezTermSetup,
 ): void {
   const authorizeMain = (event: IpcMainInvokeEvent) => {
     assertTrustedIpcSender(event, mainWebContents(), mainRendererUrl);
@@ -56,6 +60,25 @@ export function registerWorkflowIpc(
   const authorizeOverlay = (event: IpcMainInvokeEvent) => {
     assertTrustedIpcSender(event, overlayWebContents(), overlayRendererUrl);
   };
+
+  ipcMain.handle(
+    IPC_CHANNELS.getWezTermSetup,
+    createAuthorizedNoPayloadHandler(authorizeMain, () => weztermSetup.getSnapshot()),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.restartForWezTermSetup,
+    createAuthorizedNoPayloadHandler(authorizeMain, () => weztermSetup.restart()),
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.saveWezTermSetup,
+    (event: IpcMainInvokeEvent, ...payloads: SerializedIpcValue[]) => {
+      authorizeMain(event);
+      if (payloads.length !== 1) throw new Error("Invalid connection setup.");
+      const parsed = wezTermSetupConfigurationSchema.nullable().safeParse(payloads[0]);
+      if (!parsed.success) throw new Error("Invalid connection setup.");
+      return weztermSetup.save(parsed.data);
+    },
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.getSnapshot,

@@ -9,8 +9,13 @@ import type { DiagnosticsSnapshot } from "./diagnostics";
 import type { ScreenCaptureReadinessSnapshot } from "./screen-capture-readiness";
 import type { ShortcutConfiguration, ShortcutStatus, ShortcutUpdateResult } from "./shortcut";
 import type { RevealResult, WorkflowSnapshot } from "./workflow";
+import type {
+  WezTermSetupConfiguration,
+  WezTermSetupOutcome,
+  WezTermSetupSnapshot,
+} from "./wezterm-setup";
 
-export const BRIDGE_VERSION = 9;
+export const BRIDGE_VERSION = 10;
 
 export const IPC_CHANNELS = Object.freeze({
   cancelOperation: "workflow:cancel-operation",
@@ -22,6 +27,9 @@ export const IPC_CHANNELS = Object.freeze({
   getScreenCaptureReadiness: "permission:get-screen-capture-readiness",
   getShortcutStatus: "shortcut:get-status",
   getSnapshot: "workflow:get-snapshot",
+  getWezTermSetup: "wezterm-setup:get",
+  saveWezTermSetup: "wezterm-setup:save",
+  restartForWezTermSetup: "wezterm-setup:restart",
   revealDestination: "workflow:reveal-destination",
   resetShortcut: "shortcut:reset",
   setShortcut: "shortcut:set",
@@ -57,6 +65,11 @@ export type Unsubscribe = () => void;
 
 export type ScreenFlingBridge = {
   readonly apiVersion: typeof BRIDGE_VERSION;
+  readonly getWezTermSetup: () => Promise<WezTermSetupSnapshot>;
+  readonly saveWezTermSetup: (
+    configuration: WezTermSetupConfiguration | null,
+  ) => Promise<WezTermSetupOutcome>;
+  readonly restartForWezTermSetup: () => Promise<boolean>;
   readonly cancelOperation: (request: OperationRequest) => Promise<WorkflowSnapshot>;
   readonly copyCapture: (request: OperationRequest) => Promise<WorkflowSnapshot>;
   readonly dismissResult: (request: OperationRequest) => Promise<WorkflowSnapshot>;

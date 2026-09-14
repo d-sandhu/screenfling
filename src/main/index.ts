@@ -30,6 +30,7 @@ import { createMainWindowOptions } from "./window-options";
 import { readDevRendererUrl, rendererDocumentUrl } from "./renderer-url";
 import { WorkflowDiagnostics } from "./workflow-diagnostics";
 import { WorkflowStore } from "./workflow-store";
+import { WezTermSetup } from "./wezterm-setup";
 
 import type { WorkflowSnapshot } from "../shared/workflow";
 
@@ -130,8 +131,19 @@ async function initializeApplication(): Promise<void> {
     controller.overlayClosedUnexpectedly();
   });
   const capture = new CaptureSession(new ElectronCaptureBackend(), new ElectronImageClipboard());
+  const weztermSetup = new WezTermSetup(
+    join(app.getPath("userData"), "connections", "wezterm.json"),
+    process.platform,
+    () => !quitting && workflow.snapshot.phase === "idle",
+    () => {
+      app.relaunch();
+      quitting = true;
+      app.quit();
+    },
+  );
+  const adapterEnvironment = await weztermSetup.initialize(process.env);
   const destinations = new DestinationRegistry(
-    createConfiguredAdapters(process.env, process.platform),
+    createConfiguredAdapters(adapterEnvironment, process.platform),
   );
   controller = new CaptureController(
     workflow,
@@ -179,6 +191,7 @@ async function initializeApplication(): Promise<void> {
         systemPreferences.getMediaAccessStatus("screen"),
       ),
     shortcut,
+    weztermSetup,
   );
   applicationLifecycle = new ApplicationLifecycle({
     phase: () => workflow.snapshot.phase,

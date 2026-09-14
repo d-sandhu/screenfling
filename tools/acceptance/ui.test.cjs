@@ -111,7 +111,16 @@ function installFixture(options) {
       destinations = [];
     },
   };
+  let setup = { supported: true, source: "none", configuration: null, restartRequired: false };
   window.screenFling = {
+    getWezTermSetup: async () => setup,
+    saveWezTermSetup: async (configuration) => {
+      calls.push({ action: "save-connection", configuration });
+      if (options.failSetup) return "unavailable";
+      setup = { supported: true, source: configuration === null ? "none" : "saved", configuration, restartRequired: true };
+      return "saved";
+    },
+    restartForWezTermSetup: async () => { calls.push({ action: "restart" }); return true; },
     onWorkflowSnapshot: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -455,5 +464,39 @@ void test("renderer fixture: Copy ignores an invalid note and never stages it", 
     assert.equal(calls[0].action, "copy");
     assert.equal(Object.hasOwn(calls[0].request, "note"), false);
     assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
+  });
+});
+
+void test("renderer fixture: connection setup requires explicit binding confirmation and never stages", async () => {
+  await withPage({}, async (page) => {
+    await page.getByText("Connect WezTerm · optional", { exact: true }).click();
+    await page.getByLabel("WezTerm executable", { exact: true }).fill("/synthetic/wezterm");
+    await page.getByLabel("WezTerm configuration file").fill("/synthetic/config.lua");
+    await page.getByLabel("Exact mux socket").fill("/synthetic/mux");
+    await page.getByLabel("Image attachment key (hex bytes)").fill("16");
+    assert.equal(await page.getByRole("button", { name: "Check and save" }).isEnabled(), false);
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Check and save" }).click();
+    await page.getByRole("button", { name: "Restart ScreenFling", exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["save-connection", "restart"]);
+  });
+});
+
+void test("renderer fixture: connection failure leaves capture and Copy usable", async () => {
+  await withPage({ failSetup: true }, async (page) => {
+    await page.getByText("Connect WezTerm · optional", { exact: true }).click();
+    await page.getByLabel("WezTerm executable", { exact: true }).fill("/synthetic/wezterm");
+    await page.getByLabel("WezTerm configuration file").fill("/synthetic/config.lua");
+    await page.getByLabel("Exact mux socket").fill("/synthetic/mux");
+    await page.getByLabel("Image attachment key (hex bytes)").fill("16");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Check and save" }).click();
+    await page.getByText(/No safe exact panes were found/).waitFor();
+    await page.getByRole("button", { name: "Capture region" }).click();
+    await editingReady(page);
+    await page.getByRole("button", { name: "Copy only" }).click();
+    await page.getByRole("button", { name: "Capture another", exact: true }).click();
+    await editingReady(page);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["save-connection", "start", "copy", "start"]);
   });
 });
