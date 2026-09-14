@@ -15,13 +15,13 @@ export function failureCopy(reason: FailureReason): UiCopy {
     "clipboard-failed":
       "ScreenFling could not verify the image on the clipboard. No Stage was attempted. Check the clipboard before trying again.",
     "dispatch-failed":
-      "ScreenFling could not confirm the destination operation. Check the chosen destination before pasting again. The image remains on your clipboard for manual paste.",
+      "ScreenFling could not confirm the destination operation. Check the chosen destination before pasting again. The image was copied to your clipboard for manual paste. Check the clipboard before pasting.",
     "permission-blocked":
       "Screen Recording access is off for ScreenFling. Enable it in System Settings → Privacy & Security → Screen & System Audio Recording, then restart ScreenFling.",
     "target-stale":
-      "The selected destination changed before Stage. The image remains on your clipboard for manual paste.",
+      "The selected destination changed before Stage. The image was copied to your clipboard for manual paste. Check the clipboard before pasting.",
     unsupported:
-      "This destination does not support the requested Stage action. The image remains on your clipboard for manual paste.",
+      "This destination does not support the requested Stage action. The image was copied to your clipboard for manual paste. Check the clipboard before pasting.",
     unexpected:
       "ScreenFling could not confirm the outcome. Check the clipboard and chosen destination before trying again.",
   } as const;

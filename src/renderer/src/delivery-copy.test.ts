@@ -22,20 +22,22 @@ describe("delivery result copy", () => {
   it.each([
     [
       { status: "failed", reason: "target-stale" },
-      "The selected destination changed before Stage. The image remains on your clipboard for manual paste.",
+      "The selected destination changed before Stage. The image was copied to your clipboard for manual paste. Check the clipboard before pasting.",
     ],
     [
       { status: "failed", reason: "unsupported" },
-      "This destination does not support the requested Stage action. The image remains on your clipboard for manual paste.",
+      "This destination does not support the requested Stage action. The image was copied to your clipboard for manual paste. Check the clipboard before pasting.",
     ],
     [
       { status: "failed", reason: "dispatch-failed" },
-      "ScreenFling could not confirm the destination operation. Check the chosen destination before pasting again. The image remains on your clipboard for manual paste.",
+      "ScreenFling could not confirm the destination operation. Check the chosen destination before pasting again. The image was copied to your clipboard for manual paste. Check the clipboard before pasting.",
     ],
   ] satisfies readonly (readonly [DeliveryResult, string])[])(
     "preserves explicit manual fallback for %j",
     (result, detail) => {
       expect(deliveryCopy(result)).toEqual({ title: "Capture stopped", detail });
+      expect(detail).not.toContain("remains on your clipboard");
+      expect(detail).toContain("Check the clipboard before pasting.");
     },
   );
 
