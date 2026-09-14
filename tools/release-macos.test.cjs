@@ -1,9 +1,15 @@
 const assert = require("node:assert/strict");
+const { readFileSync } = require("node:fs");
+const { mkdtemp, readFile, rm, writeFile } = require("node:fs/promises");
+const { tmpdir } = require("node:os");
 const { test } = require("node:test");
 const path = require("node:path");
 const {
   releaseConfiguration, assertDeveloperSignature, acceptedSubmission, signingOptions,
+  assertReleaseToolchain, assertReleaseEntitlements, checkedLifecycle, reservePreparation,
 } = require("./release-macos.cjs");
+const { verifyWezTermArchive } = require("./acceptance/prepare-wezterm.cjs");
+const metadata = require("../package.json");
 
 const environment = {
   SCREENFLING_SIGNING_IDENTITY: "a".repeat(40),
@@ -68,4 +74,88 @@ void test("release packaging retains existing security fuses and explicitly sign
   assert.ok(version);
   assert.equal(options.mac.bundleShortVersion, version[1]);
   assert.equal(options.mac.bundleVersion, version[2]);
+});
+
+void test("release preparation rejects an unpinned Node or npm runtime", () => {
+  const node = `v${readFileSync(path.join(__dirname, "../.node-version"), "utf8").trim()}`;
+  const npm = metadata.packageManager.slice("npm@".length);
+  assert.doesNotThrow(() => assertReleaseToolchain(node, npm));
+  assert.throws(() => assertReleaseToolchain("v22.0.0", npm));
+  assert.throws(() => assertReleaseToolchain(node, "0.0.0"));
+});
+
+void test("production entitlements cannot silently disable library validation or debugging protection", () => {
+  const allowed = { "com.apple.security.cs.allow-jit": true };
+  assert.doesNotThrow(() => assertReleaseEntitlements(allowed));
+  for (const key of [
+    "com.apple.security.cs.disable-library-validation",
+    "com.apple.security.cs.allow-unsigned-executable-memory",
+    "com.apple.security.cs.allow-dyld-environment-variables",
+    "com.apple.security.get-task-allow",
+  ]) assert.throws(() => assertReleaseEntitlements({ ...allowed, [key]: true }));
+  for (const invalid of [null, {}, { "com.apple.security.cs.allow-jit": false }]) {
+    assert.throws(() => assertReleaseEntitlements(invalid));
+  }
+});
+
+void test("a passed lifecycle label cannot hide skipped settings, wrong identity, or missing checks", () => {
+  const report = {
+    acceptance: "packaged-lifecycle",
+    status: "passed",
+    host: { platform: "darwin", arch: "arm64" },
+    application: {
+      identityVerified: true, bundleIdentifier: metadata.build.appId,
+      version: metadata.build.mac.bundleShortVersion, buildVersion: metadata.build.mac.bundleVersion,
+    },
+    checks: {
+      packagedAclGate: true, startupAndHardenedBridge: true, duplicateLaunchRejected: true,
+      crashedRendererReplacedOnce: true, closedWindowReopened: true,
+      workflowDiagnosticsUnchanged: true, isolatedSettingsSaveRestartReloadDisconnect: true,
+    },
+  };
+  assert.deepEqual(checkedLifecycle(JSON.stringify(report)), report.checks);
+  for (const key of Object.keys(report.checks)) {
+    assert.throws(() => checkedLifecycle(JSON.stringify({
+      ...report, checks: { ...report.checks, [key]: false },
+    })));
+    const checks = { ...report.checks };
+    delete checks[key];
+    assert.throws(() => checkedLifecycle(JSON.stringify({ ...report, checks })));
+  }
+  for (const invalid of [
+    { ...report, status: "failed" },
+    { ...report, application: { ...report.application, buildVersion: "wrong" } },
+    { ...report, host: { platform: "darwin", arch: "x64" } },
+    {}, null,
+  ]) assert.throws(() => checkedLifecycle(JSON.stringify(invalid)));
+  assert.throws(() => checkedLifecycle(""));
+  assert.throws(() => checkedLifecycle("not-json"));
+});
+
+void test("preparation reserves output early without removing existing output or another run's lock", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "sf-release-reservation-"));
+  const output = path.join(root, "distribution", "candidate");
+  const lock = path.join(root, ".release-preparing");
+  try {
+    await reservePreparation(output, lock);
+    const marker = path.join(output, "keep");
+    await writeFile(marker, "existing-output");
+    await writeFile(path.join(lock, "keep"), "active-run");
+    await assert.rejects(reservePreparation(output, lock));
+    assert.equal(await readFile(marker, "utf8"), "existing-output");
+    assert.equal(await readFile(path.join(lock, "keep"), "utf8"), "active-run");
+    await rm(lock, { recursive: true });
+    await assert.rejects(reservePreparation(output, lock), { code: "EEXIST" });
+    assert.equal(await readFile(marker, "utf8"), "existing-output");
+    await assert.rejects(readFile(path.join(lock, "keep")), { code: "ENOENT" });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+void test("the shared WezTerm fixture refuses bytes that do not match the pinned archive", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "sf-release-checksum-"));
+  try {
+    const archive = path.join(root, "fixture.zip");
+    await writeFile(archive, "synthetic-not-the-pinned-archive");
+    await assert.rejects(verifyWezTermArchive(archive), /checksum mismatch/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

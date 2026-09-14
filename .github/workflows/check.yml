@@ -40,18 +40,7 @@ jobs:
       - run: npm audit --audit-level=high
       - name: Prepare pinned headless WezTerm fixture (no installation or GUI)
         if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          FIXTURE="$RUNNER_TEMP/screenfling-wezterm"
-          mkdir -p "$FIXTURE"
-          curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 \
-            'https://github.com/wezterm/wezterm/releases/download/20240203-110809-5046fc22/WezTerm-macos-20240203-110809-5046fc22.zip' \
-            --output "$FIXTURE/wezterm.zip"
-          printf '%s  %s\n' 'e77388cad55f2e9da95a220a89206a6c58f865874a629b7c3ea3c162f5692224' "$FIXTURE/wezterm.zip" | shasum -a 256 -c -
-          /usr/bin/ditto -x -k "$FIXTURE/wezterm.zip" "$FIXTURE"
-          BIN="$FIXTURE/WezTerm-macos-20240203-110809-5046fc22/WezTerm.app/Contents/MacOS"
-          printf 'SCREENFLING_TEST_WEZTERM_EXECUTABLE=%s\n' "$BIN/wezterm" >> "$GITHUB_ENV"
-          printf 'SCREENFLING_TEST_WEZTERM_MUX_SERVER=%s\n' "$BIN/wezterm-mux-server" >> "$GITHUB_ENV"
+        run: node tools/acceptance/prepare-wezterm.cjs
       - run: npm run check
       - run: npm run build
       - if: runner.os == 'macOS' && github.event_name == 'push'

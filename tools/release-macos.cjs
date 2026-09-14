@@ -1,16 +1,39 @@
 const { spawnSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
-const { createReadStream } = require("node:fs");
+const { createReadStream, readFileSync } = require("node:fs");
 const { mkdir, mkdtemp, rename, rm, writeFile } = require("node:fs/promises");
+const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { z } = require("zod");
 
+const { prepareWezTermFixture } = require("./acceptance/prepare-wezterm.cjs");
 const metadata = require("../package.json");
 const ROOT = path.resolve(__dirname, "..");
 const profileSchema = z.string().min(1).max(128).regex(/^[^\p{Cc}\p{Zl}\p{Zp}]+$/u);
 const submissionSchema = z.object({
   status: z.literal("Accepted"),
   id: z.string().regex(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i),
+});
+const entitlementSchema = z.strictObject({ "com.apple.security.cs.allow-jit": z.literal(true) });
+const lifecycleSchema = z.object({
+  acceptance: z.literal("packaged-lifecycle"),
+  status: z.literal("passed"),
+  host: z.object({ platform: z.literal("darwin"), arch: z.literal("arm64") }),
+  application: z.object({
+    identityVerified: z.literal(true),
+    bundleIdentifier: z.literal(metadata.build.appId),
+    version: z.literal(metadata.build.mac.bundleShortVersion),
+    buildVersion: z.literal(metadata.build.mac.bundleVersion),
+  }),
+  checks: z.object({
+    packagedAclGate: z.literal(true),
+    startupAndHardenedBridge: z.literal(true),
+    duplicateLaunchRejected: z.literal(true),
+    crashedRendererReplacedOnce: z.literal(true),
+    closedWindowReopened: z.literal(true),
+    workflowDiagnosticsUnchanged: z.literal(true),
+    isolatedSettingsSaveRestartReloadDisconnect: z.literal(true),
+  }),
 });
 
 function releaseConfiguration(environment, platform, architecture) {
@@ -33,12 +56,25 @@ function releaseConfiguration(environment, platform, architecture) {
   return { identity: identity.toUpperCase(), teamId, profile: parsedProfile.data };
 }
 
+function assertReleaseToolchain(node, npm) {
+  const expectedNode = readFileSync(path.join(ROOT, ".node-version"), "utf8").trim();
+  if (node !== `v${expectedNode}` || `npm@${npm}` !== metadata.packageManager) {
+    throw new Error(`Release preparation requires Node ${expectedNode} and ${metadata.packageManager}.`);
+  }
+}
+
 function assertDeveloperSignature(details, teamId) {
   if (!/^Authority=Developer ID Application: .+$/m.test(details) ||
       !details.split(/\r?\n/).includes(`TeamIdentifier=${teamId}`) ||
       !/^CodeDirectory .+flags=[^\r\n]*\bruntime\b/m.test(details) ||
       !/^Timestamp=.+$/m.test(details) || /^Signature=adhoc$/m.test(details)) {
     throw new Error("Developer ID, expected team, hardened runtime, or timestamp verification failed.");
+  }
+}
+
+function assertReleaseEntitlements(value) {
+  if (!entitlementSchema.safeParse(value).success) {
+    throw new Error("Release entitlements must allow JIT only; no production protection may be disabled.");
   }
 }
 
@@ -50,6 +86,16 @@ function acceptedSubmission(text) {
     throw new Error("Apple notarization was not Accepted; no distribution archive was produced.");
   }
   return parsed.data.id;
+}
+
+function checkedLifecycle(text) {
+  let value;
+  try { value = JSON.parse(text); } catch { /* Reject missing or malformed evidence. */ }
+  const parsed = lifecycleSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error("The packaged lifecycle must pass every required check, including settings restarts.");
+  }
+  return parsed.data.checks;
 }
 
 function signingOptions(configuration, app) {
@@ -92,16 +138,39 @@ function cleanCommit() {
   return commit;
 }
 
+async function reservePreparation(output, lock) {
+  await mkdir(path.dirname(lock), { recursive: true });
+  try { await mkdir(lock); } catch {
+    throw new Error("Release preparation is already active or interrupted. Inspect release/.release-preparing before retrying.");
+  }
+  try {
+    await mkdir(path.dirname(output), { recursive: true });
+    await mkdir(output); // Never overwrite an existing candidate, even an interrupted one.
+  } catch (error) {
+    await rm(lock, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function verify(app, configuration, notarized) {
   const { readArtifactEvidence } = require("./acceptance/capture.cjs");
+  const plist = await import("plist");
   const identity = await readArtifactEvidence(path.join(app, "Contents/MacOS/ScreenFling"));
   run("Bundle signature", "/usr/bin/codesign", ["--verify", "--deep", "--strict", app]);
-  for (const signed of [app, path.join(app, "Contents/Resources/screenfling-selector-acl")]) {
+  for (const signed of [
+    app,
+    path.join(app, "Contents/Frameworks/ScreenFling Helper (Renderer).app"),
+    path.join(app, "Contents/Resources/screenfling-selector-acl"),
+  ]) {
     run("Signature", "/usr/bin/codesign", ["--verify", "--strict", signed]);
     assertDeveloperSignature(
       run("Signature identity", "/usr/bin/codesign", ["--display", "--verbose=4", signed]).stderr,
       configuration.teamId,
     );
+    const entitlements = run("Release entitlements", "/usr/bin/codesign", [
+      "--display", "--entitlements", ":-", signed,
+    ]).stdout;
+    assertReleaseEntitlements(plist.parse(entitlements));
   }
   if (notarized) {
     run("Stapled ticket", "/usr/bin/xcrun", ["stapler", "validate", app]);
@@ -113,6 +182,8 @@ async function verify(app, configuration, notarized) {
 async function main() {
   const configuration = releaseConfiguration(process.env, process.platform, process.arch);
   process.chdir(ROOT);
+  const npmVersion = run("npm version", "npm", ["--version"]).stdout.trim();
+  assertReleaseToolchain(process.version, npmVersion);
   const version = metadata.build.extraMetadata.version;
   if (!/^\d+\.\d+\.\d+-alpha\.\d+$/.test(version)) {
     throw new Error("Set an explicit alpha application version in build.extraMetadata.version.");
@@ -128,22 +199,34 @@ async function main() {
     line.includes(`(${configuration.teamId})`))) {
     throw new Error("The selected Developer ID certificate/private key is not available in Keychain.");
   }
-  console.log("Checking source and building the signed macOS alpha candidate.");
-  run("Project checks", "npm", ["run", "check"], 600_000);
-  run("Production build", "npm", ["run", "build"], 600_000);
-  const app = path.join(ROOT, "release/mac-arm64/ScreenFling.app");
-  const { build, Platform, Arch } = require("electron-builder");
-  await build({
-    targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
-    config: signingOptions(configuration, app),
-    publish: "never",
-  });
-  await verify(app, configuration, false);
-  run("Packaged lifecycle", process.execPath, ["tools/acceptance/lifecycle.cjs"], 120_000);
-
-  const temporary = await mkdtemp(path.join(ROOT, "release/.notarize-"));
-  let createdOutput = null;
+  const output = path.join(ROOT, "release/distribution", `${version}-${commit.slice(0, 12)}`);
+  const lock = path.join(ROOT, "release/.release-preparing");
+  await reservePreparation(output, lock);
+  let fixture = null;
+  let temporary = null;
+  let completed = false;
   try {
+    fixture = await prepareWezTermFixture(tmpdir());
+    Object.assign(process.env, fixture.environment);
+    console.log("Checking source, dependencies, and the production UI before signing.");
+    run("Dependency audit", "npm", ["audit", "--audit-level=high"]);
+    run("Project checks", "npm", ["run", "check"], 600_000);
+    run("Production build", "npm", ["run", "build"], 600_000);
+    run("Browser fixture runtime", "npx", ["--no-install", "playwright", "install", "chromium", "--only-shell"], 300_000);
+    run("Built renderer checks", process.execPath, ["--test", "tools/acceptance/ui.test.cjs"], 120_000);
+    const app = path.join(ROOT, "release/mac-arm64/ScreenFling.app");
+    const { build, Platform, Arch } = require("electron-builder");
+    await build({
+      targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
+      config: signingOptions(configuration, app),
+      publish: "never",
+    });
+    await verify(app, configuration, false);
+    const packagedChecks = checkedLifecycle(
+      run("Packaged lifecycle", process.execPath, ["tools/acceptance/lifecycle.cjs"], 120_000).stdout,
+    );
+
+    temporary = await mkdtemp(path.join(ROOT, "release/.notarize-"));
     const submission = path.join(temporary, "submission.zip");
     run("Notarization archive", "/usr/bin/ditto", [
       "-c", "-k", "--sequesterRsrc", "--keepParent", app, submission,
@@ -167,10 +250,6 @@ async function main() {
     const hash = createHash("sha256");
     for await (const chunk of createReadStream(archive)) hash.update(chunk);
     const sha256 = hash.digest("hex");
-    const output = path.join(ROOT, "release/distribution", `${version}-${commit.slice(0, 12)}`);
-    await mkdir(path.dirname(output), { recursive: true });
-    await mkdir(output); // Refuse to replace a previous distribution of this candidate.
-    createdOutput = output;
     await rename(archive, path.join(output, filename));
     await writeFile(path.join(output, "SHA256SUMS"), `${sha256}  ${filename}\n`);
     await writeFile(path.join(output, "distribution.json"), JSON.stringify({
@@ -178,21 +257,28 @@ async function main() {
       sourceCommit: commit,
       architecture: "arm64",
       application,
+      applicationVersion: version,
+      node: process.version,
+      npm: npmVersion,
+      electron: metadata.devDependencies.electron,
       filename,
       sha256,
       developerId: true,
       notarized: true,
       notarizationSubmissionId: submissionId,
       archiveRoundTripVerified: true,
+      packagedChecks,
       nativeAcceptance: "not-recorded-by-this-command",
       published: false,
     }, null, 2) + "\n");
-    createdOutput = null;
+    completed = true;
     console.log(`Verified signed distribution: ${path.relative(ROOT, output)}`);
     console.log("Nothing was published. Native and real-agent acceptance still need separate evidence.");
   } finally {
-    if (createdOutput !== null) await rm(createdOutput, { recursive: true, force: true });
-    await rm(temporary, { recursive: true, force: true });
+    if (!completed) await rm(output, { recursive: true, force: true });
+    if (temporary !== null) await rm(temporary, { recursive: true, force: true });
+    if (fixture !== null) await rm(fixture.directory, { recursive: true, force: true });
+    await rm(lock, { recursive: true, force: true });
   }
 }
 
@@ -204,9 +290,12 @@ Required environment variables (no passwords or private keys go in this reposito
   SCREENFLING_SIGNING_IDENTITY  Installed Developer ID certificate SHA-1 (40 hex characters)
   SCREENFLING_APPLE_TEAM_ID     Certificate's ten-character Apple team ID
   SCREENFLING_NOTARY_PROFILE    Existing xcrun notarytool Keychain profile
-Runs existing checks, signs with hardened runtime, checks the package, notarizes,
-staples, verifies Gatekeeper and the extracted ZIP, then writes release/distribution/.
-Does not publish, change macOS permissions, or claim physical/agent acceptance.`);
+Downloads the checksum-pinned headless WezTerm fixture into a disposable directory,
+then runs the audit, existing code/browser checks, and the full packaged restart checks.
+Signs with hardened runtime and JIT-only entitlements, notarizes, staples, verifies
+Gatekeeper and the extracted ZIP, then writes release/distribution/.
+Refuses concurrent preparation and existing output. Does not publish, change macOS
+permissions, or claim physical/agent acceptance.`);
   } else if (process.argv.length !== 2) {
     console.error("Unknown arguments. Use npm run release:mac -- --help.");
     process.exitCode = 1;
@@ -218,4 +307,7 @@ Does not publish, change macOS permissions, or claim physical/agent acceptance.`
   }
 }
 
-module.exports = { releaseConfiguration, assertDeveloperSignature, acceptedSubmission, signingOptions };
+module.exports = {
+  releaseConfiguration, assertDeveloperSignature, acceptedSubmission, signingOptions,
+  assertReleaseToolchain, assertReleaseEntitlements, checkedLifecycle, reservePreparation,
+};
