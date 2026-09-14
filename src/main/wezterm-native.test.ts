@@ -103,7 +103,7 @@ describe.skipIf(process.platform !== "darwin" || EXECUTABLE === undefined || SER
         server = spawn(
           SERVER,
           ["--config-file", configFile, "--", process.execPath, "-e", RECEIVER, outputs[0]],
-          { env: environment, stdio: "ignore" },
+          { cwd: directory, env: environment, stdio: "ignore" },
         );
         server.on("error", () => undefined);
         const cli = async (arguments_: readonly string[]) => {
@@ -153,21 +153,26 @@ describe.skipIf(process.platform !== "darwin" || EXECUTABLE === undefined || SER
           }
           return target;
         });
+        const payloads: [Buffer[], Buffer[]] = [[], []];
         for (let trial = 0; trial < 100; trial += 1) {
-          const target = targets[trial % 2];
+          const index = trial % 2 === 0 ? 0 : 1;
+          const target = targets[index];
           if (target === undefined) throw new Error("Missing alternating target.");
-          expect(await adapter.stageIfCurrent({ destination: target, note: NOTE })).toEqual({
+          const note = `${NOTE} trial-${trial}`;
+          payloads[index].push(Buffer.concat([BINDING, Buffer.from(note)]));
+          expect(await adapter.stageIfCurrent({ destination: target, note })).toEqual({
             status: "dispatched-unverified",
           });
         }
-        const expected = Buffer.concat(Array.from({ length: 50 }, () => PAYLOAD));
+        // Unique payloads prove per-trial routing and order, not just equal totals.
+        const expected = [Buffer.concat(payloads[0]), Buffer.concat(payloads[1])] as const;
         await waitUntil(
           async () =>
-            (await readFile(outputs[0])).length === expected.length &&
-            (await readFile(outputs[1])).length === expected.length,
+            (await readFile(outputs[0])).length === expected[0].length &&
+            (await readFile(outputs[1])).length === expected[1].length,
         );
-        expect(await readFile(outputs[0])).toEqual(expected);
-        expect(await readFile(outputs[1])).toEqual(expected);
+        expect(await readFile(outputs[0])).toEqual(expected[0]);
+        expect(await readFile(outputs[1])).toEqual(expected[1]);
 
         // Interleave at the last possible boundary: transport is authorized and
         // connected, but the real WezTerm send-text process has not started.
@@ -197,10 +202,10 @@ describe.skipIf(process.platform !== "darwin" || EXECUTABLE === undefined || SER
           status: "dispatched-unverified",
         });
         await waitUntil(
-          async () => (await readFile(outputs[0])).length === expected.length + PAYLOAD.length,
+          async () => (await readFile(outputs[0])).length === expected[0].length + PAYLOAD.length,
         );
-        expect(await readFile(outputs[0])).toEqual(Buffer.concat([expected, PAYLOAD]));
-        expect(await readFile(outputs[1])).toEqual(expected);
+        expect(await readFile(outputs[0])).toEqual(Buffer.concat([expected[0], PAYLOAD]));
+        expect(await readFile(outputs[1])).toEqual(expected[1]);
         expect(replacementConnections).toBe(0);
         expect(replacementBytes).toBe(0);
         expect((await readdir(directory)).some((entry) => entry.startsWith(".sf-"))).toBe(false);
