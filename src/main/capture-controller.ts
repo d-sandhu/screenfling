@@ -1,3 +1,4 @@
+import type { DestinationDiscovery } from "../shared/destination-discovery";
 import { CapturePermissionBlockedError, CaptureSessionStateError } from "./capture-session";
 import { InvalidWorkflowTransitionError, StaleWorkflowActionError } from "../shared/workflow";
 
@@ -183,6 +184,12 @@ export class CaptureController {
   async discoverDestinations(operationId: string): Promise<readonly Destination[]> {
     assertEditingOperation(this.#workflow.snapshot, operationId);
     return this.#destinations.discover(operationId);
+  }
+
+  async discoverDestinationsWithStatus(operationId: string): Promise<DestinationDiscovery> {
+    const destinations = await this.discoverDestinations(operationId);
+    assertEditingOperation(this.#workflow.snapshot, operationId);
+    return { destinations, status: this.#destinations.discoveryStatus(operationId) };
   }
 
   copyCapture(operationId: string): WorkflowSnapshot {

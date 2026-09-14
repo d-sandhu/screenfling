@@ -1,3 +1,4 @@
+import type { DestinationDiscoveryStatus } from "../../shared/destination-discovery";
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -23,6 +24,8 @@ import type { ScreenCaptureReadinessSnapshot } from "../../shared/screen-capture
 import type { CaptureDrag, CapturePoint } from "./capture-drag";
 import type { UiCopy } from "./delivery-copy";
 import { MAX_NOTE_LENGTH, noteSchema, supportsStage } from "../../shared/domain";
+
+declare const __SCREENFLING_BUILD__: string;
 
 function useJpegUrl(bytes: Uint8Array | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -262,6 +265,7 @@ function ScreenFlingApp() {
   const [draft, setDraft] = useState<CaptureDraft | null>(null);
   const [destinations, setDestinations] = useState<readonly Destination[]>([]);
   const [destinationsLoading, setDestinationsLoading] = useState(false);
+  const [destinationStatus, setDestinationStatus] = useState<DestinationDiscoveryStatus>("not-configured");
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
   const [stagedDestination, setStagedDestination] = useState<Destination | null>(null);
   const [revealResult, setRevealResult] = useState<RevealResult | null>(null);
@@ -357,9 +361,10 @@ function ScreenFlingApp() {
     setError(null);
     void bridge
       .discoverDestinations({ operationId: editingOperationId })
-      .then((nextDestinations) => {
+      .then(({ destinations: nextDestinations, status }) => {
         if (discoverySequence.current !== sequence) return;
         setDestinations(nextDestinations);
+        setDestinationStatus(status);
         setSelectedDestinationId((selected) => {
           return nextDestinations.some((destination) => destination.id === selected)
             ? selected
@@ -370,6 +375,7 @@ function ScreenFlingApp() {
         if (discoverySequence.current !== sequence) return;
         setDestinations([]);
         setSelectedDestinationId(null);
+        setDestinationStatus("instance-unavailable");
         setError("Destinations could not be refreshed. Copy remains available.");
       })
       .finally(() => {
@@ -553,6 +559,7 @@ function ScreenFlingApp() {
             <div className="handoff">
               <DestinationPicker
                 destinations={destinations}
+                status={destinationStatus}
                 loading={destinationsLoading}
                 onRefresh={discoverDestinations}
                 onSelect={setSelectedDestinationId}
@@ -732,6 +739,9 @@ function ScreenFlingApp() {
           {isActive
             ? "Operation in progress · no automatic submission"
             : "Nothing is sent automatically"}
+        </span>
+        <span title={`Build ${__SCREENFLING_BUILD__}`} style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
+          dev · {__SCREENFLING_BUILD__.slice(0, 7)}
         </span>
       </footer>
     </main>

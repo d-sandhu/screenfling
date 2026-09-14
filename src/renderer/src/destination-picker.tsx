@@ -1,3 +1,4 @@
+import type { DestinationDiscoveryStatus } from "../../shared/destination-discovery";
 import type { Destination, DestinationReceipt } from "../../shared/domain";
 import { supportsStage } from "../../shared/domain";
 
@@ -22,18 +23,33 @@ function destinationEvidence(destination: Destination): string {
     : "Unverified";
 }
 
+const statusMessages = {
+  "not-configured": "No connection is active. After copying, use Connect WezTerm on the start screen.",
+  "invalid-configuration": "Connection settings are invalid. Correct them on the start screen after copying.",
+  "selectors-rejected": "The connection changed or its path permissions were rejected. Check the exact connection on the start screen after copying.",
+  "executable-unavailable": "The configured WezTerm executable is unavailable. Check its path on the start screen after copying.",
+  "unsupported-version": "The configured WezTerm version is unsupported. Check the version on the start screen after copying.",
+  "instance-unavailable": "The configured WezTerm instance is unavailable. Start that instance and Refresh, or check its current socket on the start screen.",
+  "no-panes": "WezTerm is reachable, but this instance has no panes. Open a pane in that instance, then Refresh.",
+  busy: "The connection check was interrupted. Refresh when the current action finishes.",
+  unsupported: "Exact destination routing is unavailable on this platform.",
+  ready: "No supported exact destination is available. Refresh to check again.",
+} satisfies Record<DestinationDiscoveryStatus, string>;
+
 export function DestinationPicker({
   destinations,
   loading,
   onRefresh,
   onSelect,
   selectedId,
+  status = "not-configured",
 }: {
   readonly destinations: readonly Destination[];
   readonly loading: boolean;
   readonly onRefresh: () => void;
   readonly onSelect: (destinationId: string) => void;
   readonly selectedId: string | null;
+  readonly status?: DestinationDiscoveryStatus;
 }) {
   return (
     <fieldset className="destination-picker">
@@ -42,10 +58,10 @@ export function DestinationPicker({
         {loading ? "Checking…" : "Refresh"}
       </button>
       {destinations.length === 0 ? (
-        <p className="empty-state">
+        <p className="empty-state" role="status">
           {loading
             ? "Looking for configured exact panes…"
-            : "No supported exact destination is available. Copy only still works. After copying, use Connect WezTerm on the start screen to check the connection."}
+            : `${statusMessages[status]} Copy only still works.`}
         </p>
       ) : (
         <div className="destination-list">

@@ -1,3 +1,5 @@
+import { destinationDiscoverySchema } from "../shared/destination-discovery";
+import type { DestinationDiscoveryStatus } from "../shared/destination-discovery";
 import {
   destinationIdSchema,
   destinationListSchema,
@@ -14,6 +16,7 @@ import type { StageDeliveryResult } from "./stage-destination";
 import type { RevealResult } from "../shared/workflow";
 
 type DiscoverySnapshot = {
+  readonly status: DestinationDiscoveryStatus;
   readonly destinations: ReadonlyMap<string, Destination>;
   readonly operationId: string;
 };
@@ -51,15 +54,21 @@ export class DestinationRegistry {
     this.#revealLease = null;
     const discovered: Destination[] = [];
     const destinationIds = new Set<string>();
+    let status: DestinationDiscoveryStatus = this.#adapters.size === 0 ? "not-configured" : "instance-unavailable";
 
     for (const adapter of this.#adapters.values()) {
       try {
-        const candidates = destinationListSchema.safeParse(await adapter.discover());
-        if (!candidates.success) continue;
-        const candidateIds = candidates.data.map((destination) => destination.id);
+        const detail = adapter.discoverWithStatus === undefined
+          ? { destinations: await adapter.discover(), status: "instance-unavailable" as const }
+          : await adapter.discoverWithStatus();
+        const parsed = destinationDiscoverySchema.safeParse(detail);
+        if (!parsed.success) continue;
+        status = parsed.data.status;
+        const candidates = parsed.data.destinations;
+        const candidateIds = candidates.map((destination) => destination.id);
         const matching =
           new Set(candidateIds).size === candidateIds.length &&
-          candidates.data.every((destination) => {
+          candidates.every((destination) => {
             return destination.adapter === adapter.id && !destinationIds.has(destination.id);
           });
         if (!matching) {
@@ -69,7 +78,7 @@ export class DestinationRegistry {
           }
           return [];
         }
-        for (const destination of candidates.data) {
+        for (const destination of candidates) {
           destinationIds.add(destination.id);
           discovered.push(destination);
         }
@@ -87,11 +96,18 @@ export class DestinationRegistry {
     }
     const destinations = destinationsResult.data;
     this.#discovery = {
+      status: destinations.length > 0 ? "ready" : status,
       destinations: new Map(destinations.map((destination) => [destination.id, destination])),
       operationId: safeOperationId,
     };
     this.#pendingOperationId = null;
     return destinations;
+  }
+
+  discoveryStatus(operationId: string): DestinationDiscoveryStatus {
+    return this.#discovery?.operationId === operationId
+      ? this.#discovery.status
+      : "instance-unavailable";
   }
 
   async stage(

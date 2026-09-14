@@ -15,6 +15,7 @@ import type {
   DestinationAdapter,
 } from "./destination-adapter";
 import type { WezTermConnectionStatus } from "../shared/wezterm-setup";
+import type { DestinationDiscovery } from "../shared/destination-discovery";
 import type { Destination } from "../shared/domain";
 import type { RevealResult } from "../shared/workflow";
 
@@ -190,6 +191,16 @@ function boundedGenerationReader(read: WezTermGenerationReader): WezTermGenerati
   };
 }
 
+function connectionStatus(result: WezTermSnapshotResult): WezTermConnectionStatus {
+    switch (result.status) {
+      case "ready": return result.snapshot.panes.length === 0 ? "no-panes" : "ready";
+      case "unavailable": return result.reason;
+      case "unsupported": return "unsupported-version";
+      case "ambiguous":
+      case "generation-changed": return "selectors-rejected";
+    }
+}
+
 export class WezTermAdapter implements DestinationAdapter {
   readonly id = WEZTERM_ADAPTER_ID;
   readonly #config: Readonly<WezTermAdapterConfig>;
@@ -263,19 +274,19 @@ export class WezTermAdapter implements DestinationAdapter {
   async checkConnection(): Promise<WezTermConnectionStatus> {
     // Same validated read-only inspection as discovery. No routes or input are issued.
     const result = await this.#snapshot();
-    switch (result.status) {
-      case "ready": return result.snapshot.panes.length === 0 ? "no-panes" : "ready";
-      case "unavailable": return result.reason;
-      case "unsupported": return "unsupported-version";
-      case "ambiguous":
-      case "generation-changed": return "selectors-rejected";
-    }
+    return connectionStatus(result);
   }
 
   async discover(): Promise<readonly Destination[]> {
+    return (await this.discoverWithStatus()).destinations;
+  }
+
+  async discoverWithStatus(): Promise<DestinationDiscovery> {
     this.#routes.clear();
     const snapshotResult = await this.#snapshot();
-    if (snapshotResult.status !== "ready") return [];
+    if (snapshotResult.status !== "ready") {
+      return { destinations: [], status: connectionStatus(snapshotResult) };
+    }
     const { snapshot } = snapshotResult;
 
     const observedAt = this.#dependencies.now().toISOString();
@@ -301,7 +312,7 @@ export class WezTermAdapter implements DestinationAdapter {
       });
       if (!destination.success) {
         this.#routes.clear();
-        return [];
+        return { destinations: [], status: "selectors-rejected" };
       }
       const route = {
         destination: destination.data,
@@ -311,7 +322,7 @@ export class WezTermAdapter implements DestinationAdapter {
       this.#routes.set(destination.data.id, route);
       destinations.push(destination.data);
     }
-    return destinations;
+    return { destinations, status: destinations.length === 0 ? "no-panes" : "ready" };
   }
 
   async stageIfCurrent(request: AdapterStageRequest): Promise<AdapterStageResult> {

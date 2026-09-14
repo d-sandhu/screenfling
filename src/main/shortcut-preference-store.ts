@@ -1,13 +1,11 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { z } from "zod";
+import { boundedPreferenceRead, readPreferenceText } from "./preference-files";
 
 import { persistedShortcutSchema } from "../shared/shortcut";
 
 import type { ShortcutConfiguration } from "../shared/shortcut";
-
-const missingFileErrorSchema = z.object({ code: z.literal("ENOENT") });
 
 export type ShortcutPreferenceLoadResult =
   | { readonly configuration: ShortcutConfiguration; readonly kind: "loaded" }
@@ -37,12 +35,7 @@ export class NodeShortcutPreferenceFiles implements ShortcutPreferenceFiles {
   }
 
   async readText(path: string): Promise<string | null> {
-    try {
-      return await readFile(path, "utf8");
-    } catch (cause) {
-      if (missingFileErrorSchema.safeParse(cause).success) return null;
-      throw cause;
-    }
+    return readPreferenceText(path, 4_096, "regular");
   }
 
   async remove(path: string): Promise<void> {
@@ -71,7 +64,7 @@ export class ShortcutPreferenceStore implements ShortcutPreferences {
   }
 
   async load(): Promise<ShortcutPreferenceLoadResult> {
-    const contents = await this.#files.readText(this.#filePath);
+    const contents = await boundedPreferenceRead(() => this.#files.readText(this.#filePath));
     if (contents === null) return { kind: "missing" };
 
     let persisted: unknown;

@@ -23,7 +23,7 @@ import {
   captureSelectionRequestSchema,
 } from "../shared/capture";
 import { LatestValueRelay } from "../shared/latest-value-relay";
-import { destinationListSchema } from "../shared/domain";
+import { destinationDiscoverySchema } from "../shared/destination-discovery";
 import { diagnosticsSnapshotSchema } from "../shared/diagnostics";
 import { screenCaptureReadinessSchema } from "../shared/screen-capture-readiness";
 import { revealResultSchema, workflowSnapshotSchema } from "../shared/workflow";
@@ -51,7 +51,7 @@ import type {
   CaptureSelectionRequest,
 } from "../shared/capture";
 import type { RevealResult, WorkflowSnapshot } from "../shared/workflow";
-import type { Destination } from "../shared/domain";
+import type { DestinationDiscovery } from "../shared/destination-discovery";
 import type { DiagnosticsSnapshot } from "../shared/diagnostics";
 import type { ScreenCaptureReadinessSnapshot } from "../shared/screen-capture-readiness";
 
@@ -109,9 +109,9 @@ async function setShortcut(configuration: ShortcutConfiguration): Promise<Shortc
   );
 }
 
-async function discoverDestinations(request: OperationRequest): Promise<readonly Destination[]> {
+async function discoverDestinations(request: OperationRequest): Promise<DestinationDiscovery> {
   const validatedRequest = operationRequestSchema.parse(request);
-  return destinationListSchema.parse(
+  return destinationDiscoverySchema.parse(
     await ipcRenderer.invoke(IPC_CHANNELS.discoverDestinations, validatedRequest),
   );
 }
