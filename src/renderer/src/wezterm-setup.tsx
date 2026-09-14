@@ -17,7 +17,7 @@ const emptyConfiguration: WezTermSetupConfiguration = {
   socketPath: "",
   imageInputHex: "",
 };
-const messages: Record<WezTermSetupOutcome, string> = {
+const messages = {
   saved: "Saved locally. Restart ScreenFling to use this connection. The current route is unchanged.",
   busy: "Finish the current capture or connection change, then try again.",
   unavailable:
@@ -25,7 +25,7 @@ const messages: Record<WezTermSetupOutcome, string> = {
   failed: "The connection could not be saved. Your previous settings are unchanged.",
   "environment-override": "Environment settings are active. Open ScreenFling normally to change the saved connection.",
   unsupported: "This connection is available on macOS only. Copy still works.",
-};
+} satisfies Record<WezTermSetupOutcome, string>;
 const fields = [
   ["executable", "WezTerm executable", "/Applications/WezTerm.app/Contents/MacOS/wezterm"],
   ["configFile", "WezTerm configuration file", "/Users/you/.wezterm.lua"],
