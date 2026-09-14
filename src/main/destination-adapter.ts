@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { DestinationDiscovery } from "../shared/destination-discovery";
 import type { Destination, Note } from "../shared/domain";
 import type { RevealResult } from "../shared/workflow";
 
@@ -27,6 +28,8 @@ export type AdapterStageResult = z.infer<typeof adapterStageResultSchema>;
 export type DestinationAdapter = {
   readonly id: string;
   readonly discover: () => Promise<readonly Destination[]>;
+  /** Same discovery, with sanitized evidence; never a second diagnostic probe. */
+  readonly discoverWithStatus?: () => Promise<DestinationDiscovery>;
   /** Revalidate the exact route immediately before the side effect, or return stale. */
   readonly stageIfCurrent: (request: AdapterStageRequest) => Promise<AdapterStageResult>;
   /** Activate only the exact retained route, without sending input. */

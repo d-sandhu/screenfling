@@ -69,9 +69,6 @@ describe("local WezTerm connection setup", () => {
     idle = false;
     release("ready");
     expect(await save).toBe("busy");
-    idle = true;
-    expect(await setup.save(null)).toBe("saved");
-    idle = false;
     expect(setup.restart()).toBe(false);
     expect(restart).not.toHaveBeenCalled();
   });

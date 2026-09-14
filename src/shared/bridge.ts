@@ -4,7 +4,7 @@ import { operationIdSchema } from "./domain";
 import { destinationIdSchema, noteSchema } from "./domain";
 
 import type { CaptureDraft, CaptureOverlaySnapshot, CaptureSelectionRequest } from "./capture";
-import type { Destination } from "./domain";
+import type { DestinationDiscovery } from "./destination-discovery";
 import type { DiagnosticsSnapshot } from "./diagnostics";
 import type { ScreenCaptureReadinessSnapshot } from "./screen-capture-readiness";
 import type { ShortcutConfiguration, ShortcutStatus, ShortcutUpdateResult } from "./shortcut";
@@ -17,7 +17,7 @@ import type {
   WezTermSetupSnapshot,
 } from "./wezterm-setup";
 
-export const BRIDGE_VERSION = 11;
+export const BRIDGE_VERSION = 12;
 
 export const IPC_CHANNELS = Object.freeze({
   cancelOperation: "workflow:cancel-operation",
@@ -81,7 +81,7 @@ export type ScreenFlingBridge = {
   readonly cancelOperation: (request: OperationRequest) => Promise<WorkflowSnapshot>;
   readonly copyCapture: (request: OperationRequest) => Promise<WorkflowSnapshot>;
   readonly dismissResult: (request: OperationRequest) => Promise<WorkflowSnapshot>;
-  readonly discoverDestinations: (request: OperationRequest) => Promise<readonly Destination[]>;
+  readonly discoverDestinations: (request: OperationRequest) => Promise<DestinationDiscovery>;
   readonly getCaptureDraft: (request: OperationRequest) => Promise<CaptureDraft>;
   readonly getDiagnostics: () => Promise<DiagnosticsSnapshot>;
   readonly getScreenCaptureReadiness: () => Promise<ScreenCaptureReadinessSnapshot>;

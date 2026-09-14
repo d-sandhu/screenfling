@@ -162,7 +162,10 @@ function installFixture(options) {
       pixels: { width: 200, height: 100 },
       preview: jpeg(200, 100),
     }),
-    discoverDestinations: async () => destinations,
+    discoverDestinations: async () => ({
+      destinations,
+      status: options.discoveryStatus ?? (destinations.length === 0 ? "not-configured" : "ready"),
+    }),
     copyCapture: async (request) => {
       calls.push({ action: "copy", request });
       result({ status: "copied" });
@@ -391,7 +394,7 @@ void test("renderer fixture: refresh removes a stale selection rather than choos
     await page.evaluate(() => window.fixture.removeDestinations());
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await page
-      .getByText(/No supported exact destination is available/)
+      .getByText(/Copy only still works/)
       .waitFor();
     assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
     assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
@@ -562,5 +565,27 @@ void test("renderer fixture: setup and review remain reachable in a short narrow
     await page.getByRole("button", { name: "Copy only", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.waitForFunction(() => document.activeElement?.textContent?.includes("Capture region"));
+  });
+});
+
+
+void test("renderer fixture: review explains failed discovery without a second probe or blocking Copy", async () => {
+  await withPage({ editing: true, noDestinations: true, discoveryStatus: "selectors-rejected" }, async (page) => {
+    await editingReady(page);
+    await page.getByText(/connection changed or its path permissions were rejected/).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
+    await page.getByRole("button", { name: "Copy only" }).click();
+    await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["copy"]);
+  });
+});
+
+void test("renderer fixture: reachable empty instance has actionable review guidance", async () => {
+  await withPage({ editing: true, noDestinations: true, discoveryStatus: "no-panes" }, async (page) => {
+    await editingReady(page);
+    await page.getByText(/WezTerm is reachable, but this instance has no panes/).waitFor();
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.getByText(/WezTerm is reachable, but this instance has no panes/).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
   });
 });

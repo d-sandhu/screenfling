@@ -21,7 +21,7 @@ const COPY_ONLY_DESTINATION = parseDestination({
 });
 
 describe("destination picker recovery", () => {
-  it("makes Copy only explicit when no supported exact destination is available", () => {
+  it("makes Copy only explicit when no connection is configured", () => {
     const markup = renderToStaticMarkup(
       createElement(DestinationPicker, {
         destinations: [],
@@ -29,10 +29,13 @@ describe("destination picker recovery", () => {
         onRefresh: () => undefined,
         onSelect: () => undefined,
         selectedId: null,
+        status: "not-configured",
       }),
     );
 
-    expect(markup).toContain("No supported exact destination is available. Copy only still works.");
+    expect(markup).toContain("No connection is active.");
+    expect(markup).toContain("Connect WezTerm on the start screen.");
+    expect(markup).toContain("Copy only still works.");
   });
 
   it("labels a destination that cannot Stage as Copy only", () => {

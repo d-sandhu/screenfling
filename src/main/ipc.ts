@@ -161,7 +161,7 @@ export function registerWorkflowIpc(
   ipcMain.handle(
     IPC_CHANNELS.discoverDestinations,
     createValidatedOperationHandler(authorizeMain, (operationId) =>
-      controller.discoverDestinations(operationId),
+      controller.discoverDestinationsWithStatus(operationId),
     ),
   );
   ipcMain.handle(
