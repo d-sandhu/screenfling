@@ -457,7 +457,6 @@ function ScreenFlingApp() {
     return <main className="app app--loading">Opening ScreenFling…</main>;
   }
 
-  const copy = phaseCopy(snapshot);
   const operationId = operationIdOf(snapshot);
   const isActive = snapshot.phase !== "idle" && snapshot.phase !== "result";
   const selectedDestination = destinations.find(
@@ -475,6 +474,11 @@ function ScreenFlingApp() {
     editingOperationId !== null &&
     preview?.operationId === editingOperationId &&
     preview.status === "failed";
+  const copy: UiCopy = previewFailed
+    ? { title: "Preview unavailable", detail: "Cancel and capture again before handing off this image." }
+    : snapshot.phase === "editing" && !previewReady
+      ? { title: "Loading preview", detail: "Wait for the selected image before choosing Copy or Stage." }
+      : phaseCopy(snapshot);
   const revealTarget = revealDestinationForResult(snapshot, stagedDestination);
   const revealStatusCopy = revealResult === null ? null : revealCopy(revealResult);
   const canCancel =
