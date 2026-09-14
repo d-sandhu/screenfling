@@ -10,12 +10,14 @@ import type { ScreenCaptureReadinessSnapshot } from "./screen-capture-readiness"
 import type { ShortcutConfiguration, ShortcutStatus, ShortcutUpdateResult } from "./shortcut";
 import type { RevealResult, WorkflowSnapshot } from "./workflow";
 import type {
+  WezTermConnectionStatus,
+  WezTermFileField,
   WezTermSetupConfiguration,
   WezTermSetupOutcome,
   WezTermSetupSnapshot,
 } from "./wezterm-setup";
 
-export const BRIDGE_VERSION = 10;
+export const BRIDGE_VERSION = 11;
 
 export const IPC_CHANNELS = Object.freeze({
   cancelOperation: "workflow:cancel-operation",
@@ -28,8 +30,11 @@ export const IPC_CHANNELS = Object.freeze({
   getShortcutStatus: "shortcut:get-status",
   getSnapshot: "workflow:get-snapshot",
   getWezTermSetup: "wezterm-setup:get",
+  checkWezTermSetup: "wezterm-setup:check",
+  chooseWezTermFile: "wezterm-setup:choose-file",
+  openScreenRecordingSettings: "permission:open-screen-recording-settings",
   saveWezTermSetup: "wezterm-setup:save",
-  restartForWezTermSetup: "wezterm-setup:restart",
+  restartApplication: "application:restart",
   revealDestination: "workflow:reveal-destination",
   resetShortcut: "shortcut:reset",
   setShortcut: "shortcut:set",
@@ -65,11 +70,14 @@ export type Unsubscribe = () => void;
 
 export type ScreenFlingBridge = {
   readonly apiVersion: typeof BRIDGE_VERSION;
+  readonly checkWezTermSetup: (configuration: WezTermSetupConfiguration) => Promise<WezTermConnectionStatus>;
+  readonly chooseWezTermFile: (field: WezTermFileField) => Promise<string | null>;
+  readonly openScreenRecordingSettings: () => Promise<boolean>;
   readonly getWezTermSetup: () => Promise<WezTermSetupSnapshot>;
   readonly saveWezTermSetup: (
     configuration: WezTermSetupConfiguration | null,
   ) => Promise<WezTermSetupOutcome>;
-  readonly restartForWezTermSetup: () => Promise<boolean>;
+  readonly restartApplication: () => Promise<boolean>;
   readonly cancelOperation: (request: OperationRequest) => Promise<WorkflowSnapshot>;
   readonly copyCapture: (request: OperationRequest) => Promise<WorkflowSnapshot>;
   readonly dismissResult: (request: OperationRequest) => Promise<WorkflowSnapshot>;

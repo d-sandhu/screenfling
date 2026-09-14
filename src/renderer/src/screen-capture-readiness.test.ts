@@ -13,6 +13,9 @@ function render(
   return renderToStaticMarkup(
     createElement(ScreenCaptureReadiness, {
       onRefresh: () => undefined,
+      onOpenSettings: () => undefined,
+      onRestart: () => undefined,
+      recoveryPending: false,
       readiness,
       refreshState,
     }),
@@ -59,6 +62,9 @@ describe("Screen Recording readiness", () => {
     const markup = renderToStaticMarkup(
       createElement(IdleCaptureActions, {
         onRefresh: () => undefined,
+      onOpenSettings: () => undefined,
+      onRestart: () => undefined,
+      recoveryPending: false,
         onStartCapture: () => undefined,
         readiness: { platform: "macos", status: "denied", version: 1 },
         refreshState: "idle",

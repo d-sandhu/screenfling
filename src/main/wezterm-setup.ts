@@ -10,6 +10,7 @@ import { createWezTermAdapter } from "./wezterm-adapter";
 
 import type { AdapterEnvironment } from "./configured-adapters";
 import type {
+  WezTermConnectionStatus,
   WezTermSetupConfiguration,
   WezTermSetupOutcome,
   WezTermSetupSnapshot,
@@ -20,9 +21,9 @@ const persistedSchema = z.strictObject({
   configuration: wezTermSetupConfigurationSchema.nullable(),
 });
 const missingFile = z.object({ code: z.literal("ENOENT") });
-type Probe = (configuration: WezTermSetupConfiguration) => Promise<boolean>;
+type Probe = (configuration: WezTermSetupConfiguration) => Promise<WezTermConnectionStatus>;
 
-async function probe(configuration: WezTermSetupConfiguration): Promise<boolean> {
+async function probe(configuration: WezTermSetupConfiguration): Promise<WezTermConnectionStatus> {
   const adapter = createWezTermAdapter({
     executable: configuration.executable,
     configFile: configuration.configFile,
@@ -30,7 +31,7 @@ async function probe(configuration: WezTermSetupConfiguration): Promise<boolean>
     imagePasteInput: Buffer.from(configuration.imageInputHex, "hex"),
   });
   // Read-only discovery; never test a binding by writing to a user's pane.
-  return (await adapter.discover()).length > 0;
+  return adapter.checkConnection();
 }
 
 export class WezTermSetup {
@@ -50,6 +51,7 @@ export class WezTermSetup {
       source: "none",
       configuration: null,
       restartRequired: false,
+      activeConfiguration: null,
     };
   }
 
@@ -74,6 +76,7 @@ export class WezTermSetup {
       });
       this.#snapshot.source = "environment";
       this.#snapshot.configuration = parsed.success ? parsed.data : null;
+      this.#snapshot.activeConfiguration = this.#snapshot.configuration;
       // A partial explicit configuration must not silently select a saved endpoint.
       return environment;
     }
@@ -96,6 +99,7 @@ export class WezTermSetup {
         if (bytesRead > 20_000) throw new Error("Oversized connection preference.");
         const persisted = persistedSchema.parse(JSON.parse(buffer.subarray(0, bytesRead).toString()));
         this.#snapshot.configuration = persisted.configuration;
+        this.#snapshot.activeConfiguration = persisted.configuration;
         this.#snapshot.source = persisted.configuration === null ? "none" : "saved";
       } finally {
         await file.close();
@@ -114,16 +118,47 @@ export class WezTermSetup {
         };
   }
 
+  async check(configuration: WezTermSetupConfiguration): Promise<WezTermConnectionStatus> {
+    if (!this.#snapshot.supported) return "unsupported";
+    if (this.#saving || this.#restarting || !this.isIdle()) return "busy";
+    const parsed = wezTermSetupConfigurationSchema.safeParse(configuration);
+    if (!parsed.success) return "invalid-configuration";
+    this.#saving = true;
+    try {
+      const result = await this.checkConnection(parsed.data);
+      return this.isIdle() ? result : "busy";
+    } catch {
+      return "instance-unavailable";
+    } finally {
+      this.#saving = false;
+    }
+  }
+
+  async chooseFile(choose: () => Promise<string | null>): Promise<string | null> {
+    if (!this.#snapshot.supported || this.#snapshot.source === "environment" ||
+        this.#saving || this.#restarting || !this.isIdle()) return null;
+    this.#saving = true;
+    try {
+      const selected = await choose();
+      return this.isIdle() ? selected : null;
+    } finally {
+      this.#saving = false;
+    }
+  }
+
   async save(configuration: WezTermSetupConfiguration | null): Promise<WezTermSetupOutcome> {
     if (!this.#snapshot.supported) return "unsupported";
     if (this.#snapshot.source === "environment") return "environment-override";
     if (this.#saving || this.#restarting || !this.isIdle()) return "busy";
     const parsed = wezTermSetupConfigurationSchema.nullable().safeParse(configuration);
-    if (!parsed.success) return "failed";
+    if (!parsed.success) return "invalid-configuration";
     this.#saving = true;
     const temporaryPath = `${this.filePath}.${randomUUID()}.tmp`;
     try {
-      if (parsed.data !== null && !(await this.checkConnection(parsed.data))) return "unavailable";
+      if (parsed.data !== null) {
+        const result = await this.checkConnection(parsed.data);
+        if (result !== "ready") return result;
+      }
       if (!this.isIdle()) return "busy";
       await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
       await writeFile(
@@ -136,7 +171,8 @@ export class WezTermSetup {
         supported: true,
         source: parsed.data === null ? "none" : "saved",
         configuration: parsed.data,
-        restartRequired: true,
+        activeConfiguration: this.#snapshot.activeConfiguration,
+        restartRequired: JSON.stringify(parsed.data) !== JSON.stringify(this.#snapshot.activeConfiguration),
       };
       // The running adapter is unchanged even if capture began during the disk write.
       return "saved";
@@ -149,7 +185,8 @@ export class WezTermSetup {
   }
 
   restart(): boolean {
-    if (this.#saving || this.#restarting || !this.#snapshot.restartRequired || !this.isIdle()) {
+    // Shared by connection changes and explicit Screen Recording recovery.
+    if (this.#saving || this.#restarting || !this.isIdle()) {
       return false;
     }
     this.#restarting = true;

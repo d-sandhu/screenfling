@@ -56,18 +56,25 @@ function readinessCopy(readiness: ScreenCaptureReadinessSnapshot): ReadinessCopy
 
 export function ScreenCaptureReadiness({
   onRefresh,
+  onOpenSettings,
+  onRestart,
+  recoveryPending,
   refreshState,
   readiness,
 }: {
   readonly onRefresh: () => void;
-  readonly refreshState: "checking" | "idle";
+  readonly onOpenSettings: () => void;
+  readonly onRestart: () => void;
+  readonly recoveryPending: boolean;
+  readonly refreshState: "checking" | "idle" | "failed";
   readonly readiness: ScreenCaptureReadinessSnapshot | null;
 }) {
   if (readiness === null) {
     return (
       <section className="permission-readiness permission-readiness--loading" aria-live="polite">
         <span className="permission-readiness__label">Screen Recording</span>
-        <span>Checking Screen Recording…</span>
+        <span>{refreshState === "failed" ? "Screen Recording status could not be checked. Capture is still available." : "Checking Screen Recording…"}</span>
+        {refreshState === "failed" ? <button className="text-button" type="button" onClick={onRefresh}>Check again</button> : null}
       </section>
     );
   }
@@ -87,39 +94,59 @@ export function ScreenCaptureReadiness({
       </div>
       <button
         className="text-button"
-        disabled={refreshState === "checking"}
+        disabled={refreshState === "checking" || recoveryPending}
         onClick={onRefresh}
         type="button"
       >
         {refreshState === "checking" ? "Checking…" : "Check again"}
       </button>
+      {readiness.platform === "macos" && readiness.status !== "granted" ? (
+        <div className="permission-recovery">
+          <button className="text-button" type="button" disabled={recoveryPending} onClick={onOpenSettings}>Open System Settings</button>
+          <button className="text-button" type="button" disabled={recoveryPending} onClick={onRestart}>Restart ScreenFling</button>
+        </div>
+      ) : null}
     </section>
   );
 }
 
+function focusCapture(button: HTMLButtonElement | null): void {
+  button?.focus();
+}
+
 export function IdleCaptureActions({
   onRefresh,
+  onOpenSettings,
+  onRestart,
+  recoveryPending,
   onStartCapture,
   readiness,
   refreshState,
   startState,
 }: {
   readonly onRefresh: () => void;
+  readonly onOpenSettings: () => void;
+  readonly onRestart: () => void;
+  readonly recoveryPending: boolean;
   readonly onStartCapture: () => void;
   readonly readiness: ScreenCaptureReadinessSnapshot | null;
-  readonly refreshState: "checking" | "idle";
+  readonly refreshState: "checking" | "idle" | "failed";
   readonly startState: "idle" | "starting";
 }) {
   return (
     <>
       <ScreenCaptureReadiness
         onRefresh={onRefresh}
+        onOpenSettings={onOpenSettings}
+        onRestart={onRestart}
+        recoveryPending={recoveryPending}
         readiness={readiness}
         refreshState={refreshState}
       />
       <button
         className="button button--primary button--capture"
         disabled={startState === "starting"}
+        ref={startState === "idle" ? focusCapture : null}
         onClick={onStartCapture}
         type="button"
       >
