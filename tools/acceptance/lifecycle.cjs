@@ -196,17 +196,24 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   assert.deepEqual(await page.evaluate(() => window.screenFling.getWezTermSetup()), before);
   assert.equal(await readFile(preference, "utf8"), original);
 
-  checkpoint = "settings-save";
+  checkpoint = "settings-open-form";
   await page.getByText("Connect WezTerm · optional", { exact: true }).click();
   for (const [key, value] of Object.entries(configuration)) {
+    checkpoint = `settings-field-${key}`;
     await page.locator(`#connection-${key}`).fill(value);
   }
+  checkpoint = "settings-confirm-binding";
   // Synthetic receiver, not an actual agent acceptance claim. Save checks no binding.
   await page.locator(".connection-confirm input").check();
+  checkpoint = "settings-save-request";
   await page.getByRole("button", { name: "Save connection", exact: true }).click();
-  await page.waitForFunction(async () => (await window.screenFling.getWezTermSetup()).restartRequired);
+  checkpoint = "settings-save-settled";
+  await waitUntil(() => page.evaluate(async () => (await window.screenFling.getWezTermSetup()).restartRequired), "settings-save-timeout");
+  checkpoint = "settings-save-mode";
   assert.equal((await stat(preference)).mode & 0o777, 0o600);
+  checkpoint = "settings-save-file";
   assert.deepEqual(JSON.parse(await readFile(preference, "utf8")).configuration, configuration);
+  checkpoint = "settings-save-active";
   assert.equal((await page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, null);
 
   checkpoint = "settings-restart";
@@ -216,7 +223,7 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   checkpoint = "settings-disconnect";
   await next.page.getByText("Connect WezTerm · optional", { exact: true }).click();
   await next.page.getByRole("button", { name: "Disconnect after restart", exact: true }).click();
-  await next.page.waitForFunction(async () => (await window.screenFling.getWezTermSetup()).restartRequired);
+  await waitUntil(() => next.page.evaluate(async () => (await window.screenFling.getWezTermSetup()).restartRequired), "settings-disconnect-timeout");
   assert.deepEqual((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, configuration);
   checkpoint = "settings-disconnect-restart";
   next = await restartFromSetup(next.browser, next.page, port);
@@ -340,9 +347,12 @@ const watchdog = setTimeout(() => {
 }, 60_000);
 
 main()
-  .catch(() => {
+  .catch((cause) => {
+    const kind = cause instanceof Error && ["AssertionError", "TimeoutError", "TypeError", "Error"].includes(cause.name)
+      ? cause.name : "unknown";
+    const cspBlocked = cause instanceof Error && /Content Security Policy|unsafe-eval/iu.test(cause.message);
     process.stderr.write(
-      `${JSON.stringify({ acceptance: "packaged-lifecycle", status: "failed", reason: checkpoint })}\n`,
+      `${JSON.stringify({ acceptance: "packaged-lifecycle", status: "failed", reason: checkpoint, kind, cspBlocked })}\n`,
     );
     process.exitCode = 1;
   })
