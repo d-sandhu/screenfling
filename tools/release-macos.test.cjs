@@ -17,7 +17,7 @@ const signature = [
   "Timestamp=Sep 14, 2026 at 12:00:00 PM",
 ].join("\n");
 
-test("distribution rejects unsupported hosts and missing, ad-hoc or malformed signing inputs", () => {
+void test("distribution rejects unsupported hosts and missing, ad-hoc or malformed signing inputs", () => {
   for (const [platform, arch] of [["linux", "arm64"], ["darwin", "x64"], ["win32", "x64"]]) {
     assert.throws(() => releaseConfiguration(environment, platform, arch));
   }
@@ -31,7 +31,7 @@ test("distribution rejects unsupported hosts and missing, ad-hoc or malformed si
   assert.equal(releaseConfiguration(environment, "darwin", "arm64").identity, "A".repeat(40));
 });
 
-test("distribution requires the actual expected-team Developer ID signature and hardened runtime", () => {
+void test("distribution requires the actual expected-team Developer ID signature and hardened runtime", () => {
   assert.doesNotThrow(() => assertDeveloperSignature(signature, "ABCD123456"));
   for (const invalid of [
     "Signature=adhoc\nTeamIdentifier=ABCD123456",
@@ -43,16 +43,17 @@ test("distribution requires the actual expected-team Developer ID signature and 
   ]) assert.throws(() => assertDeveloperSignature(invalid, "ABCD123456"));
 });
 
-test("only an Accepted notarization response with an ID permits stapling and archiving", () => {
+void test("only an Accepted notarization response with an ID permits stapling and archiving", () => {
   const id = "550e8400-e29b-41d4-a716-446655440000";
   assert.equal(acceptedSubmission(JSON.stringify({ status: "Accepted", id })), id);
-  for (const value of ["", "not-json", "null", {}, { status: "Accepted" },
-    { status: "Invalid", id }, { status: "In Progress", id }, { status: "Accepted", id: "bad" }]) {
-    assert.throws(() => acceptedSubmission(typeof value === "string" ? value : JSON.stringify(value)));
-  }
+  const invalidResponses = ["", "not-json", "null", ...[
+    {}, { status: "Accepted" }, { status: "Invalid", id },
+    { status: "In Progress", id }, { status: "Accepted", id: "bad" },
+  ].map((value) => JSON.stringify(value))];
+  for (const text of invalidResponses) assert.throws(() => acceptedSubmission(text));
 });
 
-test("release packaging retains existing security fuses and explicitly signs the native helper", () => {
+void test("release packaging retains existing security fuses and explicitly signs the native helper", () => {
   const app = path.resolve("synthetic/ScreenFling.app");
   const options = signingOptions(releaseConfiguration(environment, "darwin", "arm64"), app);
   assert.equal(options.forceCodeSigning, true);

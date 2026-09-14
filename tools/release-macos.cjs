@@ -3,9 +3,15 @@ const { createHash } = require("node:crypto");
 const { createReadStream } = require("node:fs");
 const { mkdir, mkdtemp, rename, rm, writeFile } = require("node:fs/promises");
 const path = require("node:path");
+const { z } = require("zod");
 
 const metadata = require("../package.json");
 const ROOT = path.resolve(__dirname, "..");
+const profileSchema = z.string().min(1).max(128).regex(/^[^\p{Cc}\p{Zl}\p{Zp}]+$/u);
+const submissionSchema = z.object({
+  status: z.literal("Accepted"),
+  id: z.string().regex(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i),
+});
 
 function releaseConfiguration(environment, platform, architecture) {
   if (platform !== "darwin" || architecture !== "arm64") {
@@ -20,11 +26,11 @@ function releaseConfiguration(environment, platform, architecture) {
   if (!/^[A-Z0-9]{10}$/.test(teamId ?? "")) {
     throw new Error("Set SCREENFLING_APPLE_TEAM_ID to the certificate's ten-character team ID.");
   }
-  if (typeof profile !== "string" || profile.length === 0 || profile.length > 128 ||
-      /[\p{Cc}\p{Zl}\p{Zp}]/u.test(profile)) {
+  const parsedProfile = profileSchema.safeParse(profile);
+  if (!parsedProfile.success) {
     throw new Error("Set SCREENFLING_NOTARY_PROFILE to an existing notarytool Keychain profile.");
   }
-  return { identity: identity.toUpperCase(), teamId, profile };
+  return { identity: identity.toUpperCase(), teamId, profile: parsedProfile.data };
 }
 
 function assertDeveloperSignature(details, teamId) {
@@ -39,11 +45,11 @@ function assertDeveloperSignature(details, teamId) {
 function acceptedSubmission(text) {
   let value;
   try { value = JSON.parse(text); } catch { /* Reject malformed service output. */ }
-  if (value?.status !== "Accepted" || typeof value.id !== "string" ||
-      !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value.id)) {
+  const parsed = submissionSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error("Apple notarization was not Accepted; no distribution archive was produced.");
   }
-  return value.id;
+  return parsed.data.id;
 }
 
 function signingOptions(configuration, app) {
