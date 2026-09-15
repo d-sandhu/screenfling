@@ -181,6 +181,32 @@ describe("production capture session", () => {
     expect(clipboard.writes).toEqual([Uint8Array.from([137, 80, 78, 71])]);
   });
 
+  it("keeps a full-display selection usable when its crop shares the source object", async () => {
+    class WholeDisplayImage extends FakeImage {
+      override crop(_crop: PixelCrop): CaptureImage {
+        return this;
+      }
+    }
+    const { clipboard, image, session } = createCapture(
+      new WholeDisplayImage({ width: 3024, height: 1964 }),
+    );
+    await beginAtPointer(session);
+    const selection = { x: 0, y: 0, width: DISPLAY.width, height: DISPLAY.height };
+    const draft = session.complete(OPERATION_ID, selection);
+
+    expect(draft.pixels).toEqual(image.getSize());
+    expect(clipboard.writes).toHaveLength(0);
+    expect(() => session.complete(OPERATION_ID, selection)).toThrow(CaptureSessionStateError);
+    clipboard.readback = { bitmap: image.toBitmap(), size: draft.pixels };
+    session.copy(OPERATION_ID);
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(true);
+    expect(session.getDraft(OPERATION_ID)).toBe(draft);
+    expect(session.activeDisplayId).toBe(DISPLAY.id);
+    session.release(OPERATION_ID);
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    expect(clipboard.writes).toHaveLength(1);
+  });
+
   it("releases a cancelled capture without touching the clipboard", async () => {
     const { clipboard, session } = createCapture();
     await beginAtPointer(session);

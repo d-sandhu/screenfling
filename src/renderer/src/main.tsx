@@ -639,10 +639,10 @@ function ScreenFlingApp() {
                   aria-invalid={!noteIsValid}
                   autoComplete="off"
                   name="note"
-                  onChange={(event) => {
-                    const nextNote = event.currentTarget.value;
-                    if (Array.from(nextNote).length <= MAX_NOTE_LENGTH) setNote(nextNote);
-                  }}
+                  // Keep over-limit drafts visibly invalid, never silently restore an older note.
+                  // UTF-16 cap leaves even an all-emoji overflow above the 500-code-point limit.
+                  maxLength={(MAX_NOTE_LENGTH + 1) * 2}
+                  onChange={(event) => setNote(event.currentTarget.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") event.preventDefault();
                   }}
@@ -657,7 +657,7 @@ function ScreenFlingApp() {
               </p>
               {noteIsValid ? null : (
                 <p id="note-error" className="error" role="alert">
-                  Use one line without control characters. Edit the note or use Copy only.
+                  Use at most {MAX_NOTE_LENGTH} characters in one line without control characters. Edit the note or use Copy only.
                 </p>
               )}
               <div className="actions actions--review">
