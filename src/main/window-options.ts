@@ -1,6 +1,9 @@
 import type { BrowserWindowConstructorOptions } from "electron";
 import type { CaptureDisplay } from "./capture-session";
 
+// Both renderers share only an in-memory session; saved preferences are main-owned files.
+export const RENDERER_PARTITION = "screenfling-ephemeral";
+
 export function createMainWindowOptions(preload: string): BrowserWindowConstructorOptions {
   return {
     backgroundColor: "#101114",
@@ -13,6 +16,7 @@ export function createMainWindowOptions(preload: string): BrowserWindowConstruct
       contextIsolation: true,
       nodeIntegration: false,
       preload,
+      partition: RENDERER_PARTITION,
       sandbox: true,
     },
     width: 920,
@@ -44,6 +48,7 @@ export function createCaptureWindowOptions(
       contextIsolation: true,
       nodeIntegration: false,
       preload,
+      partition: RENDERER_PARTITION,
       sandbox: true,
     },
     width: display.width,

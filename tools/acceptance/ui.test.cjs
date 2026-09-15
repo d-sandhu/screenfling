@@ -56,6 +56,7 @@ function installFixture(options) {
       } },
     });
     if (options.restoredResult !== "unknown") initial.revealAvailable = options.restoredResult === "available";
+    if (options.restoredResult === "pending") initial.revealPending = true;
   }
   let state = initial;
   let bootstrapResolvers = [];
@@ -130,6 +131,7 @@ function installFixture(options) {
       if (image !== null) image.dispatchEvent(new Event("load"));
     },
     releaseReveal: () => revealResolver?.({ status: "revealed" }),
+    completeRestoredReveal: () => publish({ ...state, revealAvailable: false, revealPending: false }),
     emitEditing: () => publish({ phase: "editing", operationId }),
     releaseBootstrap: () => {
       for (const resolve of bootstrapResolvers) resolve(initial);
@@ -220,9 +222,11 @@ function installFixture(options) {
     revealDestination: async (request) => {
       calls.push({ action: "reveal", request });
       if (!state.revealAvailable) return { status: "stale" };
-      state = { ...state, revealAvailable: false };
-      if (options.delayReveal) return new Promise((resolve) => { revealResolver = resolve; });
-      return { status: "revealed" };
+      publish({ ...state, revealAvailable: false, revealPending: true });
+      try {
+        if (options.delayReveal) return await new Promise((resolve) => { revealResolver = resolve; });
+        return { status: "revealed" };
+      } finally { publish({ ...state, revealPending: false }); }
     },
     cancelOperation: async (request) => {
       calls.push({ action: "cancel", request });
@@ -740,4 +744,69 @@ void test("renderer fixture: restoring consumed or unknown Reveal state does not
       await page.getByRole("button", { name: "Capture region" }).waitFor();
     });
   }
+});
+
+void test("renderer fixture: restored in-flight Reveal stays busy until main reports completion", async () => {
+  await withPage({ restoredResult: "pending" }, async (page) => {
+    await page.getByText("Revealing the selected destination…", { exact: true }).waitFor();
+    const result = await page.evaluate(async () => (await window.screenFling.getSnapshot()).result);
+    assert.equal(await page.getByRole("button", { name: "Done", exact: true }).isEnabled(), false);
+    assert.equal(await page.getByRole("button", { name: "Capture another", exact: true }).isEnabled(), false);
+    assert.equal(await page.getByRole("button", { name: "Revealing…", exact: true }).isEnabled(), false);
+    await page.keyboard.press("Escape");
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+    await page.evaluate(() => window.fixture.completeRestoredReveal());
+    await page.waitForFunction(() => document.activeElement?.textContent === "Done");
+    assert.deepEqual(await page.evaluate(async () => (await window.screenFling.getSnapshot()).result), result);
+    assert.equal(await page.getByRole("button", { name: "Reveal destination", exact: true }).count(), 0);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Capture region", exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+  });
+});
+
+void test("renderer fixture: returning from capture refreshes permission status without opening settings", async () => {
+  await withPage({}, async (page) => {
+    await page.getByRole("button", { name: "Capture region", exact: true }).click();
+    await editingReady(page);
+    await page.evaluate(() => {
+      window.screenFling.getScreenCaptureReadiness = async () => ({ version: 1, platform: "macos", status: "denied" });
+    });
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Open System Settings", exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Capture region", exact: true }).isEnabled(), false);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["start", "cancel"]);
+    await page.evaluate(() => {
+      window.screenFling.getScreenCaptureReadiness = async () => ({ version: 1, platform: "macos", status: "granted" });
+    });
+    await page.getByRole("button", { name: "Check again", exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("Capture region") && !button.disabled));
+    assert.equal(await page.getByRole("button", { name: "Open System Settings", exact: true }).count(), 0);
+  });
+});
+
+void test("renderer fixture: a late permission response cannot overwrite a newer idle check", async () => {
+  await withPage({ denied: true }, async (page) => {
+    await page.getByRole("button", { name: "Check again", exact: true }).waitFor();
+    await page.evaluate(() => {
+      let queries = 0;
+      window.screenFling.getScreenCaptureReadiness = () => {
+        queries += 1;
+        if (queries === 1) return new Promise((resolve) => { window.fixture.finishOldReadiness = resolve; });
+        return Promise.resolve({ version: 1, platform: "macos", status: "granted" });
+      };
+    });
+    await page.getByRole("button", { name: "Check again", exact: true }).click();
+    await page.waitForFunction(() => window.fixture.finishOldReadiness !== undefined);
+    await page.evaluate(() => window.fixture.emitEditing());
+    await editingReady(page);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("Capture region") && !button.disabled));
+    await page.evaluate(() => window.fixture.finishOldReadiness({ version: 1, platform: "macos", status: "denied" }));
+    assert.equal(await page.getByRole("button", { name: "Capture region", exact: true }).isEnabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Open System Settings", exact: true }).count(), 0);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["cancel"]);
+  });
 });

@@ -43,14 +43,14 @@ jobs:
         run: node tools/acceptance/prepare-wezterm.cjs
       - run: npm run check
       - run: npm run build
-      - if: runner.os == 'macOS' && github.event_name == 'push'
+      - if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         # package:mac fixes identity to '-'. Never provide certificates or secrets here.
         env:
           CSC_FOR_PULL_REQUEST: "true"
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npx --no-install electron-builder --publish never --dir --mac --config.mac.identity=- --config.mac.hardenedRuntime=false
       - name: Verify local ad-hoc macOS signatures (not signing trust or notarization)
-        if: runner.os == 'macOS' && github.event_name == 'push'
+        if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         shell: bash
         run: |
           APP="release/$(node -p 'process.arch === "arm64" ? "mac-arm64" : "mac"')/ScreenFling.app"
@@ -59,21 +59,21 @@ jobs:
           SIGNATURE="$(/usr/bin/codesign --display --verbose=2 "$APP" 2>&1)"
           grep -qx 'Signature=adhoc' <<< "$SIGNATURE"
           echo 'Ad-hoc bundle and helper signature verification passed. No Developer ID or notarization claim.'
-      - if: runner.os == 'Windows' && github.event_name == 'push'
+      - if: runner.os == 'Windows' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         run: npx --no-install electron-builder --publish never --dir --win --x64
       - run: npx --no-install playwright install chromium --only-shell
       - name: Built renderer fixture acceptance (not native capture)
         run: node --test tools/acceptance/ui.test.cjs
       - name: Packaged macOS lifecycle acceptance (no capture or permission changes)
-        if: runner.os == 'macOS' && github.event_name == 'push'
+        if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         run: node tools/acceptance/lifecycle.cjs
       - name: Archive verified macOS test candidate (not a release)
-        if: runner.os == 'macOS' && github.event_name == 'push'
+        if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         env:
           SCREENFLING_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node tools/acceptance/archive-macos.cjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: runner.os == 'macOS' && github.event_name == 'push'
+        if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         with:
           name: screenfling-macos-${{ runner.arch }}-${{ github.sha }}
           path: release/candidate/

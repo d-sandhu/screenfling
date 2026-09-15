@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { execFile, execFileSync, spawn } = require("node:child_process");
 const { existsSync } = require("node:fs");
+const { createServer } = require("node:http");
 const { mkdir, mkdtemp, readFile, rm, stat, writeFile } = require("node:fs/promises");
 const { promisify } = require("node:util");
 const net = require("node:net");
@@ -142,10 +143,9 @@ async function verifyPackagedAcl(executable) {
 }
 
 async function mainPage(browser) {
-  const context = browser.contexts()[0];
-  assert.ok(context);
-  await waitUntil(() => context.pages().length === 1, "main-window-unavailable");
-  const page = context.pages()[0];
+  const pages = () => browser.contexts().flatMap((context) => context.pages());
+  await waitUntil(() => pages().length === 1, "main-window-unavailable");
+  const page = pages()[0];
   await verifyIdle(page);
   return page;
 }
@@ -222,6 +222,8 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   const hangWasEntered = await hangOnClose(page);
   let next = await restartFromSetup(browser, page, port);
   assert.equal(hangWasEntered(), true);
+  assert.equal(await next.page.evaluate(() => localStorage.getItem("screenfling-storage-fixture")), null);
+  await next.page.evaluate(() => localStorage.setItem("screenfling-storage-fixture", "synthetic-second"));
   assert.deepEqual((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, configuration);
   assert.equal((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).restartRequired, false);
   checkpoint = "settings-disconnect";
@@ -231,6 +233,7 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   assert.deepEqual((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, configuration);
   checkpoint = "settings-disconnect-restart";
   next = await restartFromSetup(next.browser, next.page, port);
+  assert.equal(await next.page.evaluate(() => localStorage.getItem("screenfling-storage-fixture")), null);
   const disconnected = await next.page.evaluate(() => window.screenFling.getWezTermSetup());
   assert.equal(disconnected.configuration, null);
   assert.equal(disconnected.activeConfiguration, null);
@@ -274,6 +277,19 @@ async function main() {
   await writeFile(path.join(profile, "connections", "wezterm.json"), "invalid-synthetic-settings", { mode: 0o600 });
   const profileArguments = [`--user-data-dir=${profile}`];
   const port = await reservePort();
+  let developmentRequests = 0;
+  const developmentServer = createServer((_request, response) => {
+    developmentRequests += 1;
+    response.end("Untrusted development fixture");
+  });
+  await new Promise((resolve, reject) => {
+    developmentServer.once("error", reject);
+    developmentServer.listen(0, "127.0.0.1", resolve);
+  });
+  const address = developmentServer.address();
+  assert.ok(address && address.port);
+  // Even a live loopback development server must be ignored by the package.
+  environment.ELECTRON_RENDERER_URL = `http://127.0.0.1:${address.port}/`;
   const child = launch(executable, [
     ...profileArguments,
     "--remote-debugging-address=127.0.0.1",
@@ -282,12 +298,11 @@ async function main() {
   let browser;
   try {
     browser = await connect(port, child);
-    const context = browser.contexts()[0];
-    assert.ok(context);
-    await waitUntil(() => context.pages().length === 1, "main-window-unavailable");
-    const initial = context.pages()[0];
-    await verifyIdle(initial);
+    const initial = await mainPage(browser);
+    const context = initial.context();
     const baseline = await readDiagnostics(initial);
+    const captureReadiness = await initial.evaluate(() => window.screenFling.getScreenCaptureReadiness());
+    await initial.evaluate(() => localStorage.setItem("screenfling-storage-fixture", "synthetic"));
 
     checkpoint = "single-instance";
     const duplicate = launch(executable, profileArguments);
@@ -319,21 +334,26 @@ async function main() {
     assert.equal(reopenRequest.exitCode, 0);
     assert.equal(context.pages().length, 1);
     assert.deepEqual(await readDiagnostics(reopened), baseline);
+    assert.equal(await reopened.evaluate(() => localStorage.getItem("screenfling-storage-fixture")), "synthetic");
 
     checkpoint = "packaged-settings-restart";
     const settings = await verifySettingsLifecycle(browser, reopened, port, directory);
     browser = settings.browser;
     assert.deepEqual(await readDiagnostics(await mainPage(browser)), baseline);
 
+    assert.equal(developmentRequests, 0);
     process.stdout.write(
       `${JSON.stringify({
         acceptance: "packaged-lifecycle",
         status: "passed",
         host: { platform: os.platform(), arch: os.arch(), osRelease: os.release() },
         application: artifact,
+        captureReadiness,
         checks: {
           packagedAclGate: true,
           startupAndHardenedBridge: true,
+          packagedDevelopmentRendererIgnored: true,
+          rendererStorageNotPersisted: settings.checked,
           duplicateLaunchRejected: true,
           crashedRendererReplacedOnce: true,
           unresponsiveRendererDidNotBlockRestart: settings.checked,
@@ -355,6 +375,8 @@ async function main() {
     for (const process_ of children) await stop(process_);
     stopProfileInstances();
     await rm(directory, { recursive: true, force: true });
+    developmentServer.closeAllConnections();
+    await new Promise((resolve) => developmentServer.close(resolve));
   }
 }
 

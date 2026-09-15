@@ -17,6 +17,7 @@ describe("createMainWindowOptions", () => {
       contextIsolation: true,
       nodeIntegration: false,
       preload: "/tmp/preload.js",
+      partition: "screenfling-ephemeral",
       sandbox: true,
     });
   });
@@ -50,6 +51,7 @@ describe("createCaptureWindowOptions", () => {
         additionalArguments: ["--screenfling-surface=capture"],
         contextIsolation: true,
         nodeIntegration: false,
+        partition: "screenfling-ephemeral",
         sandbox: true,
       },
     });

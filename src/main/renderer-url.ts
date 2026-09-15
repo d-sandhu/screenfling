@@ -12,8 +12,9 @@ export function rendererDocumentUrl(
   return url.href;
 }
 
-export function readDevRendererUrl(value: string | undefined): string | null {
-  if (!value) return null;
+export function readDevRendererUrl(value: string | undefined, packaged = false): string | null {
+  // Packaged applications must never execute a development server's renderer.
+  if (packaged || !value) return null;
 
   const url = new URL(value);
   const isAllowed =

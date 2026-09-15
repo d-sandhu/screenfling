@@ -3,6 +3,15 @@ import { describe, expect, it } from "vitest";
 import { readDevRendererUrl, rendererDocumentUrl } from "./renderer-url";
 
 describe("readDevRendererUrl", () => {
+  it("ignores development overrides in a packaged application before parsing them", () => {
+    for (const value of [undefined, "http://127.0.0.1:5173/", "https://example.com/", "not a URL"]) {
+      const renderer = readDevRendererUrl(value, true);
+      expect(renderer).toBeNull();
+      expect(rendererDocumentUrl(renderer, "main")).toBe("screenfling://bundle/index.html");
+      expect(rendererDocumentUrl(renderer, "capture")).toBe("screenfling://bundle/index.html?surface=capture");
+    }
+  });
+
   it("accepts local electron-vite origins", () => {
     expect(readDevRendererUrl("http://localhost:5173/")).toBe("http://localhost:5173/");
     expect(readDevRendererUrl("http://127.0.0.1:5173")).toBe("http://127.0.0.1:5173/");
