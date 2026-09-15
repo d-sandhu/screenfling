@@ -109,7 +109,9 @@ void test("a passed lifecycle label cannot hide skipped settings, wrong identity
     },
     checks: {
       packagedAclGate: true, startupAndHardenedBridge: true, duplicateLaunchRejected: true,
+      packagedDevelopmentRendererIgnored: true, rendererStorageNotPersisted: true,
       crashedRendererReplacedOnce: true, closedWindowReopened: true,
+      unresponsiveRendererDidNotBlockRestart: true,
       workflowDiagnosticsUnchanged: true, isolatedSettingsSaveRestartReloadDisconnect: true,
     },
   };
