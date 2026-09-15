@@ -64,16 +64,32 @@ jobs:
       - run: npx --no-install playwright install chromium --only-shell
       - name: Built renderer fixture acceptance (not native capture)
         run: node --test tools/acceptance/ui.test.cjs
-      - name: Packaged macOS lifecycle and capture acceptance (scripted input only)
+      - name: Packaged macOS functional acceptance and timing observation
         if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
+        shell: bash
         run: |
           node tools/acceptance/lifecycle.cjs --capture-workflow
-          node tools/acceptance/capture.cjs --capture-runs=20 --cancel-runs=200
+          # Shared hosted runners are not the release reference Mac. Keep every
+          # timing result, including misses; only timing is observation-only here.
+          # Explicit bash retains pipefail so tee cannot hide functional failures.
+          node tools/acceptance/capture.cjs --capture-runs=20 --cancel-runs=200 --observe-timing | tee release/capture-observation.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('release/capture-observation.json', 'utf8'));
+          if (report.functionalStatus !== 'passed') throw new Error('Capture workflows failed.');
+          const gate = report.gateChecks.reviewAndExplicitCopyProcessingP95;
+          const message = `Hosted software p95: ${gate.observedMs} ms; target ${gate.targetMs} ms; observed pass: ${gate.passed}. Reference-Mac performance acceptance remains open.`;
+          console.log(`::${gate.passed === true ? 'notice' : 'warning'}::${message}`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n${message}\nRaw results are retained in capture-observation.json.\n`);
+          NODE
       - name: Archive verified macOS test candidate (not a release)
         if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         env:
           SCREENFLING_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node tools/acceptance/archive-macos.cjs
+        run: |
+          node tools/acceptance/archive-macos.cjs
+          cp release/capture-observation.json release/candidate/capture-observation.json
+          (cd release/candidate && shasum -a 256 capture-observation.json >> SHA256SUMS)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         with:

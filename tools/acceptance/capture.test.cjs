@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs");
 const { afterEach, test } = require("node:test");
 const os = require("node:os");
@@ -9,6 +10,7 @@ const {
   cancelOverlay,
   completeOverlaySelection,
   copySoftwareTiming,
+  captureTimingResult,
   readArtifactEvidence,
   readDiagnostics,
   startCapture,
@@ -307,4 +309,34 @@ void test("copy timing rejects missing or out-of-order events rather than invent
     { ...complete, copyAt: 19 },
     { ...complete, verifiedAt: 29 },
   ]) assert.throws(() => copySoftwareTiming(invalid), /invalid-acceptance-timing/);
+});
+
+void test("hosted timing observation preserves misses while strict acceptance remains the default", () => {
+  const missed = { targetMs: 150, observedMs: 212.2, passed: false };
+  assert.deepEqual(captureTimingResult(212.2), {
+    status: "failed", exitCode: 1, gate: { ...missed, enforced: true },
+  });
+  assert.deepEqual(captureTimingResult(212.2, true), {
+    status: "failed", exitCode: 0, gate: { ...missed, enforced: false },
+  });
+  assert.equal(captureTimingResult(150).gate.passed, true);
+  assert.equal(captureTimingResult(150.01).exitCode, 1);
+  assert.equal(captureTimingResult(null, true).gate.passed, null);
+  for (const value of [undefined, NaN, Infinity, -1]) {
+    assert.throws(() => captureTimingResult(value, true), /invalid-acceptance-timing/);
+  }
+});
+
+void test("observation-only timing never masks a functional runner failure", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "screenfling-missing-package-"));
+  temporaryDirectories.push(directory);
+  const result = spawnSync(process.execPath, [
+    path.join(__dirname, "capture.cjs"), "--observe-timing",
+    `--executable=${path.join(directory, "missing")}`,
+  ], { encoding: "utf8", timeout: 5_000 });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 1);
+  assert.deepEqual(JSON.parse(result.stderr.trim()), {
+    acceptance: "production-capture", status: "failed", reason: "package-not-found",
+  });
 });
