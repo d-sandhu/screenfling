@@ -16,7 +16,7 @@ const { allowExpectedPageClose, readArtifactEvidence, readDiagnostics, startCapt
 // no credentials, inference, Enter, application test hooks or published content.
 const VERSION = "0.154.0";
 const ARCHIVE = `https://github.com/openai/codex/releases/download/rust-v${VERSION}/codex-aarch64-apple-darwin.tar.gz`;
-const SHA256 = "b3af4c6d977e2b1c661e4b90d3a5d1568e34efa53a0751717763496fa8c7ef56";
+const SHA256 = "344310a0a591c1b192e04feff304321a69907c9498baaac331ca7e16ebcef9d7";
 const NETWORK_DENIED = "(version 1) (allow default) (deny network*)";
 const execute = promisify(execFile);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,13 +65,16 @@ async function prepareCodex(directory, env) {
   const response = await fetch(ARCHIVE, { signal: AbortSignal.timeout(60_000) });
   assert.equal(response.ok, true);
   const bytes = Buffer.from(await response.arrayBuffer());
-  assert.equal(bytes.length, 35_034_074);
+  checkpoint = "pinned-agent-integrity";
+  assert.equal(bytes.length, 88_080_735);
   assert.equal(createHash("sha256").update(bytes).digest("hex"), SHA256);
   const archive = path.join(directory, "codex.tar.gz");
   await writeFile(archive, bytes, { mode: 0o600 });
+  checkpoint = "pinned-agent-extraction";
   await execute("/usr/bin/tar", ["-xzf", archive, "-C", directory], { timeout: 15_000 });
   const executable = path.join(directory, "codex-aarch64-apple-darwin");
   await chmod(executable, 0o700);
+  checkpoint = "pinned-agent-version";
   const version = await execute("/usr/bin/sandbox-exec", ["-p", NETWORK_DENIED, executable, "--version"], { env, timeout: 10_000 });
   assert.equal(version.stdout.trim(), `codex-cli ${VERSION}`);
   return executable;
