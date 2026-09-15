@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CAPTURE_STARTUP_TIMEOUT_MS, CaptureController } from "./capture-controller";
-import { CaptureSession } from "./capture-session";
+import { CapturePermissionBlockedError, CaptureSession } from "./capture-session";
 import { DestinationRegistry } from "./destination-registry";
 import { WorkflowDiagnostics } from "./workflow-diagnostics";
 import { WorkflowStore } from "./workflow-store";
@@ -32,11 +32,17 @@ const CAPTURE: CapturedDisplay = { display: DISPLAY, image: IMAGE };
 
 function deferred<Value>() {
   let finish: ((value: Value) => void) | null = null;
-  const promise = new Promise<Value>((resolve) => {
+  let fail: ((error: Error) => void) | null = null;
+  const promise = new Promise<Value>((resolve, reject) => {
     finish = resolve;
+    fail = reject;
   });
   return {
     promise,
+    reject: (error: Error) => {
+      if (fail === null) throw new Error("Deferred promise was not initialized.");
+      fail(error);
+    },
     resolve: (value: Value) => {
       if (finish === null) throw new Error("Deferred promise was not initialized.");
       finish(value);
@@ -85,6 +91,80 @@ describe("bounded capture startup", () => {
     vi.clearAllTimers();
     vi.useRealTimers();
   });
+
+  it.each(["resolve", "reject"] as const)(
+    "reports denied capture immediately despite a stalled overlay that later %ss",
+    async (settlement) => {
+      const { backend, clipboard, controller, diagnostics, main, overlay, session } = createHarness();
+      const prepared = deferred<void>();
+      overlay.prepare.mockReturnValueOnce(prepared.promise);
+      backend.captureDisplay.mockRejectedValueOnce(new CapturePermissionBlockedError());
+      const pending = controller.startCapture();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(controller.snapshot).toMatchObject({
+        phase: "result", result: { status: "failed", reason: "permission-blocked" },
+      });
+      await pending;
+      expect(session.activeOperationId).toBeNull();
+      expect(main.show).toHaveBeenCalledOnce();
+      expect(overlay.close).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+      controller.dismissResult(FIRST);
+      await controller.startCapture();
+      controller.overlayReady(SECOND);
+
+      if (settlement === "resolve") prepared.resolve(undefined);
+      else prepared.reject(new Error("synthetic-late-overlay-failure"));
+      await vi.advanceTimersByTimeAsync(CAPTURE_STARTUP_TIMEOUT_MS);
+
+      expect(controller.snapshot).toMatchObject({ phase: "selecting", operationId: SECOND });
+      expect(session.activeOperationId).toBe(SECOND);
+      expect(overlay.sendSnapshot).toHaveBeenCalledOnce();
+      expect(overlay.close).toHaveBeenCalledOnce();
+      expect(clipboard.writePng).not.toHaveBeenCalled();
+      expect(diagnostics.snapshot().delivery.failures.permissionBlocked).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
+      controller.cancel(SECOND);
+    },
+  );
+
+  it.each(["resolve", "reject"] as const)(
+    "recovers from overlay failure immediately despite a stalled capture that later %ss",
+    async (settlement) => {
+      const { backend, clipboard, controller, diagnostics, main, overlay, session } = createHarness();
+      const captured = deferred<CapturedDisplay>();
+      backend.captureDisplay.mockReturnValueOnce(captured.promise);
+      overlay.prepare.mockRejectedValueOnce(new Error("synthetic-overlay-failure"));
+      const pending = controller.startCapture();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(controller.snapshot).toMatchObject({
+        phase: "result", result: { status: "failed", reason: "capture-failed" },
+      });
+      await pending;
+      expect(session.activeOperationId).toBeNull();
+      expect(main.show).toHaveBeenCalledOnce();
+      expect(overlay.close).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+      controller.dismissResult(FIRST);
+      await controller.startCapture();
+      controller.overlayReady(SECOND);
+
+      if (settlement === "resolve") captured.resolve(CAPTURE);
+      else captured.reject(new Error("synthetic-late-capture-failure"));
+      await vi.advanceTimersByTimeAsync(CAPTURE_STARTUP_TIMEOUT_MS);
+
+      expect(controller.snapshot).toMatchObject({ phase: "selecting", operationId: SECOND });
+      expect(session.activeOperationId).toBe(SECOND);
+      expect(overlay.sendSnapshot).toHaveBeenCalledOnce();
+      expect(overlay.close).toHaveBeenCalledOnce();
+      expect(clipboard.writePng).not.toHaveBeenCalled();
+      expect(diagnostics.snapshot().delivery.failures.captureFailed).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
+      controller.cancel(SECOND);
+    },
+  );
 
   it("settles a hung capture, frees its state, and leaves the clipboard unchanged", async () => {
     const { backend, clipboard, controller, diagnostics, main, overlay, session } = createHarness();

@@ -24,6 +24,18 @@ export function selectionFromDrag(drag: CaptureDrag): DipSelectionInput {
   };
 }
 
+// Page zoom changes CSS pixels, not the display-DIP coordinates the main process expects.
+export function pointOnDisplay(
+  point: CapturePoint,
+  bounds: { readonly left: number; readonly top: number; readonly width: number; readonly height: number },
+  display: { readonly width: number; readonly height: number },
+): CapturePoint {
+  return {
+    x: Math.min(display.width, Math.max(0, (point.x - bounds.left) / bounds.width * display.width)),
+    y: Math.min(display.height, Math.max(0, (point.y - bounds.top) / bounds.height * display.height)),
+  };
+}
+
 export class CaptureDragTracker {
   #drag: CaptureDrag | null = null;
 
