@@ -23,7 +23,14 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const children = [];
 let checkpoint = "host";
 let completed = 0;
-const startup = { modelVisible: false, authPrompt: false, attachmentRejected: false };
+const startup = { modelVisible: false, authPrompt: false, attachmentRejected: false,
+  textLength: 0, messages: [] };
+const STARTUP_MESSAGES = [
+  "Welcome to", "Do you trust", "trust this", "Press Enter", "Continue", "Connecting",
+  "Error", "error", "Operation not permitted", "Permission denied", "config.toml", "TOML",
+  "unknown variant", "invalid value", "Failed", "failed", "cursor", "terminal",
+  "app-server", "sandbox", "network", "Sign in", "directory:", "model:", "codex-cli",
+];
 
 async function waitUntil(predicate, timeoutMs = 20_000) {
   const expires = performance.now() + timeoutMs;
@@ -184,6 +191,8 @@ trust_level = "trusted"
       checkpoint = `agent-${index}-composer`;
       await waitUntil(async () => {
         const text = await paneText(id);
+        startup.textLength = text.trim().length;
+        startup.messages = STARTUP_MESSAGES.filter((message) => text.includes(message));
         startup.modelVisible = text.includes("gpt-5.4");
         startup.authPrompt = /Sign in with|Add your API key/u.test(text);
         return startup.modelVisible && text.includes("directory:");
