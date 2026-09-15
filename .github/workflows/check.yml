@@ -64,9 +64,11 @@ jobs:
       - run: npx --no-install playwright install chromium --only-shell
       - name: Built renderer fixture acceptance (not native capture)
         run: node --test tools/acceptance/ui.test.cjs
-      - name: Packaged macOS lifecycle acceptance (no capture or permission changes)
+      - name: Packaged macOS lifecycle and capture acceptance (scripted input only)
         if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
-        run: node tools/acceptance/lifecycle.cjs
+        run: |
+          node tools/acceptance/lifecycle.cjs
+          node tools/acceptance/capture.cjs --capture-runs=20 --cancel-runs=200
       - name: Archive verified macOS test candidate (not a release)
         if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         env:
