@@ -36,12 +36,12 @@ function createHarness(capability = true, implementation = true) {
   });
   let finishReveal: ((result: RevealResult) => void) | undefined;
   const reveal = vi.fn(() => new Promise<RevealResult>((resolve) => { finishReveal = resolve; }));
-  const adapter = {
+  const methods = {
     id: "synthetic",
     discover: vi.fn(async () => [destination]),
     stageIfCurrent: vi.fn(async () => ({ status: "dispatched-unverified" as const })),
-    ...(implementation ? { revealIfCurrent: reveal } : {}),
   };
+  const adapter = implementation ? { ...methods, revealIfCurrent: reveal } : methods;
   const clipboard = {
     writePng: vi.fn(),
     readImageEvidence: () => ({ bitmap: BITMAP, size: IMAGE.getSize() }),
@@ -76,6 +76,7 @@ describe("main-owned Reveal recovery", () => {
     expect(workflowSnapshotSchema.parse(harness.controller.snapshot)).toEqual(result);
     // A new renderer reads this state; no local destination selection is needed.
     expect(harness.controller.snapshot).toEqual(result);
+    await expect(harness.controller.startCapture()).resolves.toEqual(result);
     expect(harness.adapter.discover).toHaveBeenCalledOnce();
     expect(harness.adapter.stageIfCurrent).toHaveBeenCalledOnce();
     await expect(harness.controller.revealDestination(OTHER)).resolves.toEqual({ status: "stale" });

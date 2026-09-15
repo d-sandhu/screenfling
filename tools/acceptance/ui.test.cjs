@@ -54,8 +54,8 @@ function installFixture(options) {
       result: { status: "dispatched-unverified", destination: {
         id: "wezterm:fixture:7", adapter: "wezterm", surface: { kind: "pane", locator: "7" },
       } },
-      ...(options.restoredResult === "unknown" ? {} : { revealAvailable: options.restoredResult === "available" }),
     });
+    if (options.restoredResult !== "unknown") initial.revealAvailable = options.restoredResult === "available";
   }
   let state = initial;
   let bootstrapResolvers = [];

@@ -98,7 +98,7 @@ export class CaptureController {
   }
 
   async startCapture(trigger: DiagnosticTrigger = "button"): Promise<WorkflowSnapshot> {
-    if (this.#workflow.snapshot.phase !== "idle") return this.#workflow.snapshot;
+    if (this.#workflow.snapshot.phase !== "idle") return this.snapshot;
 
     const operationId = this.#createOperationId();
     const snapshot = this.#workflow.start(operationId);
