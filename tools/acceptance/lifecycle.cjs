@@ -11,10 +11,12 @@ const path = require("node:path");
 const { chromium } = require("playwright");
 const { z } = require("zod");
 
-const { readArtifactEvidence, readDiagnostics } = require("./capture.cjs");
+const { allowExpectedPageClose, readArtifactEvidence, readDiagnostics, startCapture } = require("./capture.cjs");
 
-// Exercise the actual packaged app, preload, and process lifecycle. No capture,
-// clipboard write, permission change, or destination action is requested.
+// Exercise the actual packaged app, preload, and process lifecycle. Capture and
+// headless Stage/Reveal require --capture-workflow and existing native permission.
+// No test changes permissions or submits to an agent.
+const captureWorkflow = process.argv.includes("--capture-workflow");
 const children = [];
 let profileScope = null;
 const environment = { ...process.env };
@@ -163,12 +165,66 @@ async function restartFromSetup(browser, page, port) {
   return { browser: restarted, page: await mainPage(restarted) };
 }
 
+async function verifyCaptureStage(page, received) {
+  checkpoint = "native-capture-readiness";
+  const readiness = await page.evaluate(() => window.screenFling.getScreenCaptureReadiness());
+  assert.equal(readiness.status, "granted");
+  assert.equal((await readFile(received)).length, 0);
+  checkpoint = "native-capture-selection";
+  const { overlay, operationId } = await startCapture(page, page.context());
+  const viewport = await overlay.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+  // Scripted pointer input drives the unmodified selection UI. Pixels come from
+  // the real capture backend; no test capture path or injected bridge exists.
+  await overlay.mouse.move(Math.floor(viewport.width / 4), Math.floor(viewport.height / 4));
+  await overlay.mouse.down();
+  await overlay.mouse.move(Math.floor(viewport.width * 3 / 4), Math.floor(viewport.height * 3 / 4));
+  await allowExpectedPageClose(overlay, () => overlay.mouse.up());
+  await waitUntil(() => overlay.isClosed(), "selection-not-closed");
+  checkpoint = "native-capture-review";
+  await page.getByRole("heading", { name: "Ready to hand off", exact: true }).waitFor();
+  const preview = page.getByAltText("Selected screen region");
+  assert.equal(await preview.evaluate((image) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0), true);
+  const target = page.getByRole("radio");
+  await target.waitFor();
+  assert.equal(await target.count(), 1);
+  assert.equal(await target.isChecked(), false);
+  const destinationId = await target.inputValue();
+  await target.check();
+  const note = 'Synthetic "quote" \\ café 😀 Enter';
+  await page.getByPlaceholder("What should the agent notice?").fill(note);
+  const expected = Buffer.concat([Buffer.from([22]), Buffer.from(note)]);
+  checkpoint = "native-capture-stage";
+  await page.getByRole("button", { name: "Stage, don’t send", exact: true }).click();
+  await page.getByRole("heading", { name: "Staged — unverified", exact: true }).waitFor();
+  await waitUntil(async () => (await readFile(received)).length >= expected.length, "headless-input-timeout");
+  assert.deepEqual(await readFile(received), expected);
+  const staged = await page.evaluate(() => window.screenFling.getSnapshot());
+  assert.equal(staged.operationId, operationId);
+  assert.equal(staged.result.status, "dispatched-unverified");
+  assert.equal(staged.result.destination.id, destinationId);
+  assert.equal(staged.revealAvailable, true);
+  checkpoint = "native-capture-reveal";
+  await page.getByRole("button", { name: "Reveal destination", exact: true }).click();
+  await page.getByText("Reveal requested.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Reveal attempted", exact: true }).isEnabled(), false);
+  assert.deepEqual((await page.evaluate(() => window.screenFling.getSnapshot())).result, staged.result);
+  assert.deepEqual(await readFile(received), expected);
+  const diagnostics = await readDiagnostics(page);
+  assert.equal(diagnostics.starts.button, 1);
+  assert.equal(diagnostics.delivery.dispatchedUnverified, 1);
+  assert.equal(diagnostics.delivery.copied, 0);
+  assert.equal(diagnostics.reveal.revealed, 1);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await verifyIdle(page);
+  return expected;
+}
+
 async function verifySettingsLifecycle(browser, page, port, directory) {
   const cli = process.env.SCREENFLING_TEST_WEZTERM_EXECUTABLE;
   const server = process.env.SCREENFLING_TEST_WEZTERM_MUX_SERVER;
   if (cli === undefined || server === undefined) {
-    if (process.env.CI === "true") throw new Error("missing-headless-fixture");
-    return { browser, checked: false };
+    if (process.env.CI === "true" || captureWorkflow) throw new Error("missing-headless-fixture");
+    return { browser, checked: false, captureChecked: false };
   }
   const socket = path.join(directory, "mux");
   const config = path.join(directory, "fixture.lua");
@@ -226,6 +282,7 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   await next.page.evaluate(() => localStorage.setItem("screenfling-storage-fixture", "synthetic-second"));
   assert.deepEqual((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, configuration);
   assert.equal((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).restartRequired, false);
+  const expectedInput = captureWorkflow ? await verifyCaptureStage(next.page, received) : Buffer.alloc(0);
   checkpoint = "settings-disconnect";
   await next.page.getByText("Connect WezTerm · optional", { exact: true }).click();
   await next.page.getByRole("button", { name: "Disconnect after restart", exact: true }).click();
@@ -239,8 +296,8 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   assert.equal(disconnected.activeConfiguration, null);
   assert.equal(disconnected.restartRequired, false);
   assert.equal(JSON.parse(await readFile(preference, "utf8")).configuration, null);
-  assert.equal((await readFile(received)).length, 0);
-  return { browser: next.browser, checked: true };
+  assert.deepEqual(await readFile(received), expectedInput);
+  return { browser: next.browser, checked: true, captureChecked: captureWorkflow };
 }
 
 async function hangOnClose(page) {
@@ -360,12 +417,14 @@ async function main() {
           closedWindowReopened: true,
           workflowDiagnosticsUnchanged: true,
           isolatedSettingsSaveRestartReloadDisconnect: settings.checked,
+          packagedCaptureStageReveal: settings.captureChecked,
         },
-        screenCaptureObserved: false,
+        screenCaptureObserved: settings.captureChecked,
         physicalInteractionObserved: false,
         limitations: [
           "Only idle renderer recovery is exercised in the packaged app.",
-          "No Screen Recording change, screen capture, clipboard, or agent action is tested.",
+          "No Screen Recording change or real-agent action is tested.",
+          "Optional native capture uses scripted pointer input and a headless byte receiver, not an agent image-attachment observation.",
           "No physical shortcut, focus, signing-trust, or notarization acceptance is inferred.",
         ],
       })}\n`,

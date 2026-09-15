@@ -14,12 +14,14 @@ export default defineConfig({
   main: {},
   preload: {
     build: {
+      minify: "esbuild",
       externalizeDeps: {
         exclude: ["zod"],
       },
     },
   },
   renderer: {
+    build: { minify: "esbuild" },
     define: { __SCREENFLING_BUILD__: JSON.stringify(buildCommit()) },
     plugins: [react()],
   },

@@ -67,7 +67,7 @@ jobs:
       - name: Packaged macOS lifecycle and capture acceptance (scripted input only)
         if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         run: |
-          node tools/acceptance/lifecycle.cjs
+          node tools/acceptance/lifecycle.cjs --capture-workflow
           node tools/acceptance/capture.cjs --capture-runs=20 --cancel-runs=200
       - name: Archive verified macOS test candidate (not a release)
         if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
