@@ -243,7 +243,9 @@ trust_level = "trusted"
       await allowExpectedPageClose(overlay, () => overlay.mouse.up());
       await page.getByRole("heading", { name: "Ready to hand off", exact: true }).waitFor();
       const pixels = await page.evaluate(async (id) => (await window.screenFling.getCaptureDraft({ operationId: id })).pixels, operationId);
+      checkpoint = "exact-agent-discovery";
       const target = page.locator(`input[type="radio"][value$=":${agent.id}"]`);
+      await target.waitFor({ state: "visible" });
       assert.equal(await target.count(), 1);
       assert.equal(await target.isChecked(), false);
       await target.check();
