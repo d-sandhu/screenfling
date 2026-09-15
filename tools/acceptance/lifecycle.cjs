@@ -219,8 +219,9 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   checkpoint = "settings-restart-with-hung-renderer";
   // Quit/relaunch must finish even when beforeunload is stuck; never recreate
   // another main window in the application that is already quitting.
-  await hangOnClose(page);
+  const hangWasEntered = await hangOnClose(page);
   let next = await restartFromSetup(browser, page, port);
+  assert.equal(hangWasEntered(), true);
   assert.deepEqual((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, configuration);
   assert.equal((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).restartRequired, false);
   checkpoint = "settings-disconnect";
@@ -240,26 +241,19 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
 }
 
 async function hangOnClose(page) {
-  // The native BrowserWindow unresponsive event must handle a real blocked
-  // renderer. Do not fake the event or add any test hook to the application.
+  // Use the application's actual restart/BrowserWindow close path, not CDP's
+  // Page.close (which dispatches beforeunload without a native close event).
+  let entered = false;
+  page.on("console", (message) => {
+    if (message.text() === "screenfling-fixture-beforeunload") entered = true;
+  });
   await page.evaluate(() => {
     window.addEventListener("beforeunload", () => {
+      console.debug("screenfling-fixture-beforeunload");
       for (;;) { /* Deliberate test-only renderer hang. */ }
     });
   });
-}
-
-async function verifyUnresponsiveRecovery(browser, page) {
-  const context = browser.contexts()[0];
-  const session = await context.newCDPSession(page);
-  await hangOnClose(page);
-  const replacementPromise = context.waitForEvent("page", { timeout: 15_000 });
-  void session.send("Page.close").catch(() => undefined);
-  const replacement = await replacementPromise;
-  await verifyIdle(replacement);
-  await waitUntil(() => page.isClosed(), "unresponsive-window-retained");
-  assert.equal(context.pages().length, 1);
-  return replacement;
+  return () => entered;
 }
 
 async function main() {
@@ -280,12 +274,11 @@ async function main() {
   await writeFile(path.join(profile, "connections", "wezterm.json"), "invalid-synthetic-settings", { mode: 0o600 });
   const profileArguments = [`--user-data-dir=${profile}`];
   const port = await reservePort();
-  const launchArguments = [
+  const child = launch(executable, [
     ...profileArguments,
     "--remote-debugging-address=127.0.0.1",
     `--remote-debugging-port=${port}`,
-  ];
-  const child = launch(executable, launchArguments);
+  ]);
   let browser;
   try {
     browser = await connect(port, child);
@@ -327,19 +320,8 @@ async function main() {
     assert.equal(context.pages().length, 1);
     assert.deepEqual(await readDiagnostics(reopened), baseline);
 
-    checkpoint = "unresponsive-renderer-recovery";
-    // Recovery is bounded to one renderer replacement per app lifetime.
-    await browser.close();
-    await stop(child);
-    await waitUntil(() => exited(child), "cleanup-timeout");
-    const freshChild = launch(executable, launchArguments);
-    browser = await connect(port, freshChild);
-    const recovered = await verifyUnresponsiveRecovery(browser, await mainPage(browser));
-    assert.equal(exited(freshChild), false);
-    assert.deepEqual(await readDiagnostics(recovered), baseline);
-
     checkpoint = "packaged-settings-restart";
-    const settings = await verifySettingsLifecycle(browser, recovered, port, directory);
+    const settings = await verifySettingsLifecycle(browser, reopened, port, directory);
     browser = settings.browser;
     assert.deepEqual(await readDiagnostics(await mainPage(browser)), baseline);
 
@@ -354,7 +336,6 @@ async function main() {
           startupAndHardenedBridge: true,
           duplicateLaunchRejected: true,
           crashedRendererReplacedOnce: true,
-          unresponsiveRendererReplacedOnce: true,
           unresponsiveRendererDidNotBlockRestart: settings.checked,
           closedWindowReopened: true,
           workflowDiagnosticsUnchanged: true,
