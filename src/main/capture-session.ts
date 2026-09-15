@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import {
   captureDisplaySchema,
   captureDraftSchema,
@@ -100,14 +102,6 @@ function encodePreview(image: CaptureImage, quality: number): Uint8Array {
   return new Uint8Array(preview);
 }
 
-function hasSameBytes(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.byteLength !== right.byteLength) return false;
-  for (let index = 0; index < left.byteLength; index += 1) {
-    if (left[index] !== right[index]) return false;
-  }
-  return true;
-}
-
 function hasSameImageEvidence(
   expected: ClipboardImageEvidence,
   actual: ClipboardImageEvidence | null,
@@ -116,7 +110,7 @@ function hasSameImageEvidence(
     actual !== null &&
     expected.size.width === actual.size.width &&
     expected.size.height === actual.size.height &&
-    hasSameBytes(expected.bitmap, actual.bitmap)
+    Buffer.compare(expected.bitmap, actual.bitmap) === 0
   );
 }
 

@@ -127,6 +127,17 @@ describe("production capture session", () => {
     clipboard.readback = { bitmap, size: pixels };
     session.copy(OPERATION_ID);
     expect(session.isClipboardCurrent(OPERATION_ID)).toBe(true);
+    // Compare only the exposed view, never unrelated bytes in its backing buffer.
+    const backing = Uint8Array.from([255, 4, 3, 2, 1, 254]);
+    clipboard.readback = { bitmap: backing.subarray(1, 5), size: pixels };
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(true);
+    clipboard.readback = { bitmap: backing.subarray(1, 4), size: pixels };
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    clipboard.readback = { bitmap: backing.subarray(0, 4), size: pixels };
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
+    backing[4] = 0;
+    clipboard.readback = { bitmap: backing.subarray(1, 5), size: pixels };
+    expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
     expect(session.isClipboardCurrent(STALE_OPERATION_ID)).toBe(false);
     clipboard.readback = { bitmap, size: { width: pixels.width + 1, height: pixels.height } };
     expect(session.isClipboardCurrent(OPERATION_ID)).toBe(false);
