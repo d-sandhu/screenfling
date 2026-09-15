@@ -30,6 +30,10 @@ const STARTUP_MESSAGES = [
   "Error", "error", "Operation not permitted", "Permission denied", "config.toml", "TOML",
   "unknown variant", "invalid value", "Failed", "failed", "cursor", "terminal",
   "app-server", "sandbox", "network", "Sign in", "directory:", "model:", "codex-cli",
+  "Codex", "upgrade", "Introducing", "model", "trust", "enter", "panicked",
+  "closed", "unknown", "loading", "Press", "Select", "continue", "access", "read",
+  "write", "fatal", "directory", "provider", "permission", "welcome", "theme",
+  "help", "initializing", "Tips", "Try", "key", "auth", "Use existing", "GPT",
 ];
 
 async function waitUntil(predicate, timeoutMs = 20_000) {
@@ -192,7 +196,7 @@ trust_level = "trusted"
       await waitUntil(async () => {
         const text = await paneText(id);
         startup.textLength = text.trim().length;
-        startup.messages = STARTUP_MESSAGES.filter((message) => text.includes(message));
+        startup.messages = STARTUP_MESSAGES.filter((message) => text.toLowerCase().includes(message.toLowerCase()));
         startup.modelVisible = text.includes("gpt-5.4");
         startup.authPrompt = /Sign in with|Add your API key/u.test(text);
         return startup.modelVisible && text.includes("directory:");
