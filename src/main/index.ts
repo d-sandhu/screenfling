@@ -81,6 +81,12 @@ function createWindow(): BrowserWindow {
   window.webContents.on("render-process-gone", () => {
     if (!quitting && mainWindow === window) applicationLifecycle?.mainRendererGone();
   });
+  // A hung renderer cannot process Escape or its own recovery controls.
+  window.on("unresponsive", () => {
+    if (mainWindow !== window) return;
+    if (quitting) window.destroy();
+    else applicationLifecycle?.mainRendererGone();
+  });
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
   });

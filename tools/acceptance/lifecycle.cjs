@@ -216,7 +216,10 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   checkpoint = "settings-save-active";
   assert.equal((await page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, null);
 
-  checkpoint = "settings-restart";
+  checkpoint = "settings-restart-with-hung-renderer";
+  // Quit/relaunch must finish even when beforeunload is stuck; never recreate
+  // another main window in the application that is already quitting.
+  await hangOnClose(page);
   let next = await restartFromSetup(browser, page, port);
   assert.deepEqual((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, configuration);
   assert.equal((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).restartRequired, false);
@@ -234,6 +237,29 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   assert.equal(JSON.parse(await readFile(preference, "utf8")).configuration, null);
   assert.equal((await readFile(received)).length, 0);
   return { browser: next.browser, checked: true };
+}
+
+async function hangOnClose(page) {
+  // The native BrowserWindow unresponsive event must handle a real blocked
+  // renderer. Do not fake the event or add any test hook to the application.
+  await page.evaluate(() => {
+    window.addEventListener("beforeunload", () => {
+      for (;;) { /* Deliberate test-only renderer hang. */ }
+    });
+  });
+}
+
+async function verifyUnresponsiveRecovery(browser, page) {
+  const context = browser.contexts()[0];
+  const session = await context.newCDPSession(page);
+  await hangOnClose(page);
+  const replacementPromise = context.waitForEvent("page", { timeout: 15_000 });
+  void session.send("Page.close").catch(() => undefined);
+  const replacement = await replacementPromise;
+  await verifyIdle(replacement);
+  await waitUntil(() => page.isClosed(), "unresponsive-window-retained");
+  assert.equal(context.pages().length, 1);
+  return replacement;
 }
 
 async function main() {
@@ -254,11 +280,12 @@ async function main() {
   await writeFile(path.join(profile, "connections", "wezterm.json"), "invalid-synthetic-settings", { mode: 0o600 });
   const profileArguments = [`--user-data-dir=${profile}`];
   const port = await reservePort();
-  const child = launch(executable, [
+  const launchArguments = [
     ...profileArguments,
     "--remote-debugging-address=127.0.0.1",
     `--remote-debugging-port=${port}`,
-  ]);
+  ];
+  const child = launch(executable, launchArguments);
   let browser;
   try {
     browser = await connect(port, child);
@@ -300,8 +327,19 @@ async function main() {
     assert.equal(context.pages().length, 1);
     assert.deepEqual(await readDiagnostics(reopened), baseline);
 
+    checkpoint = "unresponsive-renderer-recovery";
+    // Recovery is bounded to one renderer replacement per app lifetime.
+    await browser.close();
+    await stop(child);
+    await waitUntil(() => exited(child), "cleanup-timeout");
+    const freshChild = launch(executable, launchArguments);
+    browser = await connect(port, freshChild);
+    const recovered = await verifyUnresponsiveRecovery(browser, await mainPage(browser));
+    assert.equal(exited(freshChild), false);
+    assert.deepEqual(await readDiagnostics(recovered), baseline);
+
     checkpoint = "packaged-settings-restart";
-    const settings = await verifySettingsLifecycle(browser, reopened, port, directory);
+    const settings = await verifySettingsLifecycle(browser, recovered, port, directory);
     browser = settings.browser;
     assert.deepEqual(await readDiagnostics(await mainPage(browser)), baseline);
 
@@ -316,6 +354,8 @@ async function main() {
           startupAndHardenedBridge: true,
           duplicateLaunchRejected: true,
           crashedRendererReplacedOnce: true,
+          unresponsiveRendererReplacedOnce: true,
+          unresponsiveRendererDidNotBlockRestart: settings.checked,
           closedWindowReopened: true,
           workflowDiagnosticsUnchanged: true,
           isolatedSettingsSaveRestartReloadDisconnect: settings.checked,
