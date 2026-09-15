@@ -775,13 +775,15 @@ void test("renderer fixture: returning from capture refreshes permission status 
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Open System Settings", exact: true }).waitFor();
-    assert.equal(await page.getByRole("button", { name: "Capture region", exact: true }).isEnabled(), false);
+    await page.getByText("Permission is off", { exact: true }).waitFor();
+    // Readiness is advisory; the existing native capture gate remains authoritative.
+    assert.equal(await page.getByRole("button", { name: "Capture region", exact: true }).isEnabled(), true);
     assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["start", "cancel"]);
     await page.evaluate(() => {
       window.screenFling.getScreenCaptureReadiness = async () => ({ version: 1, platform: "macos", status: "granted" });
     });
     await page.getByRole("button", { name: "Check again", exact: true }).click();
-    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("Capture region") && !button.disabled));
+    await page.getByText("Permission reported granted", { exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Open System Settings", exact: true }).count(), 0);
   });
 });
@@ -803,8 +805,12 @@ void test("renderer fixture: a late permission response cannot overwrite a newer
     await editingReady(page);
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
-    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("Capture region") && !button.disabled));
-    await page.evaluate(() => window.fixture.finishOldReadiness({ version: 1, platform: "macos", status: "denied" }));
+    await page.getByText("Permission reported granted", { exact: true }).waitFor();
+    await page.evaluate(async () => {
+      window.fixture.finishOldReadiness({ version: 1, platform: "macos", status: "denied" });
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    assert.equal(await page.getByText("Permission reported granted", { exact: true }).count(), 1);
     assert.equal(await page.getByRole("button", { name: "Capture region", exact: true }).isEnabled(), true);
     assert.equal(await page.getByRole("button", { name: "Open System Settings", exact: true }).count(), 0);
     assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["cancel"]);
