@@ -476,8 +476,10 @@ void test("renderer fixture: invalid notes block Stage with guidance and allow c
     await editingReady(page);
     await page.getByRole("radio", { name: /pane 8/ }).check();
     const input = page.getByPlaceholder("What should the agent notice?");
-    for (const invalid of ["before\u2028after", "before\u0085after", "before\u007fafter"]) {
+    await input.fill("original short note");
+    for (const invalid of ["before\u2028after", "before\u0085after", "before\u007fafter", "x".repeat(501), "😀".repeat(501)]) {
       await input.fill(invalid);
+      assert.equal(await input.inputValue(), invalid);
       assert.equal(await input.getAttribute("aria-invalid"), "true");
       assert.match(await page.getByRole("alert").innerText(), /Edit the note or use Copy only/);
       assert.equal(
@@ -488,7 +490,16 @@ void test("renderer fixture: invalid notes block Stage with guidance and allow c
       await input.press("Enter");
       assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
     }
-    const valid = "Unicode café 😀, literal Enter";
+    // A bounded paste must remain invalid, never silently become a valid prefix.
+    await input.fill("😀".repeat(2_000));
+    const bounded = await input.inputValue();
+    assert.ok(bounded.length <= 1_002 && Array.from(bounded).length > 500);
+    assert.equal(await input.getAttribute("aria-invalid"), "true");
+    assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+    await input.fill("x".repeat(500));
+    assert.equal(await input.getAttribute("aria-invalid"), "false");
+    const valid = "😀".repeat(500);
     await input.fill(valid);
     assert.equal(await input.getAttribute("aria-invalid"), "false");
     assert.equal(await page.getByRole("alert").count(), 0);
