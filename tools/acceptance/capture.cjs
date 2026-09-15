@@ -376,6 +376,70 @@ async function completeOverlaySelection(overlay, request, timeoutMs = OVERLAY_AC
   );
 }
 
+// Observe the same renderer clock at review readiness, the actual Copy click,
+// and main's verified result. Do not count the runner's actionability waits as
+// application processing or skip the explicit review/Copy product steps.
+async function observeCopyTiming(mainWindow, operationId) {
+  return mainWindow.evaluateHandle((id) => {
+    const timings = { startedAt: performance.now(), reviewReadyAt: null, copyAt: null, verifiedAt: null };
+    let frame = 0;
+    const findCopy = () => Array.from(document.querySelectorAll(".actions--review button"))
+      .find((button) => button.textContent.trim() === "Copy only");
+    const reviewReady = () => {
+      const image = document.querySelector('img[alt="Selected screen region"]');
+      const button = findCopy();
+      return image !== null && image.complete && image.naturalWidth > 0 &&
+        image.naturalHeight > 0 && button !== undefined && !button.disabled;
+    };
+    const observeReview = () => {
+      if (frame !== 0 || timings.reviewReadyAt !== null || !reviewReady()) return;
+      // A second frame gives the ready preview an opportunity to paint. This is
+      // renderer evidence, not an observation of physical display scanout.
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          if (reviewReady()) timings.reviewReadyAt = performance.now();
+        });
+      });
+    };
+    const observer = new MutationObserver(observeReview);
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "src"] });
+    const onClick = (event) => {
+      const button = findCopy();
+      if (button !== undefined && !button.disabled && event.target instanceof Node && button.contains(event.target)) {
+        if (timings.copyAt === null) timings.copyAt = performance.now();
+      }
+    };
+    document.addEventListener("click", onClick, true);
+    const unsubscribe = window.screenFling.onWorkflowSnapshot((snapshot) => {
+      if (snapshot.operationId === id && snapshot.phase === "result" && snapshot.result.status === "copied") {
+        if (timings.verifiedAt === null) timings.verifiedAt = performance.now();
+      }
+    });
+    return {
+      read: () => timings,
+      dispose: () => { observer.disconnect(); cancelAnimationFrame(frame); document.removeEventListener("click", onClick, true); unsubscribe(); },
+    };
+  }, operationId);
+}
+
+function copySoftwareTiming(timings) {
+  const times = [timings.startedAt, timings.reviewReadyAt, timings.copyAt, timings.verifiedAt];
+  if (!times.every(Number.isFinite) || times.some((value, index) => index > 0 && value < times[index - 1])) {
+    throw new Error("invalid-acceptance-timing");
+  }
+  const selectionDispatchToReviewReadyMs = times[1] - times[0];
+  const reviewDwellMs = times[2] - times[1];
+  const copyClickToClipboardVerifiedMs = times[3] - times[2];
+  return {
+    selectionDispatchToReviewReadyMs,
+    reviewDwellMs,
+    copyClickToClipboardVerifiedMs,
+    softwareProcessingMs: selectionDispatchToReviewReadyMs + copyClickToClipboardVerifiedMs,
+    elapsedMs: times[3] - times[0],
+  };
+}
+
 async function runCapture(mainWindow, context) {
   const {
     operationId,
@@ -413,36 +477,48 @@ async function runCapture(mainWindow, context) {
       height: viewport.height * 0.5,
     },
   };
-  const completedAt = performance.now();
-  await completeOverlaySelection(overlay, completionRequest);
+  const timing = await observeCopyTiming(mainWindow, operationId);
+  try {
+    const completedAt = performance.now();
+    await completeOverlaySelection(overlay, completionRequest);
 
-  await waitForWorkflowPhase(mainWindow, "editing");
-  const copyButton = mainWindow.getByRole("button", { name: "Copy only" });
-  await copyButton.waitFor({ state: "visible" });
-  const selectionCompletionToReviewReadyMs = performance.now() - completedAt;
-  await copyButton.click();
-  await waitForWorkflowPhase(mainWindow, "result");
-  await mainWindow.getByRole("heading", { name: "Copied" }).waitFor();
-  const selectionCompletionToClipboardVerifiedMs = performance.now() - completedAt;
-  const snapshot = await mainWindow.evaluate(() => window.screenFling?.getSnapshot());
-  if (snapshot?.phase !== "result" || snapshot.result.status !== "copied") {
-    throw new Error("clipboard-verification-failed");
-  }
-  await dismissResult(mainWindow);
+    await waitForWorkflowPhase(mainWindow, "editing");
+    const copyButton = mainWindow.getByRole("button", { name: "Copy only" });
+    await copyButton.waitFor({ state: "visible" });
+    const selectionCompletionToReviewReadyMs = performance.now() - completedAt;
+    // Wait for the observed ready frame without forcing or bypassing the real button.
+    await withTimeout(async () => {
+      while (!(await timing.evaluate((observer) => observer.read().reviewReadyAt !== null))) await delay(5);
+    }, OVERLAY_ACTION_TIMEOUT_MS, "invalid-acceptance-timing");
+    await copyButton.click();
+    await waitForWorkflowPhase(mainWindow, "result");
+    await mainWindow.getByRole("heading", { name: "Copied" }).waitFor();
+    const selectionCompletionToClipboardVerifiedMs = performance.now() - completedAt;
+    const snapshot = await mainWindow.evaluate(() => window.screenFling?.getSnapshot());
+    if (snapshot?.phase !== "result" || snapshot.result.status !== "copied") {
+      throw new Error("clipboard-verification-failed");
+    }
+    const softwareTiming = copySoftwareTiming(await timing.evaluate((observer) => observer.read()));
+    await dismissResult(mainWindow);
 
-  return {
-    captureActionToOverlayInteractiveMs,
-    selectionCompletionToReviewReadyMs,
-    selectionCompletionToClipboardVerifiedMs,
-    display: {
-      ...display,
-      requestedPixels: {
-        height: Math.ceil(display.screenSizeDip.height * display.scaleFactor),
-        width: Math.ceil(display.screenSizeDip.width * display.scaleFactor),
+    return {
+      captureActionToOverlayInteractiveMs,
+      selectionCompletionToReviewReadyMs,
+      selectionCompletionToClipboardVerifiedMs,
+      softwareTiming,
+      display: {
+        ...display,
+        requestedPixels: {
+          height: Math.ceil(display.screenSizeDip.height * display.scaleFactor),
+          width: Math.ceil(display.screenSizeDip.width * display.scaleFactor),
+        },
+        returnedPixels,
       },
-      returnedPixels,
-    },
-  };
+    };
+  } finally {
+    await timing.evaluate((observer) => observer.dispose()).catch(() => undefined);
+    await timing.dispose();
+  }
 }
 
 function macWorkingSetKib(rootPid) {
@@ -510,6 +586,7 @@ function classifyFailure(cause) {
     "devtools-unavailable",
     "empty-acceptance-sample",
     "invalid-acceptance-argument",
+    "invalid-acceptance-timing",
     "invalid-overlay-geometry",
     "main-window-unavailable",
     "overlay-action-timeout",
@@ -589,8 +666,10 @@ async function main() {
       (sample) => sample.selectionCompletionToClipboardVerifiedMs,
     );
     const clipboardSummary = captureRuns === 0 ? null : summarize(clipboardTimes);
+    const softwareSamples = captureSamples.map((sample) => sample.softwareTiming);
+    const softwareSummary = captureRuns === 0 ? null : summarize(softwareSamples.map((sample) => sample.softwareProcessingMs));
     const clipboardP95Passed =
-      clipboardSummary === null || clipboardSummary.p95 <= SELECTION_COMPLETION_P95_TARGET_MS;
+      softwareSummary === null || softwareSummary.p95 <= SELECTION_COMPLETION_P95_TARGET_MS;
     const report = {
       acceptance: "production-capture",
       status: clipboardP95Passed ? "passed" : "failed",
@@ -625,11 +704,14 @@ async function main() {
               selectionCompletionToReviewReady: summarize(reviewTimes),
               selectionCompletionToClipboardVerified: clipboardSummary,
             },
+      // Issue #32's reviewed budget excludes human/automation review dwell,
+      // not processing. Retain every raw component and the old elapsed metric.
+      softwareTimingSamplesMs: softwareSamples,
       gateChecks: {
-        selectionCompletionToClipboardVerifiedP95: {
+        reviewAndExplicitCopyProcessingP95: {
           targetMs: SELECTION_COMPLETION_P95_TARGET_MS,
-          observedMs: clipboardSummary?.p95 ?? null,
-          passed: clipboardP95Passed,
+          observedMs: softwareSummary?.p95 ?? null,
+          passed: softwareSummary === null ? null : clipboardP95Passed,
         },
       },
       cancelSoak: {
@@ -651,6 +733,8 @@ async function main() {
       },
       limitations: [
         "The capture action is a product button, not an operating-system global shortcut.",
+        "The 150 ms software budget sums selection-dispatch-to-ready-preview and actual-Copy-click-to-verified-result in one renderer clock; review dwell and total elapsed time remain reported separately.",
+        "Selection dispatch includes control-channel overhead; ready-preview timing includes two animation frames, not physical scanout. Hosted timing does not establish reference-Mac physical acceptance.",
         "The product diagnostics snapshot covers the full process lifetime, including warmup workflows.",
         "Selection completion is invoked through the validated overlay bridge; pointer-drag behavior is a separate unit and human smoke check.",
         "Cancel results and window cleanup are observed; the runner cannot inspect the macOS image clipboard through the hardened renderer boundary.",
@@ -675,6 +759,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  copySoftwareTiming,
+  observeCopyTiming,
   allowExpectedPageClose,
   cancelOverlay,
   completeOverlaySelection,
