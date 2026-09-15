@@ -1,43 +1,33 @@
----
-status: accepted
----
+# ADR 0001: WezTerm as the first staging integration
 
-# Use WezTerm for the first surface Stage adapter
+Status: implemented, experimental. Agent compatibility remains unverified.
 
-ScreenFling will implement its first exact surface Stage adapter against
-WezTerm's CLI, using an instance-generation boundary plus pane ID and the latest
-official stable release (`20240203-110809-5046fc22`) as the reproducible baseline.
-WezTerm is the only evaluated surface with exact targeted input and screen-text
-read-back on both native Tier 1 platforms, and its two-pane routing primitive
-passed 100 alternating dispatches on macOS and Windows with zero wrong-target or
-Enter events. The adapter is an optional integration rather than a ScreenFling
-runtime dependency; Copy remains the safe fallback.
+## Decision
 
-## Implementation status
+Use WezTerm's CLI to address one explicitly configured local instance and pane.
+The adapter currently checks version `20240203-110809-5046fc22`. This is the
+reproducible integration baseline, not a claim that it is the newest release.
+Copy works without WezTerm.
 
-The production-tree primitive now implements pinned-version preflight, bounded
-JSON discovery, explicit absolute executable/config/socket selection,
-stable-within-generation pane routes, one combined stdin dispatch, and
-conservative no-retry outcomes. Its macOS selector policy now checks canonical
-types, owner and mode, lexical and canonical ancestors, executable/config access,
-a private socket parent, and replacement identity before every subprocess. This
-satisfies the implementation decision, not the release gate: the adapter is
-wired into the application picker only through a complete, macOS-only developer
-environment configuration. Extended ACL inspection, exact-config semantics,
-visible no-focus trials, and real-agent attachment trials remain open before
-supported picker exposure.
+## Why
 
-## Consequences
+The initial [routing experiments](https://github.com/d-sandhu/screenfling/blob/b7e321217faf94ee2016217405f3c39e1e872cb6/research/phase-3-feasibility-results.md)
+exercised exact two-pane routing on macOS and Windows. A pane ID inside a known
+instance is a better address than a window title or working directory.
 
-- Every dispatch pins the WezTerm instance and pane, revalidates immediately,
-  and refuses stale identity without active-pane fallback or retry.
-- The old stable release and active nightly channel require explicit version
-  preflight, a pinned stable compatibility fixture, and a non-gating nightly
-  canary.
-- CLI transport and screen text alone do not prove an agent attached an image.
-  The adapter cannot claim support or verified Stage until its configured agent
-  and keybinding pass the roadmap's observed trials.
-- tmux remains the Unix exactness reference. Ghostty remains an optional macOS
-  adapter, not a fallback selected because it is installed locally.
-- Codex app-server and Claude Agent SDK remain separate managed Send candidates;
-  they do not solve passive Stage into an existing terminal composer.
+The production integration is macOS-only. It is now configurable through the
+saved connection form as well as explicit environment overrides; see
+[usage](../usage.md#connect-wezterm-experimental). The
+[adapter](../../src/main/wezterm-adapter.ts) and
+[pinned transport](0003-pinned-wezterm-transport.md) enforce the current boundary.
+
+## Tradeoffs
+
+Users need a specific terminal version, trusted selectors, and a manually checked
+image key. This is setup cost, and it limits the audience. No automatic discovery
+or active-window fallback hides that cost.
+
+Terminal input success does not prove agent image attachment. Stage remains
+`dispatched-unverified`; support needs observed trials for the actual
+agent/version/binding. Creating a separate managed agent session is not the
+workflow this adapter is designed to support.

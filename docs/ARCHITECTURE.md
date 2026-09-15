@@ -1,626 +1,146 @@
 # Architecture
 
-Status: Accepted pre-alpha direction
+ScreenFling is one Electron application, not a web service. React presents the
+workflow; the Node.js main process performs OS and terminal operations. Zod
+validates data crossing those boundaries. One package and one build are enough
+for the current product.
 
-Last reviewed: 2026-09-13
-
-## Decision
-
-ScreenFling is one Electron application using strict TypeScript,
-React, Node.js, electron-vite, and electron-builder. macOS and Windows are Tier
-1 product targets delivered in sequence. Linux is optional. Native code is
-introduced only when a measured requirement cannot be met through Electron or a
-documented operating-system API.
-
-Zod schemas validate data as it crosses untrusted IPC and adapter boundaries.
-TypeScript types describe trusted code; they are not treated as runtime input
-validation.
-
-This decision is supported by the
-[tech-stack validation](../research/tech-stack-validation.md) and
-[capture feasibility](../research/capture-platform-feasibility.md) research.
-The first destination implementation is recorded separately in
-[ADR 0001](adr/0001-wezterm-first-stage-adapter.md).
-
-## Why this stack
-
-Electron already exposes the shared primitives ScreenFling needs most:
-
-- display and window capture;
-- display geometry and scale information;
-- image cropping and clipboard output;
-- global shortcuts;
-- transparent or frameless application windows;
-- mature packaging, signing, and update paths.
-
-Tauri remains a credible fallback if packaged size or idle memory blocks
-adoption. It is not the starting choice because screen capture would require
-platform-specific or third-party native work at the center of the first release.
-Fully native macOS and Windows applications would maximize platform control but
-duplicate the product and contributor surface too early.
-
-## Repository shape
-
-One application package contains `src/main` for privileged modules, `src/preload`
-for the narrow bridges, `src/renderer/src` for visible surfaces, and `src/shared`
-for validated contracts and pure workflow rules. `tools/acceptance` contains
-separate fixture and packaged runners. `tools/native/selector-acl.c` is a small
-read-only macOS ACL inspector, not a capture rewrite or helper framework.
-
-## Process and trust boundaries
-
-### Electron main process
-
-The main process owns all privileged work:
-
-- capture-source enumeration and image creation;
-- display-coordinate mapping;
-- clipboard writes;
-- global-shortcut registration;
-- destination discovery and revalidation;
-- subprocess invocation;
-- permission state;
-- workflow state and local diagnostic events.
-
-### Preload bridge
-
-The preload exposes a small, typed API for user actions and state updates. It
-does not expose raw Electron, Node.js, filesystem, shell, clipboard, or process
-APIs.
-
-Every operation-bound mutation includes an operation ID; the no-payload Start
-request creates a new one in the main process. Read-only snapshot and status
-requests also carry no payload. The main process validates the sender, payload,
-operation when present, and allowed state transition.
-
-The preload exposes one function per allowed message and never exposes raw
-`ipcRenderer`. Each main-process handler accepts only the current main window's
-exact `WebContents`, its main frame, and the configured renderer document URL.
-Payload schemas are strict, so extra keys fail validation instead of being
-silently accepted.
-
-### Renderers
-
-Renderers are presentation surfaces only. They load bundled local content and
-run with:
-
-- `nodeIntegration: false`;
-- `contextIsolation: true`;
-- `sandbox: true`;
-- a restrictive Content Security Policy;
-- navigation and unrequested window creation denied.
-
-Packaged renderer assets are served from a standard, secure `screenfling://`
-scheme whose handler is restricted to the bundled renderer directory. Path
-traversal is rejected, and Electron's legacy elevated `file://` privileges are
-disabled at package time.
-
-The region overlay receives only the frozen image and display-local data needed
-to draw a selection. Destination automation never runs in a renderer.
-
-The main and capture surfaces have separate preload bridges, IPC channel sets,
-exact document URLs, and authorized `WebContents`. A renderer cannot invoke the
-other surface's capabilities merely by constructing a channel name.
-
-## Shortcut configuration
-
-`ShortcutManager` is the main-process owner of the capture shortcut. The
-renderer can read its strict status and request set/reset operations through
-bridge API version 8; it cannot call Electron, choose a settings path, write a
-file, or replace the capture callback.
-
-ScreenFling intentionally accepts a smaller domain than Electron's complete
-accelerator grammar: `CommandOrControl` with Shift and/or Alt, plus one A–Z or
-0–9 key. The UI presents these as structured choices and stores the canonical
-portable value. It does not accept raw accelerator text, install a global key
-recorder, or suspend all application shortcuts while a renderer waits for a
-chord.
-
-Rebinding is candidate-first. The manager registers and verifies the candidate
-while the current binding remains active, commits the versioned preference, and
-only then unregisters the old accelerator. Registration or persistence failure
-rejects the candidate and retains the last working binding. An unverifiable
-cleanup is reported explicitly and final disposal retries every registration
-the manager may still own. A later change retries outstanding cleanup and clears
-the warning after successful release. The manager also treats a thrown register
-call conservatively because the native side effect may have occurred before the
-exception reached JavaScript.
-
-The one durable preference is stored below Electron's application-specific
-`userData` directory. The store writes a private, uniquely named sibling,
-requests a flush, and renames the complete file over `shortcut.json`; malformed
-or unsupported data falls back to the default without being executed or
-silently overwritten. This is one bounded preference, not a general settings,
-profile, sync, history, or telemetry subsystem.
-
-## Core modules
-
-- `CaptureController` and `WorkflowStore`: operation state, side-effect boundaries,
-  cancellation, startup deadline, and capture environment recovery.
-- `CaptureSession`, `ElectronCaptureBackend`, and `ElectronImageClipboard`:
-  retained native pixels, measured geometry, and verified clipboard output.
-- `CaptureOverlayWindow`: hidden preparation and selection surface lifetime.
-- `DestinationRegistry` and `WezTermAdapter`: explicit routes, one-shot Stage,
-  retained Reveal lease, and generation revalidation.
-- `ShortcutManager`: bounded preference and registration transaction.
-- `ApplicationLifecycle`: explicit activation, single presentation recovery,
-  and no action replay. The main entry point acquires the single-instance lock.
-- `WorkflowDiagnostics`: bounded content-free timing and outcome summaries.
-
-## Capture pipeline
-
-The capture sequence is intentionally snapshot-first:
+## Process boundaries
 
 ```text
-shortcut or explicit Capture action
--> hide the main window
--> identify the display under the pointer
--> prepare the hidden overlay and capture the display concurrently
--> join both preparations and load the frozen image
--> show the overlay only after the image is ready
--> select in display-local coordinates
--> crop in main using measured returned-image dimensions
--> review and optionally add a note
--> explicit Copy or Stage verifies the image clipboard
--> Stage alone attempts one selected exact destination
--> result, then optional separate Reveal
+React: capture selection / review / destination picker
+                         |
+             separate, narrow preload bridges
+                         |
+Electron main: workflow state, capture, clipboard, settings
+                         |
+        Electron OS APIs / bounded WezTerm CLI calls
+                         |
+          one explicitly configured local mux pane
 ```
 
-The overlay displays a frozen snapshot, not the live desktop. Both ScreenFling
-surfaces remain hidden while pixels are captured. Hidden navigation overlaps a
-fresh capture; no cached screen frame or native capture helper is used.
-
-A 30-second operation-scoped deadline bounds startup, including missing renderer
-readiness. Failure releases logical capture state, closes the overlay, and
-restores the main surface without writing the clipboard. Cancellation settles
-without waiting for a stalled backend. Late results cannot close a newer overlay
-or reuse its operation. This does not forcibly abort an operating-system API.
-The deadline is removed when selection is ready; it does not time out a user's
-selection or review.
-
-The first implementation allows selection within one display. Cross-display
-selection is deferred because mixed scaling, rotation, and coordinate origins
-make it a separate correctness problem.
-
-## Workflow state
-
-The main process owns an explicit state machine:
-
-```text
-idle
--> snapshotting
--> selecting
--> editing
-   |-> writing-clipboard -> result(copied)
-   |-> target-selected
-       -> writing-clipboard
-       -> staging
-       -> result(dispatched-unverified | staged-verified)
--> idle
-
-any active state before clipboard or destination side effects
--> result(cancelled | failed)
--> idle
-```
-
-Permission denial is a bounded `failed` reason (`permission-blocked`), not a
-separate state. This keeps every terminal outcome visible until the matching
-operation explicitly dismisses it.
-
-The main surface also reads one ephemeral Screen Recording readiness snapshot
-through bridge API version 8. Main maps Electron's macOS status to a strict,
-content-free value; Windows, Linux, and other platforms report
-`not-applicable` rather than inheriting a macOS result. The renderer can recheck
-that value but cannot request permission, call Electron, open an arbitrary URL,
-or treat `granted` as capture evidence. The capture backend's checks immediately
-before and after source enumeration remain authoritative.
-
-A second shortcut never starts another active operation. It restores the existing
-ready overlay or main surface; snapshot preparation remains hidden. Cancellation is a
-separate operation-ID-scoped action. Stale renderer events, invalid coordinates,
-dead targets, and invalid transitions never advance the operation.
-
-Successful Copy can be reported only after the clipboard-write phase. Stage
-writes and verifies the image clipboard before invoking one selected adapter
-transaction, so a failed or stale dispatch still leaves the explicit fallback
-available. Cancellation stops once target selection and side effects begin; an
-uncertain dispatch is allowed to finish exactly once and is never retried.
-Although `sent-verified` is part of the durable result vocabulary, the current
-state machine cannot produce it; a future verified Send implementation must add
-its own explicit phase and evidence gate.
-
-## Application recovery
-
-The single-instance lock is acquired before shortcut or workflow initialization.
-A second launch activates only the existing surface. A crashed main renderer can
-be replaced once without resetting the main-owned workflow, copying again,
-replaying Stage, or consuming another Reveal. The old sender loses IPC authority.
-Repeated crashes or a failed replacement stop the app rather than loop.
-Renderer-only note text and a not-yet-staged destination selection are not
-persisted; after a recovery the user must review and choose them again. Capture
-pixels and an in-flight delivery result remain main-owned. Quit suppresses all
-window recovery and disposes the shortcut.
-
-## Workflow diagnostics
-
-`WorkflowDiagnostics` is a main-owned collaborator beside the workflow store.
-The controller reports only an operation's trigger, fixed phase boundaries, a
-sanitized delivery outcome, and a validated Reveal outcome. Aggregation and
-sampling stay inside the diagnostics module; the controller never constructs a
-report or retains diagnostic history.
-
-Durations use an injected monotonic `performance.now()` clock. The snapshot
-contains count, minimum, median, p95, and maximum for button/shortcut to
-selecting, selection to editing, and selection to result. Each timing stream
-retains only its newest 200 finite, nonnegative samples. Finalization is
-operation-bound and idempotent, so a stale or late completion cannot increment
-a second result.
-
-Bridge API version 8 exposes the already-sanitized snapshot through one
-authorized `getDiagnostics` call with no request payload. Preload validates the
-strict versioned schema before returning it. There is no diagnostics renderer,
-disk format, telemetry transport, or durable history in this phase.
-
-The production capture core keeps the lossless `NativeImage` behind a
-main-process capture session. It exposes only bounded JPEG previews, validates
-the operation and display-local selection, maps against the returned image size,
-and encodes PNG only for an explicit clipboard write. `CaptureController` owns
-the workflow, hidden overlay lifecycle, shortcut entry point, display-event
-invalidation, cancellation, and capture-failure recovery. Fast pointer gestures are
-tracked synchronously at the renderer event boundary so selection correctness
-does not depend on a React render occurring between pointer events.
-
-## Destination model
-
-Routing identity and descriptive context are separate:
-
-```ts
-type Destination = {
-  id: string;
-  adapter: string;
-  endpoint: {
-    scope: "local" | "ssh" | "wsl" | "container";
-    instanceId: string;
-  };
-  surface: {
-    kind: "terminal" | "pane" | "agent-thread";
-    locator: string;
-  };
-  context?: {
-    cwd?: string;
-    repoRoot?: string;
-    worktree?: string;
-    revision?: string;
-    observedAt: string;
-  };
-  capabilities: {
-    address: "exact" | "best-effort";
-    imageInput: "clipboard-key" | "local-file" | "remote-file" | "structured" | "none";
-    textInput: "paste" | "structured" | "none";
-    readBack: "structured" | "screen-text" | "none";
-    verification: Array<
-      "target-live" | "composer-ready" | "image-attached" | "turn-completed"
-    >;
-    actions: Array<"copy" | "stage" | "send" | "reveal">;
-  };
-};
-```
-
-The endpoint and surface locator determine where input goes. Working directory,
-repository, worktree, revision, process, and inferred agent type may help the
-user choose, but they never replace an exact routing locator.
-
-Destinations are rediscovered and revalidated immediately before dispatch. An
-adapter must never fall back to the active window, active pane, or similarly
-named target after its selected endpoint disappears.
-
-The main-process destination registry owns an operation-scoped discovery
-snapshot. The renderer can submit only that operation ID, one discovered
-destination ID, and a validated optional note; it cannot provide executable
-paths, mux selectors, or destination objects. The registry consumes the snapshot
-before invoking Stage, so duplicate requests and cross-operation selections fail
-as stale. Malformed results are omitted; duplicate, ambiguous, or aggregate
-over-limit discovery fails the operation closed.
-
-After a destination-bearing Stage result, the registry retains one short-lived
-route lease for that operation. Reveal crosses the bridge with only the current
-operation ID; the controller derives the destination receipt from the current
-result, and the registry resolves the full main-owned route. The lease is
-consumed by the first Reveal attempt and invalidated by result dismissal or a
-new discovery. A result cannot be dismissed while its Reveal transaction is in
-flight.
-
-An endpoint instance ID is generation-scoped. A restarted terminal or mux server
-is a new endpoint even when it reuses the same socket path or numeric pane ID.
-
-## Adapter contract
-
-An adapter has four jobs:
-
-1. discover live destinations;
-2. describe each destination and its evidence;
-3. revalidate the selected routing identity;
-4. perform only an action listed in its capabilities.
-
-The main process invokes one `stageIfCurrent` transaction at most once. The
-compiled adapter must revalidate the complete routing identity immediately next
-to its side effect or return `stale`; this narrows the check/use gap but does not
-make an external CLI transaction atomic. Context labels
-may refresh during that transaction, but the endpoint or surface locator may not
-silently change. An uncertain accepted operation maps to
-`dispatched-unverified` and is never retried automatically.
-
-Reveal is a separate optional adapter transaction. It is offered only for an
-exact destination that declares `reveal` plus `target-live`; it never calls
-Stage and never changes the existing delivery result. The adapter revalidates
-the retained route immediately before activation and returns a separate typed
-outcome: `revealed`, `stale`, `unavailable`, `unsupported`, or `failed`.
-
-The interface expresses this obligation but cannot prove an implementation is
-atomic. Every production adapter therefore needs an interleaving conformance test
-that replaces or restarts the selected target at the final side-effect boundary
-and proves zero bytes reach the replacement.
-
-Adapter implementations must runtime-parse data returned by subprocesses or
-external APIs before it satisfies the trusted internal adapter interface. The
-main process runtime-validates selected destinations, notes, and adapter outcomes
-and fails closed on malformed data. Discovery wiring must likewise parse each
-compiled adapter's returned destinations before presenting them to a user.
-
-Adapters are compiled into ScreenFling initially. A public plugin ABI is deferred
-until several adapters demonstrate which contracts are stable.
-
-Terminal or application automation uses argument-array subprocess APIs, not
-shell-concatenated commands. Notes are data, never code. The first note format is
-at most 500 Unicode code points on one line; Unicode controls and line separators
-are rejected. Destination identifiers reject those characters as well.
-Subprocesses have timeouts, capped output, and explicit error mapping. The
-process deadline includes its pre-spawn guard. Selector reads outside a process
-request have their own three-second deadline. Late inspection results cannot
-resume a timed-out Stage or Reveal. Process and pipe errors after launch remain
-uncertain dispatch evidence, not proof that nothing was sent.
-
-The first WezTerm implementation keeps its executable, config file, and mux
-socket in main-owned adapter configuration. Discovery accepts only the pinned
-stable compatibility fixture, runtime-parses bounded `list --format json`
-output, and mints stable-within-generation routes scoped to a fingerprint of the
-selected executable, config, socket, and version. On macOS, selectors fail
-closed unless their canonical types, owner, access mode, group/other write bits,
-lexical ancestors, canonical ancestors, and private socket parent satisfy the
-adapter policy. The fingerprint includes canonical path, device, inode, mode,
-owner, group, size, and nanosecond timestamps. The same evidence is re-read
-before every version, discovery, and send process is spawned.
-
-Dispatch re-runs that exact discovery, requires the selected pane, checks the
-generation again immediately before spawning, and performs one
-`send-text --no-paste --pane-id` call. The image-paste binding and optional note
-share one stdin payload; neither shell interpolation nor a second partially
-successful note process exists. A timeout or post-spawn failure is reported as
-`dispatched-unverified` and is never retried.
-
-WezTerm Reveal uses the same pinned selectors, fresh pane list, and final
-generation guard, then invokes one explicit
-`activate-pane --pane-id <selected-pane>` process with null stdin. It removes
-inherited `WEZTERM_PANE`, never selects the active pane, never sends image or
-note bytes, and never falls back to Electron window focus. Process success means
-the selected endpoint accepted activation; it does not prove host-window
-foreground or visibility.
-
-WezTerm does not provide atomic compare-and-send. Production Stage and Reveal
-now use a one-command local transport: connect to the validated mux socket,
-revalidate after connecting, then run the unchanged exact-pane CLI through a
-private temporary socket connected only to that established endpoint. Replacing
-the original pathname after authorization cannot retarget the connection. There
-is no reconnect, retry, TCP listener, payload file, or persistent service. The
-transport has a byte cap, shared process deadline, ACL gate, and bounded cleanup.
-See [ADR 0003](adr/0003-pinned-wezterm-transport.md) for the measured failure,
-implementation boundary, native CLI evidence, and remaining limits.
-
-The recorded headless macOS CLI test proves the tested pathname-replacement
-interleaving, not real-agent attachment or visible focus. Installed selector and
-config semantics, GUI-hosted behavior, separate Reveal observations, and agent
-trials remain release-blocking. The adapter never inherits `WEZTERM_PANE`, chooses
-a focused pane, or claims that CLI acceptance proves an agent attachment.
-
-The current product wiring exposes this adapter only through a complete,
-explicit macOS developer environment configuration. Missing or invalid values
-produce an empty registry and preserve Copy. This is an acceptance-test path,
-not a compatibility claim. A bundled, unprivileged ACL inspector rejects all
-extended grants and any ACL-read failure on lexical and canonical selector
-paths. The default deny-only ACL is allowed. The helper has bounded time/output
-and returns only a fixed versioned token. It is built and packaged on macOS only;
-see [ADR 0002](adr/0002-macos-selector-acl.md). Exact installed selector/config
-semantics, visible native trials, and real-agent trials remain release gates.
-
-Surface adapters and managed adapters are separate families. A surface adapter
-can place input into an existing, exact terminal composer. A managed adapter owns
-an agent thread/session and starts work through a structured API, so its action
-is Send. A managed thread ID never substitutes for a terminal pane identity.
-
-## Result semantics
-
-Runtime status must describe evidence, not optimism:
-
-| Result | Meaning |
+| Location | Responsibility |
 | --- | --- |
-| `copied` | The image was written to the local clipboard and pixel read-back was verified. |
-| `dispatched-unverified` | Names the exact selected destination of the single attempted dispatch. Attachment/composer state is unverified; a post-spawn error can leave acceptance uncertain. |
-| `staged-verified` | Names the exact destination whose intended composer and staged attachment or input the adapter verified. |
-| `sent-verified` | Names the exact target to which a versioned adapter submitted and verified the expected completion evidence. |
-| `failed` | The operation did not reach its promised result; the clipboard fallback remains available when possible. |
-| `cancelled` | The user cancelled without destination changes. |
+| [`src/main`](../src/main) | Capture, clipboard, shortcuts, permissions, settings, routing, and process lifetime. |
+| [`src/preload`](../src/preload) | Expose named operations, not raw Electron, filesystem, or shell access. |
+| [`src/renderer/src`](../src/renderer/src) | Selection UI, preview, note, destination choice, and recovery messages. |
+| [`src/shared`](../src/shared) | Runtime schemas, workflow states, and coordinate calculations. |
+| [`tools/acceptance`](../tools/acceptance) | Browser fixtures and separate packaged-app checks. |
+| [`tools/native/selector-acl.c`](../tools/native/selector-acl.c) | Read-only macOS ACL inspection for terminal selectors. |
 
-The UI never describes `dispatched-unverified` as delivered or verified.
-Automatic retries are disabled for uncertain operations because they can create
-duplicate attachments.
+Main and capture renderers have different bridges and authorized senders.
+Handlers validate the current WebContents, frame, document URL, payload, and
+operation/state. A renderer cannot acquire another window's authority by naming
+its IPC channel.
 
-Reveal outcomes are displayed beside the unchanged Stage result. `revealed`
-means only that the exact endpoint accepted the activation request. Stale,
-unavailable, unsupported, and failed Reveal outcomes do not weaken or relabel
-the original Stage evidence.
+Packaged renderers load bundled assets through `screenfling://`, reject
+navigation and unexpected windows, and run with sandboxing and context isolation,
+without Node integration. Packaged builds ignore development-server overrides.
+Both renderers use a cache-disabled, nonpersistent browser session.
 
-`failed/unsupported` is distinct from `failed/dispatch-failed`: unsupported means
-the selected destination's declared capabilities cannot satisfy the requested
-Stage action, so the adapter transaction is not invoked. The same shared
-capability policy controls whether the renderer enables Stage. A Copy-only or
-unavailable destination keeps the explicit Copy path visible. When Stage has
-already written and verified the clipboard, unsupported, stale, failed, and
-unverified results say that the image remains available for manual paste. A
-clipboard verification failure never makes that claim.
+## One capture, one owner
 
-## Platform services
+The [workflow rules](../src/shared/workflow.ts) and
+[capture controller](../src/main/capture-controller.ts) keep side effects in main.
+A main-generated operation ID belongs to one capture. Stale async completions
+cannot advance a newer operation.
 
-Shared product behavior sits above platform-specific services:
+The normal path is snapshot, select, review, then explicit Copy or Stage. The
+backend captures the pointer's display before showing the frozen-image overlay.
+[Coordinate mapping](../src/shared/capture-geometry.ts) uses the actual image to
+display ratio, not an assumed scale factor. Each capture stays on one display.
 
-```text
-Product workflow and UI
-  CaptureBackend
-  ClipboardService
-  GlobalShortcutService
-  PermissionService
-  DestinationAdapter(s)
+Before delivery, the UI must load the crop preview successfully. Copy writes the
+image and verifies it by pixel read-back. Stage first uses that verified clipboard
+image, then attempts terminal input. Cancel before this boundary leaves the
+clipboard and destination unchanged. Once delivery starts, cancellation is not
+offered. A failed write cannot promise that the old clipboard survived.
 
-Platform implementations
-  macOS first
-  Windows second
-  Linux optional
-```
+Startup deadlines, display changes, and sleep/wake stop pre-delivery work.
+Renderer recovery rebuilds presentation from main-owned state; it never replays
+Copy, Stage, or Reveal. A renderer-local note or selection may need to be entered
+again. The single-instance lifecycle prevents a second launch from becoming a
+second shortcut or capture owner.
 
-macOS and Windows can differ internally while satisfying the same observable
-contract. Platform parity is defined by the release acceptance criteria, not by
-using identical APIs.
+## Exact routing, limited proof
 
-Display changes and operating-system suspend/resume events fail any capture that
-has not crossed the destination side-effect boundary. The controller releases
-the retained image, closes the overlay, clears operation-scoped destinations,
-and restores the main surface. A late lifecycle event cannot relabel or retry an
-already-started clipboard or destination transaction.
+A destination is an endpoint generation plus pane identity. Titles and working
+directories are labels for a person, never addresses. Main retains the discovered
+route; the renderer selects its ID rather than supplying a command or replacement
+endpoint.
 
-On macOS, Screen Recording status is interpreted by a pure policy before source
-enumeration and checked again after enumeration or empty-image failure.
-`denied` and `restricted` are blocked; `not-determined`, `granted`, and `unknown`
-still attempt real capture because status alone is not pixel evidence. Other
-platforms do not inherit a fabricated macOS denial. Electron has no
-`askForMediaAccess("screen")` operation, so ScreenFling does not add a fake
-request path or native permission helper. A blocked result closes the prepared
-overlay, releases capture state, restores the main surface, writes nothing to
-the clipboard, and tells the user which System Settings pane and restart are
-required.
+The [WezTerm adapter](../src/main/wezterm-adapter.ts) uses an explicit executable,
+config, and Unix socket. It checks the pinned version, selector ownership,
+permissions and ACLs, live generation, and selected pane. Failure does not fall
+back to the current terminal.
 
-The idle main surface shows the same closed status vocabulary and a manual
-recheck. It does not poll, persist status, open System Settings, or claim that a
-reported grant proves a non-empty capture.
+The CLI receives one combined image-key-and-note payload on stdin, without a
+shell. The image key must be a locally verified, non-submitting binding. Notes
+are single-line input with unsafe controls rejected. The exact schemas and
+limits live in [`domain.ts`](../src/shared/domain.ts) and
+[`wezterm-setup.ts`](../src/shared/wezterm-setup.ts), not a copied type listing here.
+
+A pathname check alone left a race: the CLI could connect after the socket was
+replaced. The [transport](../src/main/wezterm-process.ts) now establishes the
+chosen connection before authorizing dispatch, then exposes it to one CLI client
+through a private temporary Unix socket. It never reconnects to the original
+path. [ADR 0003](adr/0003-pinned-wezterm-transport.md) records the reproduced
+failure, bounded transport, and residual trust limits.
+
+There is no agent attachment acknowledgment in this adapter. The product returns
+`dispatched-unverified`, even when transport succeeds. A post-launch failure is
+also uncertain: input might already have arrived, so there is no automatic retry.
+Reveal is a separate, one-shot request for the retained pane. CLI acceptance does
+not establish OS visibility or foreground focus.
+
+## Why these choices
+
+**Electron rather than a native rewrite.** It already supplies capture, display,
+clipboard, shortcut, and window APIs, while React and TypeScript are shared.
+The cost is package size and runtime memory. Measure those costs; do not add a
+second platform implementation merely to make the stack more impressive.
+
+**Local processing rather than a backend.** There is no product need for an
+account, database, queue, or upload service. The destination agent owns its model
+connection; ScreenFling owns the local handoff.
+
+**One optional integration rather than a plugin framework.** Copy is useful
+without a terminal integration. The existing
+[adapter contract](../src/main/destination-adapter.ts) separates routing from
+capture, but is not a public extension API.
+[ADR 0001](adr/0001-wezterm-first-stage-adapter.md) explains the initial choice.
 
 ## Native-code gate
 
-Do not add Rust, Swift, C++, or another native helper because it may be useful.
-Open a narrow architecture decision only when evidence shows one of these:
+One small C helper fills a measured API gap: Node's file metadata does not expose
+macOS extended ACLs. It checks only selector paths, is unprivileged, and returns
+a fixed success token without paths or ACL text. It is not a capture backend or
+a resident service. [ADR 0002](adr/0002-macos-selector-acl.md) explains the strict
+policy and its usability tradeoff.
 
-- both practical Electron capture paths miss the agreed latency or pixel-quality
-  target;
-- a required operating-system capability has no reliable Electron or Node path;
-- destination automation cannot meet its safety contract without a native API;
-- packaged resource use materially blocks adoption;
-- distribution requirements cannot be met through the existing toolchain.
+## Stored data
 
-Any native helper remains a separate, least-privileged process with a small,
-versioned request/response protocol. Product logic stays in TypeScript.
+Captures and notes live in memory; delivery places the image on the OS clipboard.
+There is no screenshot history or ScreenFling network service. The clipboard and
+the chosen agent are outside this storage guarantee.
 
-## Data and privacy
+Shortcut and WezTerm settings are explicit local preferences. Connection changes
+apply after restart. Private files, bounded reads, and temporary-write/rename
+avoid accepting unsafe preference files or exposing partially written settings.
+Shortcut changes register the candidate before replacing the previous binding.
 
-Captures are in memory and on the clipboard by default. Permanent saving requires
-an explicit user action. Temporary local or remote files are introduced only by
-an adapter that needs them and must have owner-only permissions, bounded lifetime,
-and visible cleanup behavior.
+Diagnostics are bounded in-memory counts and timings. They exclude images,
+notes, terminal output, local paths, operation IDs, and destination identities.
+They disappear at application exit.
 
-There is no hosted ScreenFling service in the core architecture. Diagnostic
-events are local and exclude pixels, notes, clipboard data, file contents,
-terminal contents, credentials, operation IDs, destination identities, paths,
-titles, and raw adapter output. The current aggregate exists only for the life
-of the main process.
+## Verification
 
-## Verification strategy
+Tests target state transitions, IPC validation, pixel geometry, cancellation,
+stale destinations, and native transport races. Browser fixtures test the built
+React UI. Packaged checks test the real application and OS APIs where stated.
+They are not interchangeable evidence.
 
-The project separates these evidence classes:
-
-- unit tests for state transitions, validation, coordinate mapping, and adapter
-  contracts;
-- built-renderer browser fixtures with synthetic bridges (not native capture);
-- integration harnesses for clipboard and destination dispatch;
-- disposable native ACL and Unix-socket fixtures;
-- checksum-pinned headless native WezTerm CLI trials with synthetic receivers;
-- packaged idle-lifecycle smoke checks;
-- packaged-application acceptance runs on native macOS and Windows hosts.
-
-Capture acceptance includes scaled displays, negative display origins, rotation,
-sleep/wake, display reconnect, cancellation, permissions, and repeated-cycle leak
-checks. Routing acceptance includes duplicate labels, stale targets, special note
-characters, permission denial, remapped bindings, no focus theft, and zero
-wrong-target tolerance.
-
-Development-mode success does not qualify a release. Permissions, signing,
-notarization, paths, and desktop identity must be tested in packaged builds.
-The repository's packaged capture runner drives the existing validated overlay
-and main bridges, verifies production workflow results, and emits only sanitized
-timing/window/resource evidence plus the product-owned diagnostics snapshot. It
-deliberately keeps physical pointer input,
-the global shortcut, permission changes, sleep/wake, and display-hardware rows
-outside that automated claim.
-
-The runner bounds overlay creation/readiness, awaits overlay bridge results, and
-treats rejection as failure unless the page has already closed. It also requires
-the overlay page to close after a successful bridge response and explicitly
-closes any page retained by a readiness or action failure. The packaged process
-remains the final cleanup boundary, so an unattended validation result cannot
-depend on an operator pressing Escape.
-
-The [macOS operator acceptance protocol](acceptance/macos-operator-acceptance.md)
-is canonical for evidence the repository cannot observe directly. It keeps unit,
-packaged-runner, physical-shortcut, physical-pointer, and human-observed claims
-separate; an operator intervention invalidates an unattended result rather than
-repairing it into a pass.
-
-## Type-safety and lint policy
-
-The application scaffold will use strict TypeScript and Oxlint. It will vendor
-the generic anti-slop plugin under `tools/oxlint/anti-slop/` and enable its full
-generic rule set at error severity. This is intended to prevent assertion chains,
-unknown-heavy owner contracts, unsafe dictionary shapes, runtime type guessing,
-module mocking, and similar patterns that weaken architectural boundaries.
-
-The plugin must be installed through the repository's chosen package manager in
-the same change that creates the JavaScript package and lockfile. Pin compatible
-current versions of `oxlint` and `@oxlint/plugins`; do not create a package or
-select a package manager solely to install lint tooling before the application
-scaffold exists.
-
-Generated agent configuration and the vendored plugin source are excluded from
-application linting. Owned source is not ignored or weakened to make checks pass.
-Effect-specific rules remain disabled unless Effect becomes a direct dependency
-or the project makes a separate explicit decision to adopt them.
-
-## Distribution direction
-
-electron-vite is the initial development and build tool, paired with
-electron-builder for packaged applications. This uses the current stable,
-mutually compatible releases rather than Forge 7's advisory-bearing build graph
-or the pre-release Forge 8 line. The decision and reproduced audit evidence are
-recorded in the [build-toolchain report](../research/forge-version-decision.md).
-CI runs shared checks on every change and native packaging checks on macOS and
-Windows.
-
-Release artifacts must eventually be signed, with macOS notarization and Windows
-code signing treated as product work rather than release-day cleanup.
-
-## Deferred decisions
-
-The following remain intentionally undecided until product evidence exists:
-
-- the public adapter/plugin API;
-- update-channel and auto-update policy;
-- additional Windows-native or cooperative destination adapters;
-- browser integration architecture;
-- remote file-transfer and cleanup protocol;
-- history persistence format;
-- any Linux support tier;
-- any native helper language.
+[Testing](testing.md) owns commands and recorded evidence;
+[the operator checklist](acceptance/macos-operator-acceptance.md) owns physical
+checks. [The roadmap](../ROADMAP.md) owns remaining work. Historical experiments
+are linked there and in the test guide, not maintained as parallel specifications.

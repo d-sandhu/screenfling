@@ -1,335 +1,201 @@
-# macOS operator acceptance protocol
+# macOS release checklist
 
-Protocol: `screenfling-macos-operator-acceptance/v1`
+Protocol: `screenfling-macos-operator-acceptance/v2`
 
-This is the canonical procedure for the native macOS evidence that repository
-tests and the packaged runner cannot produce. It records one exact ScreenFling,
-macOS, display, WezTerm, and agent tuple at a time. Completing this document does
-not itself pass Gate A, Gate B, or the macOS alpha milestone; only direct evidence
-for each applicable row does.
+Use this checklist before claiming support for a specific Mac, display setup,
+terminal, and agent. It covers observations that automated tests cannot replace.
+The [test guide](../testing.md) owns commands and measurement definitions;
+[issue #32](https://github.com/d-sandhu/screenfling/issues/32) tracks completion.
+Existing row IDs are retained so older reports remain traceable.
 
-Do not use this protocol with private screenshots, source code, credentials,
-terminal transcripts, real agent conversations, or a production workspace. Raw
-screenshots and recordings stay outside the repository. Commit only a redacted
-report containing public versions, hashes, dimensions, counts, categories, and
-factual observations.
+## Before starting
 
-## Evidence rules
+Use only synthetic images and notes in disposable destinations. Get the
+operator's agreement before changing permissions, shortcuts, displays, or agent
+bindings, and restore those settings afterward. Quit other ScreenFling builds.
+Do not use a production workspace or publish local paths, screenshots, terminal
+transcripts, credentials, or real conversations.
 
-Use only these row statuses:
+Record the source commit, package SHA-256, application version and bundle ID,
+signing state, Electron version, macOS version/build, CPU architecture, keyboard
+layout, and each display's scale, bounds, and rotation. For routing tests, also
+record the WezTerm and agent versions, configuration hash, and image binding.
+Stop if the artifact or configuration changes during the test.
 
-| Status | Meaning |
+Use a known visual fixture for crop checks. Prepare two disposable agent panes
+with the same title and working directory but different pane IDs. Keep an
+unrelated application available to check focus behavior.
+
+## Recording results
+
+Every row needs a status and evidence class. Statuses are `passed`, `failed`,
+`unavailable`, `not-run`, `discarded`, `open-native`, or `dispatched-unverified`.
+Evidence classes are `unit`, `browser-fixture`, `packaged-runner`,
+`human-shortcut`, `human-pointer`, or `human-observed`.
+
+A missing monitor or policy state is `unavailable`, not a pass. No attempt is
+`not-run`. Manual rescue, harness contamination, or uncertain cleanup invalidates
+an unattended run. Keep failures and slow samples. An independent review of the
+redacted results is required before using them as release acceptance.
+
+Permission status does not prove captured pixels. Shortcut registration does not
+prove physical delivery. Terminal write success does not prove image attachment
+or foreground visibility. Ad-hoc signing does not prove notarization. Keep these
+observations separate, including when several appear in the same CI job.
+
+## Build and automated checks
+
+Confirm the package matches the recorded source and identity
+(`com.dsandhu.screenfling`), contains `Contents/Resources/app.asar`, and passes the
+relevant [code, built-UI, and packaged checks](../testing.md). Record signing and
+notarization separately. `npm run check:all` runs code checks and packaging, not
+all native acceptance rows.
+
+Package once and identify that artifact before measurements. Running
+`acceptance:capture:package` rebuilds it; use `acceptance:capture` to measure an
+existing package. Automated capture replaces the clipboard and needs existing
+Screen Recording permission. Do not touch the pointer or keyboard during it.
+
+| Row | Required result |
 | --- | --- |
-| `passed` | The exact required observation was made on the recorded tuple. |
-| `failed` | The row ran and contradicted its pass condition. |
-| `unavailable` | The host cannot provide the required state or hardware. |
-| `not-run` | No valid attempt was made. |
-| `discarded` | Intervention, harness failure, or uncertain cleanup invalidated the attempt. |
-| `open-native` | The row has repository support but still lacks direct native evidence. |
-| `dispatched-unverified` | Exact dispatch was observed, but image attachment could not be verified authoritatively. |
+| `A.capture.soak-complete` | 200 completed Copy workflows and 200 cancellations on the recorded package, clean cleanup, and no monotonic window, listener, or working-set growth. Supply evidence for each metric; the runner cannot prove metrics it does not expose. Native image-allocation stability needs separate evidence. |
 
-Every row also names one evidence class: `unit`, `browser-fixture`, `packaged-runner`,
-`human-shortcut`, `human-pointer`, or `human-observed`. Never merge different
-classes into one pass. In particular:
+The default runner's 20 completed captures do not satisfy that soak. Browser
+fixtures and scripted native capture are useful checks, not physical input.
+Packaged lifecycle can exercise scripted capture/Stage/Reveal when its explicit
+capture option and fixture are supplied; a byte receiver is still not an agent.
 
-- an Electron permission status does not prove pixels were returned;
-- shortcut registration does not prove physical delivery;
-- the packaged runner's button and bridge-driven selection do not prove a real
-  shortcut or physical drag;
-- a WezTerm CLI success does not prove visible focus or agent attachment;
-- a fake receiver does not prove a real agent composer accepted an image;
-- an ad-hoc package does not prove signing or notarization.
+## Screen Recording
 
-If ScreenFling behaves unexpectedly, stop the row. Do not keep clicking or
-dragging in an attempt to rescue evidence.
+Change only the recorded application's Screen Recording entry. Fully quit and
+reopen it after grant, denial, or revocation. Record the observed permission
+status, capture outcome, clipboard change, overlay cleanup, main-window state,
+and restart boundary for each row.
 
-## Stage 0 — authorize and record the tuple
-
-Before changing permissions, shortcuts, displays, or destination fixtures,
-confirm:
-
-> I authorize this acceptance session, will use only synthetic content, and will
-> restore every changed host setting when the session ends.
-
-Record:
-
-- commit SHA and, for a file artifact, package SHA-256;
-- product name, version, bundle identifier, package type, and signing state;
-- macOS version/build, architecture, keyboard layout, and display topology;
-- Electron version;
-- when Gate B is in scope, the exact WezTerm version, config hash, adapter
-  availability, agent product/version, and image binding description;
-- the initial Screen Recording, shortcut, display, clipboard-sentinel, and
-  destination-fixture states as categories, never contents or local paths.
-
-Use a fixed public or locally generated visual fixture and a harmless synthetic
-note containing quotes, backslashes, Unicode, and a key-like word. Prepare two
-disposable test destinations with deliberately duplicated titles and working
-directories but distinct exact pane identities. Quit every other ScreenFling
-build so the package identity and permission row are not ambiguous.
-
-Stop if the package tuple differs from the tuple recorded in the report.
-
-## Stage 1 — static package preflight
-
-Confirm that this is the Stage 0 artifact, then run the repository's headless
-gate and package inspection. Static success is preflight, not native evidence.
-
-Required observations:
-
-- `Info.plist` name, version, and `com.dsandhu.screenfling` identifier match;
-- `Contents/Resources/app.asar` exists;
-- signing and notarization are recorded separately as `adhoc`, `signed`,
-  `notarized`, or `unknown`;
-- `npm run check:all` passes for the exact commit.
-
-Do not run `npm start`, `acceptance:capture`, or any GUI command as part of this
-static stage.
-
-## Stage 2 — unattended packaged runner
-
-The packaged runner is a separate evidence class. Confirm that no one will
-touch the keyboard or pointer while it runs, then invoke the documented default:
-
-```bash
-npm run acceptance:capture:package
-```
-
-It performs its own bridge-driven selection; the operator must not drag, click,
-or press Escape. Preserve only the sanitized JSON report. Record its exact
-capture/cancel counts, timing summaries, diagnostics, cleanup result, and stated
-limitations.
-
-The documented default is 20 completed captures and 200 cancellations. It does
-not close the separate 200-complete-workflow soak. For that row, first use the
-same packaged artifact, then run the existing CLI with explicit counts:
-
-```bash
-npm run acceptance:capture -- --capture-runs=200 --cancel-runs=200
-```
-
-Record `A.capture.soak-complete` separately from the default result and require
-200 completed captures, 200 cancellations, clean cleanup, and no monotonic
-window, listener, or working-set growth before it can pass. Resource samples
-support only the metrics they actually expose; they do not prove native image
-allocation release.
-
-If an overlay remains or the runner fails, let its bounded cleanup terminate the
-application. Any manual intervention makes the attempt `discarded`. Do not call
-its button timing a physical-shortcut measurement or its bridge selection a
-physical-drag measurement.
-
-### Non-capture automated checks
-
-Separately run the built-renderer fixtures and packaged lifecycle smoke from
-[Contributing](../../CONTRIBUTING.md#browser-fixtures-and-packaged-lifecycle-smoke).
-Browser fixtures use synthetic bridges; packaged lifecycle checks the real idle
-app, duplicate launch, one renderer crash, window reopen, and shipped ACL helper.
-Neither is a capture, physical-input, permission, focus, or agent acceptance pass.
-The v1 protocol's earlier rows do not inherit these new observations or transfer
-a historical pass to a different artifact.
-
-## Stage 3 — Screen Recording matrix
-
-Confirm before every permission change:
-
-> I am changing Screen Recording for the exact packaged identity and will restore
-> its original state.
-
-Use System Settings → Privacy & Security → Screen & System Audio Recording.
-Fully quit and relaunch ScreenFling after a grant, denial, or revocation before
-recording the next row.
-
-| Row | Required action and observation | Pass condition |
-| --- | --- | --- |
-| `A.permission.not-determined` | Run only when the exact package has no prior decision; relaunch and attempt one real capture. | Record the prompt or failure, capture outcome, clipboard state, overlay cleanup, main state, and restart boundary without inferring a grant. Otherwise `unavailable`. |
-| `A.permission.denied` | Disable the exact package, relaunch, check the readiness readout, and attempt one real capture. | Actionable guidance; no clipboard mutation; no retained overlay; main surface recovers. |
-| `A.permission.granted` | Enable the exact package, relaunch, and physically capture the synthetic fixture. | A non-empty, correctly dimensioned result reaches the verified clipboard path. The readout alone is insufficient. |
-| `A.permission.revoked` | Revoke the previously granted package, relaunch, and attempt capture. | The next capture fails safely with the same cleanup guarantees as denial. |
-| `A.permission.restricted` | Run only if managed host policy can produce the state. | Restricted guidance and safe cleanup; otherwise `unavailable`. |
-| `A.permission.unknown` | Run only if Electron returns `unknown`; attempt one real capture. | Record the same structured observations without relabelling the status. Otherwise `unavailable`. |
-
-Restore the Stage 0 permission state before continuing. If restoration fails,
-stop the session and mark cleanup failed.
-
-## Stage 4 — physical shortcut and capture matrix
-
-Confirm the previous shortcut and display configuration are recorded and
-reversible.
-
-| Row | Required direct observation |
+| Row | Required result |
 | --- | --- |
-| `A.shortcut.delivery` | With another harmless app frontmost, press the configured shortcut physically and observe exactly one operation. |
-| `A.shortcut.latency` | On the recorded reference host, collect at least 20 valid warm physical shortcut-to-interactive-overlay samples and report nearest-rank p95. Pass at ≤150 ms; otherwise record the profiling evidence and credible path separately without claiming the target passed. |
-| `A.shortcut.persistence` | Quit/relaunch and repeat physical delivery with the saved shortcut. |
-| `A.shortcut.conflict` | Create one harmless reversible conflict; the candidate is rejected and the previous binding remains usable. Restore the conflict owner. |
-| `A.capture.single-display` | Perform center and edge drags on a known fixture; crop edges are correct within one physical pixel and the overlay is absent from the result. |
-| `A.capture.selection-timing` | On the recorded reference host, collect at least 20 valid warm physical selection-release-to-verified-clipboard samples separately from runner timing and report nearest-rank p95. Pass at ≤150 ms. |
-| `A.capture.cancel-clipboard` | Place a non-sensitive image sentinel on the clipboard, cancel before side effects, and verify the same sentinel remains through a disposable image consumer. Record only unchanged/changed. |
-| `A.display.mixed-scale` | Use two displays with different scale factors; the pointer-selected display and crop are correct. |
-| `A.display.negative-origin` | Place a display left of or above the primary; the selected display and crop remain correct. |
-| `A.display.rotation` | On an available rotated display, orientation and crop are correct. Otherwise `unavailable`. |
-| `A.display.reconnect` | Change or reconnect a display during a pre-side-effect capture; it fails closed, leaves no stale overlay/write, and a fresh capture works after settling. |
-| `A.lifecycle.sleep-wake` | Sleep/wake during snapshotting or selection; observe safe termination, no stale overlay or clipboard mutation, then a clean fresh workflow. |
-| `A.lifecycle.second-instance` | Launch the exact app again during review and selection; it restores only the existing surface and creates no new capture, write, or shortcut owner. |
-| `A.lifecycle.renderer-recovery` | In a controlled synthetic session, crash the main renderer during review and an in-flight Stage. The main-owned operation/result survives, no delivery replays, and the old renderer cannot act. Re-enter renderer-only note/selection before a new Stage. |
+| `A.permission.not-determined` | With no previous decision for this package, attempt one capture and record the prompt or failure without inferring a grant. Otherwise mark unavailable. |
+| `A.permission.denied` | Disable permission and restart. Capture gives useful guidance, leaves the clipboard unchanged, closes overlays, and recovers the main window. |
+| `A.permission.granted` | Enable permission and restart. A physical capture returns a non-empty crop with correct dimensions through the verified clipboard path. |
+| `A.permission.revoked` | Revoke a previous grant and restart. The next capture fails safely with the denial cleanup guarantees. |
+| `A.permission.restricted` | On a host that can produce this policy state, check guidance and safe cleanup. Otherwise mark unavailable. |
+| `A.permission.unknown` | Run only when Electron actually reports unknown. Record the outcome without renaming the state. Otherwise mark unavailable. |
 
-The selection-release-to-clipboard row predates explicit review. Keep it open
-rather than skipping user review to meet a stopwatch target. Report physical
-release-to-review, human dwell, and explicit Copy-to-verified-clipboard separately
-until the reviewed acceptance definition resolves this boundary. A scripted
-bridge-to-clipboard sample is not physical-selection evidence.
+## Capture, displays, and recovery
 
-Record the exact topology for each display row. Synthetic geometry tests or a
-different monitor cannot substitute for unavailable hardware.
-
-## Stage 5 — exact Stage and Reveal matrix
-
-Confirm that two disposable WezTerm destinations and one unrelated frontmost
-application are ready. Use exact pane identity. Do not use a focused-pane,
-active-pane, title, working-directory, or most-recent fallback.
-
-| Row | Required direct observation |
+| Row | Required result |
 | --- | --- |
-| `B.stage.no-focus` | Stage to the explicitly selected pane while another app is frontmost; the unselected pane and terminal focus do not change, and nothing submits. |
-| `B.stage.duplicate-metadata` | Alternate exact routes between the two panes that share a title and working directory; metadata never changes routing identity. |
-| `B.stage.literal-input` | Stage the synthetic quotes, backslashes, Unicode, and key-like word note; it remains literal and appears once without submission. |
-| `B.stage.control-input` | Attempt notes containing newlines and representative control characters through the normal product boundary; each is rejected or normalized exactly as documented, with no unsafe dispatch or submission. |
-| `B.stage.endpoint-replacement` | Replace/restart the selected endpoint before dispatch; ScreenFling refuses the stale route and sends zero bytes to the replacement. |
-| `B.selector.acl` | Record the actual selector policy, including the bundled helper and extended ACL inspection. An allow grant or inspection error must expose no route; use disposable fixtures, never modify real selectors merely to force a test. Native CI fixtures are supporting evidence, not approval of the installed tuple. |
-| `B.selector.config-semantics` | Confirm the exact config and socket tuple used by discovery and dispatch; no implicit/default config participates. |
-| `B.reveal.foreground` | Invoke Reveal separately across visible, minimized, hidden, and other-app-frontmost states. Record CLI/result acceptance separately from observed OS visibility/frontmost behavior. |
-| `B.stage.fallback` | Make the CLI/route unavailable; no retry or GUI fallback occurs and Copy remains usable. |
+| `A.shortcut.delivery` | A physical shortcut from another application starts exactly one capture. |
+| `A.shortcut.latency` | At least 20 warm physical shortcut-to-interactive-overlay samples; nearest-rank p95 at or below 150 ms. Keep raw samples and any miss. |
+| `A.shortcut.persistence` | After quit/relaunch, the saved shortcut still starts capture. |
+| `A.shortcut.conflict` | A harmless, reversible conflict rejects the proposed binding and leaves the previous one usable. Restore the other shortcut owner. |
+| `A.capture.single-display` | Physical center and edge drags crop the known fixture within one physical pixel. The overlay does not appear in the crop. |
+| `A.capture.selection-timing` | At least 20 warm physical selections; combined release-to-visible-review and explicit-Copy-to-verified-clipboard software time has nearest-rank p95 at or below 150 ms. Retain each component, review dwell, and total elapsed time. |
+| `A.capture.cancel-clipboard` | Cancel before side effects. A non-sensitive image sentinel on the clipboard remains unchanged when checked in a disposable image consumer. |
+| `A.display.mixed-scale` | With two different display scales, the pointer-selected display and crop are correct. |
+| `A.display.negative-origin` | A display placed left of or above the primary still produces the correct crop. |
+| `A.display.rotation` | Crop orientation and bounds are correct on a rotated display; otherwise mark unavailable. |
+| `A.display.reconnect` | Disconnect or change a display before a side effect. Capture stops safely with no stale overlay or write; a fresh capture then works. |
+| `A.lifecycle.sleep-wake` | Sleep/wake during snapshotting or selection ends the old workflow safely, with no stale overlay or clipboard mutation; a fresh capture works. |
+| `A.lifecycle.second-instance` | Launch the same app during selection and review. It restores the existing surface without another capture, write, or shortcut owner. |
+| `A.lifecycle.renderer-recovery` | In a controlled synthetic session, crash the renderer during review and in-flight Stage. Main-owned state survives without replay; the old renderer cannot act. Re-enter renderer-only fields when needed. |
 
-Any unexpected focus change, Enter/submission, wrong-target write, fallback, or
-retry is an immediate `failed` row and stop condition.
+The v2 selection-timing row applies the
+[reviewed timing decision](https://github.com/d-sandhu/screenfling/issues/32#issuecomment-5668974223).
+It measures software separately from the human review dwell; it does not remove
+review or convert old failed samples into passes. Scripted selection is not
+physical-selection evidence. Record unavailable hardware rather than substituting
+synthetic geometry tests.
 
-## Stage 6 — real-agent trials and product value
+## Exact Stage and separate Reveal
 
-Confirm for each agent tuple:
+Use explicit pane IDs, never title, working directory, active-pane, or
+most-recent fallbacks. Observe the selected and unselected destinations.
 
-> Both idle composers, the agent version, image binding, WezTerm version, and
-> synthetic fixture are exactly the tuple under test.
+| Row | Required result |
+| --- | --- |
+| `B.stage.no-focus` | Stage to the selected pane while an unrelated application is frontmost. Neither terminal focus nor the unselected pane changes; nothing submits. |
+| `B.stage.duplicate-metadata` | Alternate between panes sharing a title and working directory. Only the explicitly selected pane receives input. |
+| `B.stage.literal-input` | Quotes, backslashes, Unicode, and key-like words appear once as literal note text, without submission. |
+| `B.stage.control-input` | Newlines and representative control characters are rejected at the normal product boundary, with no unsafe dispatch or submission. |
+| `B.stage.endpoint-replacement` | Restart or replace the selected endpoint before dispatch. The stale route is refused and the replacement receives zero bytes. Keep final-boundary native race tests as separate supporting evidence. |
+| `B.selector.acl` | Record the installed selector/configuration policy. Extended allow grants and inspection failures expose no route. Use disposable fixtures; do not weaken real path permissions. |
+| `B.selector.config-semantics` | Discovery and dispatch use the exact configuration and socket, not an implicit default. |
+| `B.reveal.foreground` | Invoke Reveal separately with the terminal visible, minimized, hidden, and behind another app. Record CLI acceptance separately from actual visibility and focus. |
+| `B.stage.fallback` | An unavailable route does not cause a retry or GUI fallback. Manual image paste remains available only after a verified clipboard copy. |
 
-Run at least 30 alternating Stage trials across the two disposable agent panes.
-For every trial, record only booleans/counts for:
+Stop immediately on a wrong-target write, unintended submission, unexpected
+Stage focus change, retry, or unrequested fallback. Mark the row failed.
 
-- selected composer showed exactly one image indicator;
-- literal synthetic note appeared once;
-- selected composer remained idle with no submitted turn;
-- unselected composer received no image, note, or submission;
-- clipboard fallback remained available;
-- wrong-target count and submission count.
+## Real agents and daily usefulness
 
-If image attachment cannot be observed or authoritatively read back, record
-`dispatched-unverified`; do not upgrade it to verified Stage or `passed`. Run remapped and
-unbound binding cases separately and preserve Copy rather than guessing a key or
-retrying.
+For **each proposed agent/version/binding combination**, complete at least
+30 alternating Stage trials across two idle disposable composers. Each trial
+must show exactly one added image and one literal note in the selected composer,
+no submitted turn, no change to the unselected composer, and an available
+clipboard fallback. Record counts, including wrong-target writes and submissions.
 
-Separately record the elapsed time and success/failure count for at least five
-complete ScreenFling workflows and five screenshot-plus-manual-paste workflows
-using the same synthetic task. This is local comparative evidence, not a general
-productivity claim.
+When attachment cannot be directly observed or authoritatively read back, record
+`dispatched-unverified`, not passed attachment acceptance. Even a passing human
+observation does not change the application's unverified delivery label. Check
+remapped and unbound bindings separately; do not guess a key or retry input.
 
-## Stage 7 — cleanup and emergency recovery
+Compare at least five complete ScreenFling workflows with five manual
+screenshot/paste workflows using the same task. Record elapsed time and failures,
+not a general productivity claim. Then repeat normal use across several working
+days and record the friction that remains. A demo should show actual capture and
+handoff; a rendered UI fixture must be labelled as such.
 
-After every row, prefer its prescribed Cancel or Done path. If an overlay is
-waiting for physical selection, press Escape once and wait for the normal
-bounded recovery. If it remains:
+## Cleanup and report
 
-1. stop the row;
-2. press Escape once more only as an emergency cleanup attempt;
-3. record an incident and mark the row `discarded`;
-4. use normal application quit next; Force Quit is the last resort and never a
-   passing result.
+Use normal Cancel or Done after each row, then quit at the end. For a stuck
+overlay, press Escape once and allow bounded recovery. If it remains, stop the
+row; a second Escape is emergency cleanup and makes the attempt discarded.
+Normal quit comes next; Force Quit is a last resort, not a passing result.
 
-Do not continue dragging or clicking a stuck overlay. At session end, confirm:
+Confirm no overlay, process, or registered shortcut remains. Restore changed
+permissions, display layout, shortcut, clipboard sentinel, and agent binding.
+Close disposable agents and remove only this session's fixtures. Uncertain
+cleanup makes the affected row failed or discarded.
 
-- ScreenFling exited and no overlay remains;
-- its shortcut is no longer active after quit;
-- permission, shortcut, display, clipboard sentinel, and agent binding are
-  restored or explicitly reported otherwise;
-- disposable panes, agents, sockets, and configs are closed or removed;
-- no private artifact is staged for commit.
-
-Any uncertain cleanup changes the affected row to `failed` or `discarded`.
-
-## Redacted report template
-
-Copy this section to a dated file outside the repository while running the
-session. After review and redaction, a summary may be committed under
-`research/acceptance/`.
+Keep raw working notes outside the repository. After redaction, put the summary
+in the relevant issue or PR rather than adding another phase report. Use one
+entry per row:
 
 ```yaml
-protocol: screenfling-macos-operator-acceptance/v1
-run:
-  startedAtUtc: YYYY-MM-DDThh:mm:ssZ
-  endedAtUtc: YYYY-MM-DDThh:mm:ssZ
-  operatorConfirmed: false
-  independentReviewer: pending
+protocol: screenfling-macos-operator-acceptance/v2
 artifact:
-  commit: 40-hex-sha
-  packageSha256: sha256|not-applicable-directory
-  product: ScreenFling
-  version: 0.0.0
+  commit: <40-character source SHA>
+  packageSha256: <SHA-256, or not-applicable-directory>
+  version: <observed application version>
   bundleIdentifier: com.dsandhu.screenfling
-  packageType: directory|zip|dmg
-  signing: adhoc|signed|notarized|unknown
-  electronVersion: version
+  signing: <adhoc, signed, notarized, or unknown>
+  electronVersion: <version>
 host:
-  os: macOS
-  osVersion: version
-  architecture: arm64|x64
-  keyboardLayout: public-name|unknown
-  displayTopology: single|mixed-scale|negative-origin|rotated|other
+  macOS: <version and build>
+  architecture: <arm64 or x64>
+  keyboardLayout: <public name>
+  displays: <dimensions, scale, bounds, rotation>
 destination:
-  adapter: wezterm|not-run
-  weztermVersion: version|not-run
-  configSha256: sha256|not-run
-  agent: product-and-version|not-run
+  weztermVersion: <version or not-run>
+  configSha256: <hash or not-run>
+  agentAndBinding: <product, version, binding or not-run>
 rows:
   - id: A.permission.denied
-    status: open-native
+    status: not-run
     evidenceClass: human-observed
     sampleCount: 0
     observation: pending
-    observedPermissionStatus: not-applicable
-    captureOutcome: not-applicable
-    clipboardChanged: not-applicable
-    overlayClosed: not-applicable
-    mainIdle: not-applicable
-    restartPerformed: not-applicable
     cleanup: not-run
-    supportedClaim: none
 incidents: []
-restoration:
-  permission: not-changed|restored|not-restored
-  shortcut: not-changed|restored|not-restored
-  display: not-changed|restored|not-restored
-  clipboard: not-changed|restored|not-restored
-  destinationFixtures: not-started|stopped|not-stopped
-review:
-  redactionPassed: false
-  rowClaimsNoBroaderThanObservations: false
-  noPrivateArtifactsCommitted: false
+restoration: pending
+redactionReviewed: false
+independentReview: pending
 ```
 
-For each applicable row above, add one `rows` entry. The observation is a short
-fact, not a conclusion or raw log. A `passed` row requires clean cleanup and an
-independent review. Missing hardware is `unavailable`; no attempt is `not-run`;
-operator rescue or harness contamination is `discarded`.
-
-## Sources
-
-- [Roadmap Gate A and Gate B](../../ROADMAP.md)
-- [Architecture verification strategy](../ARCHITECTURE.md#verification-strategy)
-- [Hardened packaged runner result](../../research/phase-18-packaged-capture-results.md)
-- [Historical, superseded provisional runner evidence](../../research/phase-8-capture-lifecycle-results.md)
-- [Electron `systemPreferences`](https://www.electronjs.org/docs/latest/api/system-preferences)
-- [Electron `globalShortcut`](https://www.electronjs.org/docs/latest/api/global-shortcut)
-- [Electron `powerMonitor`](https://www.electronjs.org/docs/latest/api/power-monitor)
-- [Electron `screen`](https://www.electronjs.org/docs/latest/api/screen)
-- [Apple Screen Recording settings](https://support.apple.com/guide/mac-help/allow-apps-to-use-screen-and-audio-recording-mchl592e5686/mac)
-- [WezTerm CLI targeting](https://wezterm.org/cli/cli/index.html)
-- [WezTerm `send-text`](https://wezterm.org/cli/cli/send-text.html)
-- [WezTerm `activate-pane`](https://wezterm.org/cli/cli/activate-pane.html)
+Record start/end times and operator consent with the report. Add the detailed
+permission outcomes and raw numeric timing/resource samples where applicable.
+No unchecked row becomes a pass. The
+[original v1 protocol](https://github.com/d-sandhu/screenfling/blob/b7e321217faf94ee2016217405f3c39e1e872cb6/docs/acceptance/macos-operator-acceptance.md)
+and [historical results](../testing.md#recorded-evidence-not-a-rolling-scorecard)
+remain available for comparison.
