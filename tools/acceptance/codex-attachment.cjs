@@ -127,6 +127,7 @@ async function main() {
   const socket = path.join(directory, "mux");
   const config = path.join(directory, "wezterm.lua");
   const agents = [];
+  let parentPane;
   let browser;
   const cliRun = async (args) => execute(cli, ["--config-file", config, "cli", "--no-auto-start", ...args], {
     env: { ...env, WEZTERM_UNIX_SOCKET: socket }, timeout: 5_000, maxBuffer: 1024 * 1024,
@@ -139,6 +140,14 @@ async function main() {
     await writeFile(config, `return { automatically_reload_config = false, unix_domains = {{ name = "synthetic", socket_path = ${JSON.stringify(socket)} }} }`, { mode: 0o600 });
     launch(mux, ["--config-file", config, "--", "/bin/cat"], { ...env, WEZTERM_UNIX_SOCKET: socket });
     await waitUntil(() => existsSync(socket));
+    await waitUntil(async () => {
+      const panes = z.array(z.object({ pane_id: z.number().int().nonnegative().safe() }))
+        .parse(JSON.parse((await cliRun(["list", "--format", "json"])).stdout));
+      if (panes.length === 0) return false;
+      assert.equal(panes.length, 1);
+      parentPane = String(panes[0].pane_id);
+      return true;
+    });
     for (let index = 0; index < 2; index += 1) {
       checkpoint = `agent-${index}-startup`;
       const home = path.join(directory, `agent-${index}`);
@@ -165,12 +174,14 @@ wire_api = "responses"
 [projects.${JSON.stringify(home)}]
 trust_level = "trusted"
 `, { mode: 0o600 });
-      const spawned = await cliRun(["spawn", "--cwd", home, "--", "/usr/bin/env", "-i",
+      checkpoint = `agent-${index}-spawn`;
+      const spawned = await cliRun(["spawn", "--pane-id", parentPane, "--cwd", home, "--", "/usr/bin/env", "-i",
         `HOME=${home}`, `CODEX_HOME=${home}`, `TMPDIR=${temp}`, "PATH=/usr/bin:/bin", "LANG=en_US.UTF-8", "TERM=xterm-256color",
         "/usr/bin/sandbox-exec", "-p", NETWORK_DENIED, codex, "--no-alt-screen"]);
       const id = spawned.stdout.trim();
       assert.match(id, /^\d+$/u);
       agents.push({ id, home, temp, count: 0 });
+      checkpoint = `agent-${index}-composer`;
       await waitUntil(async () => {
         const text = await paneText(id);
         startup.modelVisible = text.includes("gpt-5.4");
