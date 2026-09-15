@@ -440,6 +440,20 @@ function copySoftwareTiming(timings) {
   };
 }
 
+// Functional failures still throw before this verdict. Shared-host timing may
+// be observed explicitly; a miss remains failed evidence and strict is default.
+function captureTimingResult(observedMs, observationOnly = false) {
+  if (observedMs !== null && (!Number.isFinite(observedMs) || observedMs < 0)) {
+    throw new Error("invalid-acceptance-timing");
+  }
+  const passed = observedMs === null ? null : observedMs <= SELECTION_COMPLETION_P95_TARGET_MS;
+  return {
+    status: passed === false ? "failed" : "passed",
+    exitCode: passed === false && !observationOnly ? 1 : 0,
+    gate: { targetMs: SELECTION_COMPLETION_P95_TARGET_MS, observedMs, passed, enforced: !observationOnly },
+  };
+}
+
 async function runCapture(mainWindow, context) {
   const {
     operationId,
@@ -668,11 +682,11 @@ async function main() {
     const clipboardSummary = captureRuns === 0 ? null : summarize(clipboardTimes);
     const softwareSamples = captureSamples.map((sample) => sample.softwareTiming);
     const softwareSummary = captureRuns === 0 ? null : summarize(softwareSamples.map((sample) => sample.softwareProcessingMs));
-    const clipboardP95Passed =
-      softwareSummary === null || softwareSummary.p95 <= SELECTION_COMPLETION_P95_TARGET_MS;
+    const timing = captureTimingResult(softwareSummary?.p95 ?? null, process.argv.includes("--observe-timing"));
     const report = {
       acceptance: "production-capture",
-      status: clipboardP95Passed ? "passed" : "failed",
+      status: timing.status,
+      functionalStatus: "passed",
       host: {
         platform: os.platform(),
         arch: os.arch(),
@@ -708,11 +722,7 @@ async function main() {
       // not processing. Retain every raw component and the old elapsed metric.
       softwareTimingSamplesMs: softwareSamples,
       gateChecks: {
-        reviewAndExplicitCopyProcessingP95: {
-          targetMs: SELECTION_COMPLETION_P95_TARGET_MS,
-          observedMs: softwareSummary?.p95 ?? null,
-          passed: softwareSummary === null ? null : clipboardP95Passed,
-        },
+        reviewAndExplicitCopyProcessingP95: timing.gate,
       },
       cancelSoak: {
         resultVerifiedEveryCycle: cancelRuns === 0 ? null : true,
@@ -743,7 +753,10 @@ async function main() {
       ],
     };
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-    if (report.status !== "passed") process.exitCode = 1;
+    if (timing.gate.passed === false && !timing.gate.enforced) {
+      process.stderr.write("Timing target missed in observation-only mode; performance acceptance remains open.\n");
+    }
+    process.exitCode = timing.exitCode;
   } finally {
     await closeApplication(browser, child);
   }
@@ -759,6 +772,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  captureTimingResult,
   copySoftwareTiming,
   observeCopyTiming,
   allowExpectedPageClose,
