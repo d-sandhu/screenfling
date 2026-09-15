@@ -236,6 +236,25 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   return { browser: next.browser, checked: true };
 }
 
+async function verifyUnresponsiveRecovery(browser, page) {
+  const context = browser.contexts()[0];
+  const session = await context.newCDPSession(page);
+  // Deliberately hang this disposable idle renderer during close. The native
+  // BrowserWindow unresponsive event must recover it; do not fake the event.
+  await page.evaluate(() => {
+    window.addEventListener("beforeunload", () => {
+      for (;;) { /* Deliberate test-only renderer hang. */ }
+    });
+  });
+  const replacementPromise = context.waitForEvent("page", { timeout: 15_000 });
+  void session.send("Page.close").catch(() => undefined);
+  const replacement = await replacementPromise;
+  await verifyIdle(replacement);
+  await waitUntil(() => page.isClosed(), "unresponsive-window-retained");
+  assert.equal(context.pages().length, 1);
+  return replacement;
+}
+
 async function main() {
   if (process.platform !== "darwin") throw new Error("unsupported-platform");
   const executable = [
@@ -254,11 +273,12 @@ async function main() {
   await writeFile(path.join(profile, "connections", "wezterm.json"), "invalid-synthetic-settings", { mode: 0o600 });
   const profileArguments = [`--user-data-dir=${profile}`];
   const port = await reservePort();
-  const child = launch(executable, [
+  const launchArguments = [
     ...profileArguments,
     "--remote-debugging-address=127.0.0.1",
     `--remote-debugging-port=${port}`,
-  ]);
+  ];
+  const child = launch(executable, launchArguments);
   let browser;
   try {
     browser = await connect(port, child);
@@ -300,8 +320,19 @@ async function main() {
     assert.equal(context.pages().length, 1);
     assert.deepEqual(await readDiagnostics(reopened), baseline);
 
+    checkpoint = "unresponsive-renderer-recovery";
+    // Recovery is bounded to one renderer replacement per app lifetime.
+    await browser.close();
+    await stop(child);
+    await waitUntil(() => exited(child), "cleanup-timeout");
+    const freshChild = launch(executable, launchArguments);
+    browser = await connect(port, freshChild);
+    const recovered = await verifyUnresponsiveRecovery(browser, await mainPage(browser));
+    assert.equal(exited(freshChild), false);
+    assert.deepEqual(await readDiagnostics(recovered), baseline);
+
     checkpoint = "packaged-settings-restart";
-    const settings = await verifySettingsLifecycle(browser, reopened, port, directory);
+    const settings = await verifySettingsLifecycle(browser, recovered, port, directory);
     browser = settings.browser;
     assert.deepEqual(await readDiagnostics(await mainPage(browser)), baseline);
 
@@ -316,6 +347,7 @@ async function main() {
           startupAndHardenedBridge: true,
           duplicateLaunchRejected: true,
           crashedRendererReplacedOnce: true,
+          unresponsiveRendererReplacedOnce: true,
           closedWindowReopened: true,
           workflowDiagnosticsUnchanged: true,
           isolatedSettingsSaveRestartReloadDisconnect: settings.checked,

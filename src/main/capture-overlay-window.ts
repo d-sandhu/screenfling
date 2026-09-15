@@ -48,6 +48,9 @@ export class CaptureOverlayWindow implements CaptureOverlayPort {
     window.webContents.on("render-process-gone", () => {
       this.#handleUnexpectedClose(window);
     });
+    window.on("unresponsive", () => {
+      this.#handleUnexpectedClose(window);
+    });
     window.on("closed", () => {
       const wasCurrent = this.#window === window;
       if (wasCurrent) this.#window = null;
