@@ -216,7 +216,10 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   checkpoint = "settings-save-active";
   assert.equal((await page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, null);
 
-  checkpoint = "settings-restart";
+  checkpoint = "settings-restart-with-hung-renderer";
+  // Quit/relaunch must finish even when beforeunload is stuck; never recreate
+  // another main window in the application that is already quitting.
+  await hangOnClose(page);
   let next = await restartFromSetup(browser, page, port);
   assert.deepEqual((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).activeConfiguration, configuration);
   assert.equal((await next.page.evaluate(() => window.screenFling.getWezTermSetup())).restartRequired, false);
@@ -236,16 +239,20 @@ async function verifySettingsLifecycle(browser, page, port, directory) {
   return { browser: next.browser, checked: true };
 }
 
-async function verifyUnresponsiveRecovery(browser, page) {
-  const context = browser.contexts()[0];
-  const session = await context.newCDPSession(page);
-  // Deliberately hang this disposable idle renderer during close. The native
-  // BrowserWindow unresponsive event must recover it; do not fake the event.
+async function hangOnClose(page) {
+  // The native BrowserWindow unresponsive event must handle a real blocked
+  // renderer. Do not fake the event or add any test hook to the application.
   await page.evaluate(() => {
     window.addEventListener("beforeunload", () => {
       for (;;) { /* Deliberate test-only renderer hang. */ }
     });
   });
+}
+
+async function verifyUnresponsiveRecovery(browser, page) {
+  const context = browser.contexts()[0];
+  const session = await context.newCDPSession(page);
+  await hangOnClose(page);
   const replacementPromise = context.waitForEvent("page", { timeout: 15_000 });
   void session.send("Page.close").catch(() => undefined);
   const replacement = await replacementPromise;
@@ -348,6 +355,7 @@ async function main() {
           duplicateLaunchRejected: true,
           crashedRendererReplacedOnce: true,
           unresponsiveRendererReplacedOnce: true,
+          unresponsiveRendererDidNotBlockRestart: settings.checked,
           closedWindowReopened: true,
           workflowDiagnosticsUnchanged: true,
           isolatedSettingsSaveRestartReloadDisconnect: settings.checked,
