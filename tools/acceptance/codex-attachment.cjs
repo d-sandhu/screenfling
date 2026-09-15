@@ -4,6 +4,7 @@ const { createHash } = require("node:crypto");
 const { existsSync } = require("node:fs");
 const { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } = require("node:fs/promises");
 const net = require("node:net");
+const { homedir } = require("node:os");
 const path = require("node:path");
 const { promisify } = require("node:util");
 
@@ -133,7 +134,7 @@ async function main() {
   assert.ok(cli && mux);
   const app = path.resolve("release/mac-arm64/ScreenFling.app/Contents/MacOS/ScreenFling");
   const artifact = await readArtifactEvidence(app);
-  const directory = await mkdtemp("/private/tmp/sf-agent-");
+  const directory = await mkdtemp(path.join(homedir(), "sf-agent-"));
   const env = { HOME: directory, TMPDIR: directory, PATH: "/usr/bin:/bin", LANG: "en_US.UTF-8", TERM: "xterm-256color" };
   const socket = path.join(directory, "mux");
   const config = path.join(directory, "wezterm.lua");
