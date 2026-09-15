@@ -1,64 +1,43 @@
-# Security policy
+# Security
 
-ScreenFling handles screenshots, clipboard data, terminal destinations, and
-operating-system automation. Treat security and privacy bugs as product bugs.
+ScreenFling has no supported public release yet. Security fixes target current
+development; there is no supported-version or response-time guarantee.
 
-## Supported versions
+## Report privately
 
-ScreenFling is pre-alpha and has no supported release yet. This policy will be
-updated with supported version ranges before the first public release.
+Do not post exploit details, credentials, private screenshots, clipboard data,
+or terminal conversations in a public issue.
 
-## Reporting a vulnerability
+Use GitHub's private vulnerability reporting when enabled for this repository.
+Otherwise, ask the repository owner for a private channel before sharing details.
+Include the affected commit, OS, adapter/version, minimal reproduction, impact,
+and whether content was exposed or persisted.
 
-Do not open a public issue containing exploit details, credentials, private
-screenshots, clipboard contents, terminal contents, or other sensitive data.
+## What the app protects
 
-Use GitHub's private vulnerability-reporting flow when it is available for this
-repository. If it is not available, contact the repository owner through their
-GitHub profile to request a private reporting channel before sending technical
-details.
+Renderers use Electron's sandbox and context isolation. Main validates IPC
+senders, payloads, and workflow state. Stage uses an explicitly selected local
+route, rechecks it, and does not fall back to an active window or retry uncertain
+input. Notes are data, not shell commands. No generic Enter/submission action is
+implemented.
 
-Include only what is necessary to reproduce and assess the issue:
+Captures and notes are not saved by ScreenFling or uploaded to a ScreenFling
+service. Browser session storage is nonpersistent; explicit shortcut and
+connection settings are stored locally. Diagnostics exclude content and
+identifiers. The OS clipboard and destination agent can retain or transmit data
+under their own policies.
 
-- affected commit or version;
-- operating system and destination adapter;
-- expected and observed behavior;
-- minimal reproduction steps;
-- security impact;
-- whether any user content was exposed or persisted.
+## Limits worth reporting
 
-The project will acknowledge a usable private report, investigate it, and agree
-on a disclosure timeline before publication. Exact response targets will be set
-when maintainership and public releases begin.
+Wrong-target writes, unexpected submission or focus changes, IPC escalation,
+unsafe selector paths, private-data logging, and packaging or dependency problems
+are security-relevant bugs.
 
-## Sensitive areas
+WezTerm's executable and Lua configuration must be trusted. Ownership and ACL
+checks do not make arbitrary configuration safe to execute, prove which agent
+is in a pane, or protect against a compromised same-user process or root.
+A successful CLI write is not proof of image attachment.
 
-Reports are especially valuable for:
-
-- Electron preload or IPC privilege escalation;
-- renderer sandbox, navigation, or content-policy bypass;
-- command or AppleScript injection through destination data or notes;
-- wrong-target routing or stale-target fallback;
-- unintended Enter, submission, or focus automation;
-- screenshot, clipboard, note, source-code, or terminal-content logging;
-- insecure temporary-file creation or cleanup;
-- permission confusion or automation without clear user intent;
-- dependency, update, installer, signing, or release-artifact compromise.
-
-## Security invariants
-
-ScreenFling is designed to preserve these rules:
-
-- renderers do not receive raw Node.js or Electron privileges;
-- all IPC senders, operations, states, and payloads are validated;
-- selected routing endpoints are revalidated immediately before dispatch;
-- a stale destination never falls back to an active or similarly named target;
-- generic adapters never submit or synthesize Enter;
-- notes and destination identifiers are passed as data, never shell source;
-- uncertain dispatch is not retried automatically;
-- captures and notes are excluded from diagnostics;
-- permanent storage and network transfer require explicit product behavior;
-- unsupported capability combinations fail closed to Copy.
-
-See [the architecture](docs/ARCHITECTURE.md) for the complete trust-boundary and
-adapter model.
+See [architecture](docs/ARCHITECTURE.md) for boundaries and
+[releasing](docs/releasing.md) for the distinction between ad-hoc test builds and
+trusted distribution. Do not disable platform protections to make a check pass.

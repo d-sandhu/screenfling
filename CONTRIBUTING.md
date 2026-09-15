@@ -1,221 +1,78 @@
-# Contributing to ScreenFling
+# Contributing
 
-ScreenFling is pre-alpha. Contributions are welcome, but the current priority is
-proving the core capture-to-destination workflow before expanding its scope.
+Start with the [README](README.md) to run the app. Read the relevant part of the
+[architecture](docs/ARCHITECTURE.md) when changing a process boundary; you do not
+need to read the project's research history first.
 
-## Start with the project direction
+## Development
 
-Read these documents before proposing implementation work:
+Use the exact Node version in `.node-version` and npm version in
+`package.json`. Run `npm ci` from a clean checkout. On macOS, install Apple's
+Command Line Tools for the small ACL helper. `npm start` builds that helper,
+installs the pinned Electron development binary when needed, and starts
+`electron-vite`.
 
-- [Product direction](docs/PRODUCT.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Domain context](CONTEXT.md)
-- [Roadmap](ROADMAP.md)
+| Command | Purpose |
+| --- | --- |
+| `npm start` | Run the development app. |
+| `npm run check` | Lint, TypeScript, and unit/helper tests. |
+| `npm run build` | Build main, preload, renderer, and the macOS helper. |
+| `npm run package` | Build a local directory package for the current supported host. |
+| `npm run check:all` | Run `check`, then build and package. |
+| `npm run format:check` | Check configured source/config formatting; Markdown is not included. |
 
-The [research reports](research/README.md) contain supporting evidence. They are
-useful context, but the canonical documents above control current decisions.
+`check:all` does not run formatting, browser fixtures, or physical desktop
+acceptance. [Testing](docs/testing.md) has the separate commands and their side
+effects. [Releasing](docs/releasing.md) covers distribution, not everyday changes.
 
-## Good early contributions
+## Changes worth making
 
-The most useful pre-alpha contributions are:
+Fix a reproducible daily-use problem first: a confusing setting, a failed
+capture, a wrong crop, inaccessible controls, or an unreliable handoff. Keep a
+pull request focused on that problem. Do not add a backend, database, framework,
+platform abstraction, or integration just to increase the stack.
 
-- reproducible capture and coordinate-mapping fixtures;
-- packaged-build measurements on different display configurations;
-- exact-target routing harnesses for documented terminal control surfaces;
-- security review of Electron IPC and subprocess boundaries;
-- accessibility review of the capture and picker workflows;
-- corrections backed by current first-party documentation;
-- concise issue proposals for a roadmap exit criterion.
+Discuss new permissions, native code, storage, or adapters in an issue before
+implementation. A short explanation of the need and alternatives is enough.
 
-Features in the roadmap's demand-driven or optional sections should begin with a
-problem statement and evidence, not a large implementation.
+Keep these existing boundaries:
 
-## Dependency policy
+- Privileged work stays in main; validate data at IPC and subprocess boundaries.
+- Use exact endpoint/pane identity, not a title, working directory, or active pane.
+- Never retry an uncertain Stage, submit automatically, or turn a failed
+  clipboard write into a successful fallback message.
+- Keep screenshots, note text, clipboard contents, terminal output, and local
+  paths out of logs and public reports.
 
-Use the latest mutually compatible stable releases. Pin direct dependencies and
-toolchain inputs exactly so CI and local builds resolve the same graph. Do not
-adopt prereleases merely because their version number is higher; document any
-intentional hold below the latest stable release with the compatibility boundary
-that requires it, then revisit that boundary when the owning tool adds support.
+Use the existing TypeScript, Oxlint, and formatter settings. Add the smallest
+regression test that catches the bug; a documentation change does not need a new
+test framework. Do not remove a regression test just to reduce a count.
 
-Current holds are deliberate: Vite 7 and `@vitejs/plugin-react` 5 match
-electron-vite 5's declared peer range, while `@types/node` 24 matches the Node 24
-LTS runtime. The [build-toolchain decision](research/forge-version-decision.md)
-records the measured Vite boundary.
+## Dependencies
 
-## Before a large change
+Pin direct dependencies and toolchain versions. Update the lockfile with the
+pinned npm, and run the audit and affected tests. A newer major version is not a
+reason to ignore a build tool's peer requirements.
 
-Open an issue before work that:
+## Pull requests and docs
 
-- adds a dependency or platform permission;
-- introduces native code;
-- changes a product-level contract;
-- creates a new package or process;
-- adds a destination adapter;
-- expands the supported platform or version matrix;
-- persists captures, notes, terminal contents, or diagnostics.
+Explain what changed, why, how you tested it, and any known limits. Separate
+scripted tests from physical observations. Mention checks you did not run.
 
-Describe the user problem, proposed boundary, alternatives considered, security
-impact, and how the change will be tested.
+Update the document that owns the information:
 
-## Implementation expectations
+| Information | Document |
+| --- | --- |
+| First look and source setup | [README](README.md) |
+| Daily use and connection help | [Usage](docs/usage.md) |
+| Implementation and durable decisions | [Architecture](docs/ARCHITECTURE.md) and linked ADRs |
+| Test commands and evidence | [Testing](docs/testing.md) |
+| Release preparation | [Releasing](docs/releasing.md) |
+| Next priorities | [Roadmap](ROADMAP.md) |
 
-- Keep each change small enough to review as one coherent outcome.
-- Prefer a vertical slice or executable proof over speculative abstractions.
-- Use strict TypeScript, pass the configured Oxlint and anti-slop rules, and
-  validate all IPC and adapter input at runtime.
-- Keep privileged behavior in the main process or a documented least-privileged
-  helper.
-- Never use working directory, window title, or process name as routing identity.
-- Never fall back to the active destination after a selected target becomes
-  stale.
-- Never synthesize Enter or automatic submission through a generic adapter.
-- Preserve clipboard fallback when staging is unavailable or uncertain.
-- Keep images, notes, clipboard contents, and terminal contents out of logs and
-  diagnostics.
+Link instead of repeating. Keep temporary plans, run-by-run updates, and review
+notes in the relevant issue or PR. Remove superseded instructions in the same
+change as their replacement. Do not put job-search claims, generated marketing
+copy, or unsupported performance numbers in product documentation.
 
-## Testing expectations
-
-A pull request should include the narrowest tests that prove its behavior.
-Depending on the change, that may include:
-
-- unit tests for contracts, validation, state transitions, and coordinate math;
-- integration tests for clipboard or adapter dispatch;
-- packaged-application testing for permissions and desktop identity;
-- native macOS or Windows acceptance notes;
-- before/after performance measurements;
-- cancellation, stale-target, and permission-denial cases.
-
-Wrong-target tolerance is zero. An uncertain dispatch must not automatically
-retry because that may duplicate input.
-
-Use the Node.js version in `.node-version` and the npm version declared in
-`package.json` from a clean checkout:
-
-```bash
-npm ci
-npm start
-```
-
-The first `npm start` downloads the pinned Electron development binary through
-Electron's checksum-verifying installer. Electron 42 and newer intentionally do
-not perform that download during `npm ci`.
-
-Before opening a pull request, run:
-
-```bash
-npm run check:all
-```
-
-That command verifies formatting, Oxlint and the anti-slop plugin, strict
-TypeScript, unit tests, the production build, and a packaged application for the
-current host. Local macOS directory packages use an explicit ad-hoc signature so
-they can be launched without a Developer ID; release artifacts still require the
-signed and notarized path tracked in Milestone 2.
-
-The Check workflow explicitly enables ad-hoc signing for the `package:mac` step
-and verifies the resulting bundle and ACL helper with `codesign`. The step fixes
-the signing identity to `-` and disables automatic certificate discovery. Do not
-add signing credentials or publishing flags to this pull-request workflow.
-A passed ad-hoc signature check does not prove Gatekeeper trust, notarization, or
-stable Screen Recording permission behavior on an operator's Mac.
-
-### Browser fixtures and packaged lifecycle smoke
-
-On macOS, install Apple's Command Line Tools before building. `build:native`
-compiles the small read-only ACL inspector; `start`, `build`, and `test` invoke it.
-The helper is packaged on macOS only. It does not replace Electron capture.
-
-After `npm run build`, run the built production renderer against synthetic bridges:
-
-```bash
-npx playwright install chromium
-node --test tools/acceptance/ui.test.cjs
-npm audit --audit-level=high
-```
-
-These tests cover selection, review, explicit target choice, Copy/Stage, separate
-Reveal, stale results, and recovery. They do not touch the OS clipboard or prove
-native capture, focus, permissions, or agent attachment.
-
-After `npm run package:mac`, quit every other ScreenFling build and run:
-
-```bash
-node tools/acceptance/lifecycle.cjs
-```
-
-This launches the real package, checks its secure bridge and bundled ACL helper,
-rejects a duplicate launch, replaces one crashed idle renderer, and reopens a
-closed main window. It uses only disposable ACL fixtures; it does not capture
-pixels or change Screen Recording. The diagnostics must remain unchanged.
-Native tests and package smoke run in CI; only the disposable ACL-read-failure
-fixture uses the hosted runner's non-interactive ownership-change capability.
-Never perform that fixture on a user's real selectors.
-
-### Packaged capture acceptance
-
-Native capture evidence is intentionally separate from `check:all` because it
-requires a foreground desktop session, Screen Recording permission, and real OS
-clipboard access. The default command packages the current tree, performs three
-warm Copy workflows, measures 20 more, runs 200 cancellations, waits two minutes
-for a working-set cooldown, and prints sanitized JSON:
-
-```bash
-npm run acceptance:capture:package
-```
-
-Measured Copy runs replace the current image clipboard contents. The report
-contains only versions, display/window geometry, phase durations, result counts,
-and resource samples. It does not contain pixels, clipboard data, paths, titles,
-or notes. A quick harness smoke can reduce the counts and cooldown:
-
-```bash
-npm run acceptance:capture -- --capture-runs=1 --cancel-runs=1 --cooldown-ms=0
-```
-
-The runner invokes selection completion through the validated overlay bridge; it
-does not claim to automate physical pointer input or the operating-system global
-shortcut. Those remain separate native acceptance rows.
-
-The run is unattended. Do not drag, click, or press Escape in its capture
-surfaces; any manual input invalidates the evidence. Overlay readiness and bridge
-actions are awaited and bounded to five seconds, after which the runner fails and
-terminates the packaged application rather than requiring operator cleanup.
-
-### Native operator acceptance
-
-Use the [macOS operator acceptance protocol](docs/acceptance/macos-operator-acceptance.md)
-for physical shortcut, pointer, permission, display, focus, lifecycle, and
-real-agent evidence. Keep that evidence separate from the packaged runner. If an
-operator must rescue or otherwise influence an unattended run, record it as
-`discarded`, not passed.
-
-## Documentation
-
-Update the canonical document affected by a behavior change:
-
-- product promise or scope: `docs/PRODUCT.md`;
-- technical boundary or contract: `docs/ARCHITECTURE.md`;
-- sequence, status, or acceptance gate: `ROADMAP.md`;
-- supporting evidence: `research/`.
-
-Avoid copying the same plan into several documents. Link to the canonical source
-instead.
-
-## Pull requests
-
-A useful pull request description explains:
-
-1. the user-visible or engineering problem;
-2. why the chosen boundary is appropriate now;
-3. the evidence or tests that demonstrate correctness;
-4. permissions, privacy, and failure behavior;
-5. work intentionally left for a later change.
-
-Do not include credentials, screenshots containing private information, or logs
-with clipboard, note, source-code, or terminal content.
-
-## License
-
-By contributing, you agree that your contribution may be distributed under the
-project's [MIT License](LICENSE).
+Contributions are distributed under the [MIT license](LICENSE).
