@@ -642,7 +642,11 @@ describe("capture workflow controller", () => {
     expect(resultSnapshot).toMatchObject({ revealAvailable: true });
     expect(harness.controller.snapshot).toEqual({ ...resultSnapshot, revealAvailable: false });
     expect(harness.diagnostics.snapshot().reveal.revealed).toBe(1);
-    expect(harness.mainSurface.published).toHaveLength(publishedCount);
+    expect(harness.mainSurface.published).toHaveLength(publishedCount + 2);
+    expect(harness.mainSurface.published[publishedCount]).toMatchObject({
+      phase: "result", revealAvailable: false, revealPending: true,
+    });
+    expect(harness.mainSurface.published[publishedCount + 1]).toEqual(harness.controller.snapshot);
   });
 
   it("returns bounded Reveal outcomes for stale and unsupported results", async () => {

@@ -274,6 +274,7 @@ function ScreenFlingApp() {
     "checking" | "idle" | "failed"
   >("checking");
   const [recoveryPending, setRecoveryPending] = useState(false);
+  const [readinessRefresh, setReadinessRefresh] = useState(0);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutMessage, setShortcutMessage] = useState<string | null>(null);
   const [shortcutPending, setShortcutPending] = useState(false);
@@ -320,29 +321,36 @@ function ScreenFlingApp() {
       .catch(() => {
         if (current) setShortcutMessage("ScreenFling could not check its capture shortcut.");
       });
-    void bridge
-      .getScreenCaptureReadiness()
-      .then((nextScreenCaptureReadiness) => {
-        if (current) {
-          setScreenCaptureReadiness(nextScreenCaptureReadiness);
-          setScreenCaptureReadinessRequest("idle");
-        }
-      })
-      .catch(() => {
-        if (current) setScreenCaptureReadinessRequest("failed");
-      });
     return () => {
       current = false;
       unsubscribe();
     };
   }, [bridge]);
 
+  const idle = snapshot?.phase === "idle";
+  useEffect(() => {
+    if (bridge === undefined || !idle) return;
+    let current = true;
+    setScreenCaptureReadiness(null);
+    setScreenCaptureReadinessRequest("checking");
+    void bridge.getScreenCaptureReadiness().then((readiness) => {
+      if (!current) return;
+      setScreenCaptureReadiness(readiness);
+      setScreenCaptureReadinessRequest("idle");
+    }).catch(() => {
+      if (current) setScreenCaptureReadinessRequest("failed");
+    });
+    return () => { current = false; };
+  }, [bridge, idle, readinessRefresh]);
+
+  const revealPending = snapshot?.phase === "result" && snapshot.revealPending === true;
+  const actionPending = pending || revealPending;
   const editingOperationId = snapshot?.phase === "editing" ? snapshot.operationId : null;
   const focusResultAction = useCallback(
     (button: HTMLButtonElement | null) => {
       if (
         button === null ||
-        pending ||
+        actionPending ||
         snapshot?.phase !== "result" ||
         focusedResultOperation.current === snapshot.operationId
       ) {
@@ -351,7 +359,7 @@ function ScreenFlingApp() {
       button.focus();
       focusedResultOperation.current = snapshot.operationId;
     },
-    [pending, snapshot],
+    [actionPending, snapshot],
   );
 
   useEffect(() => {
@@ -420,7 +428,7 @@ function ScreenFlingApp() {
   }, [snapshot?.phase]);
 
   const runAction = useCallback((action: () => Promise<WorkflowSnapshot>) => {
-    if (pending) return;
+    if (actionPending) return;
     const revision = workflowRevision.current;
     setPending(true);
     setError(null);
@@ -431,10 +439,10 @@ function ScreenFlingApp() {
       })
       .catch(() => setError("That action could not be completed safely."))
       .finally(() => setPending(false));
-  }, [pending]);
+  }, [actionPending]);
 
   useEffect(() => {
-    if (bridge === undefined || snapshot === null || pending ||
+    if (bridge === undefined || snapshot === null || actionPending ||
         (snapshot.phase !== "editing" && snapshot.phase !== "result")) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.repeat || event.defaultPrevented ||
@@ -448,7 +456,7 @@ function ScreenFlingApp() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [bridge, pending, runAction, snapshot]);
+  }, [bridge, actionPending, runAction, snapshot]);
 
   if (bridge === undefined) {
     return <RendererFailure message="The secure ScreenFling bridge is unavailable." />;
@@ -496,7 +504,7 @@ function ScreenFlingApp() {
   };
 
   const reveal = () => {
-    if (snapshot.phase !== "result" || revealTarget === null || revealResult !== null || pending) {
+    if (snapshot.phase !== "result" || revealTarget === null || revealResult !== null || actionPending) {
       return;
     }
     setPending(true);
@@ -529,18 +537,7 @@ function ScreenFlingApp() {
 
   const refreshScreenCaptureReadiness = () => {
     if (screenCaptureReadinessRequest === "checking") return;
-    setScreenCaptureReadinessRequest("checking");
-    setError(null);
-    void bridge
-      .getScreenCaptureReadiness()
-      .then((readiness) => {
-        setScreenCaptureReadiness(readiness);
-        setScreenCaptureReadinessRequest("idle");
-      })
-      .catch(() => {
-        setScreenCaptureReadiness(null);
-        setScreenCaptureReadinessRequest("failed");
-      });
+    setReadinessRefresh((value) => value + 1);
   };
 
   const openSettings = () => {
@@ -664,7 +661,7 @@ function ScreenFlingApp() {
                 <button
                   className="button button--primary"
                   disabled={
-                    pending ||
+                    actionPending ||
                     destinationsLoading ||
                     !previewReady ||
                     !stageSupported ||
@@ -690,7 +687,7 @@ function ScreenFlingApp() {
                 </button>
                 <button
                   className="button button--secondary"
-                  disabled={pending || !previewReady}
+                  disabled={actionPending || !previewReady}
                   onClick={() =>
                     runAction(() => bridge.copyCapture({ operationId: snapshot.operationId }))
                   }
@@ -702,7 +699,7 @@ function ScreenFlingApp() {
                   className="text-button text-button--cancel"
                   aria-keyshortcuts="Escape"
                   title="Cancel capture (Esc)"
-                  disabled={pending}
+                  disabled={actionPending}
                   onClick={() =>
                     runAction(() => bridge.cancelOperation({ operationId: snapshot.operationId }))
                   }
@@ -725,7 +722,7 @@ function ScreenFlingApp() {
               onStartCapture={() => runAction(() => bridge.startCapture())}
               readiness={screenCaptureReadiness}
               refreshState={screenCaptureReadinessRequest}
-              startState={pending || recoveryPending ? "starting" : "idle"}
+              startState={actionPending || recoveryPending ? "starting" : "idle"}
             />
             <WezTermSetupPanel bridge={bridge} />
           </>
@@ -734,7 +731,7 @@ function ScreenFlingApp() {
         {canCancel && operationId !== null && snapshot.phase !== "editing" ? (
           <button
             className="button button--secondary button--compact"
-            disabled={pending}
+            disabled={actionPending}
             onClick={() => runAction(() => bridge.cancelOperation({ operationId }))}
             type="button"
           >
@@ -745,19 +742,19 @@ function ScreenFlingApp() {
         {snapshot.phase === "result" ? (
           <>
             <div className="actions">
-              {revealTarget === null ? null : (
+              {revealTarget === null && revealResult === null && !revealPending ? null : (
                 <button
                   className="button button--secondary"
-                  disabled={pending || revealResult !== null}
+                  disabled={actionPending || revealResult !== null || revealTarget === null}
                   onClick={reveal}
                   type="button"
                 >
-                  {revealResult === null ? "Reveal destination" : "Reveal attempted"}
+                  {revealPending ? "Revealing…" : revealResult === null ? "Reveal destination" : "Reveal attempted"}
                 </button>
               )}
               <button
                 className="button button--primary"
-                disabled={pending}
+                disabled={actionPending}
                 onClick={dismiss}
                 aria-keyshortcuts="Escape"
                 title="Done (Esc)"
@@ -768,7 +765,7 @@ function ScreenFlingApp() {
               </button>
               <button
                 className="button button--secondary"
-                disabled={pending}
+                disabled={actionPending}
                 onClick={() =>
                   runAction(async () => {
                     const dismissed = await bridge.dismissResult({
@@ -782,6 +779,7 @@ function ScreenFlingApp() {
                 Capture another
               </button>
             </div>
+            {revealPending ? <p className="result-feedback" role="status">Revealing the selected destination…</p> : null}
             {revealStatusCopy === null ? null : (
               <p className="result-feedback" role="status">
                 <strong>{revealStatusCopy.title}.</strong> {revealStatusCopy.detail}

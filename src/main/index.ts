@@ -40,7 +40,7 @@ let applicationLifecycle: ApplicationLifecycle | null = null;
 let quitting = false;
 const workflow = new WorkflowStore();
 const diagnostics = new WorkflowDiagnostics(() => performance.now());
-const rendererUrl = readDevRendererUrl(process.env.ELECTRON_RENDERER_URL);
+const rendererUrl = readDevRendererUrl(process.env.ELECTRON_RENDERER_URL, app.isPackaged);
 const mainRendererUrl = rendererDocumentUrl(rendererUrl, "main");
 const overlayRendererUrl = rendererDocumentUrl(rendererUrl, "capture");
 
@@ -71,10 +71,6 @@ function createWindow(): BrowserWindow {
     }
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  window.webContents.session.setPermissionCheckHandler(() => false);
-  window.webContents.session.setPermissionRequestHandler((_webContents, _permission, respond) => {
-    respond(false);
-  });
   window.webContents.on("will-navigate", (event) => {
     event.preventDefault();
   });

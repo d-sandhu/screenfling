@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { clipboard, desktopCapturer, nativeImage, screen, systemPreferences } from "electron";
 
 import { CapturePermissionBlockedError, CaptureUnavailableError } from "./capture-session";
@@ -121,11 +123,12 @@ export class ElectronImageClipboard implements ImageClipboard {
   readImageEvidence() {
     const image = clipboard.readImage();
     if (image.isEmpty()) return null;
-    return { bitmap: new Uint8Array(image.toBitmap()), size: image.getSize() };
+    // toBitmap already returns an owned copy; retain it without copying every pixel again.
+    return { bitmap: image.toBitmap(), size: image.getSize() };
   }
 
   writePng(png: Uint8Array): void {
-    const image = nativeImage.createFromBuffer(Buffer.from(png));
+    const image = nativeImage.createFromBuffer(Buffer.from(png.buffer, png.byteOffset, png.byteLength));
     if (image.isEmpty()) throw new Error("Encoded capture PNG was empty.");
     clipboard.writeImage(image);
   }

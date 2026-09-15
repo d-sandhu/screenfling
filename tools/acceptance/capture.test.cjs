@@ -8,6 +8,7 @@ const {
   allowExpectedPageClose,
   cancelOverlay,
   completeOverlaySelection,
+  copySoftwareTiming,
   readArtifactEvidence,
   readDiagnostics,
   startCapture,
@@ -280,4 +281,30 @@ void test("startCapture rejects when the overlay never reaches selecting", async
     /overlay-ready-timeout/,
   );
   assert.equal(closed, true);
+});
+
+void test("copy timing retains total and dwell while applying the unchanged software budget", () => {
+  const sample = copySoftwareTiming({ startedAt: 10, reviewReadyAt: 50, copyAt: 1_050, verifiedAt: 1_075 });
+  assert.deepEqual(sample, {
+    selectionDispatchToReviewReadyMs: 40,
+    reviewDwellMs: 1_000,
+    copyClickToClipboardVerifiedMs: 25,
+    softwareProcessingMs: 65,
+    elapsedMs: 1_065,
+  });
+  assert.equal(copySoftwareTiming({ startedAt: 0, reviewReadyAt: 100, copyAt: 110, verifiedAt: 200 }).softwareProcessingMs, 190);
+});
+
+void test("copy timing rejects missing or out-of-order events rather than inventing a pass", () => {
+  const complete = { startedAt: 10, reviewReadyAt: 20, copyAt: 30, verifiedAt: 40 };
+  for (const field of Object.keys(complete)) {
+    for (const value of [null, undefined, NaN, Infinity]) {
+      assert.throws(() => copySoftwareTiming({ ...complete, [field]: value }), /invalid-acceptance-timing/);
+    }
+  }
+  for (const invalid of [
+    { ...complete, reviewReadyAt: 9 },
+    { ...complete, copyAt: 19 },
+    { ...complete, verifiedAt: 29 },
+  ]) assert.throws(() => copySoftwareTiming(invalid), /invalid-acceptance-timing/);
 });

@@ -92,9 +92,9 @@ export class CaptureController {
 
   get snapshot(): WorkflowSnapshot {
     const snapshot = this.#workflow.snapshot;
-    return snapshot.phase === "result"
-      ? { ...snapshot, revealAvailable: this.#destinations.canReveal(snapshot.operationId) }
-      : snapshot;
+    if (snapshot.phase !== "result") return snapshot;
+    const result = { ...snapshot, revealAvailable: this.#destinations.canReveal(snapshot.operationId) };
+    return this.#revealInFlight === snapshot.operationId ? { ...result, revealPending: true } : result;
   }
 
   async startCapture(trigger: DiagnosticTrigger = "button"): Promise<WorkflowSnapshot> {
@@ -250,11 +250,16 @@ export class CaptureController {
 
     this.#revealInFlight = operationId;
     try {
-      const result = await this.#destinations.reveal(operationId, current.result.destination.id);
+      const pending = this.#destinations.reveal(operationId, current.result.destination.id);
+      // The exact lease is already consumed. A replacement renderer must see the
+      // pending action and receive its completion without polling or replaying it.
+      this.#mainSurface.publishWorkflow(this.snapshot);
+      const result = await pending;
       this.#diagnostics.recordReveal(result);
       return result;
     } finally {
       this.#revealInFlight = null;
+      this.#mainSurface.publishWorkflow(this.snapshot);
     }
   }
 

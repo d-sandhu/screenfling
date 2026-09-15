@@ -28,8 +28,11 @@ const lifecycleSchema = z.object({
   checks: z.object({
     packagedAclGate: z.literal(true),
     startupAndHardenedBridge: z.literal(true),
+    packagedDevelopmentRendererIgnored: z.literal(true),
+    rendererStorageNotPersisted: z.literal(true),
     duplicateLaunchRejected: z.literal(true),
     crashedRendererReplacedOnce: z.literal(true),
+    unresponsiveRendererDidNotBlockRestart: z.literal(true),
     closedWindowReopened: z.literal(true),
     workflowDiagnosticsUnchanged: z.literal(true),
     isolatedSettingsSaveRestartReloadDisconnect: z.literal(true),
