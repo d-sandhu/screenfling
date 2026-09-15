@@ -450,6 +450,7 @@ describe("capture workflow controller", () => {
     };
     expect(controller.copyCapture(OPERATION_ID)).toEqual({
       phase: "result",
+      revealAvailable: false,
       operationId: OPERATION_ID,
       result: { status: "copied" },
     });
@@ -554,6 +555,7 @@ describe("capture workflow controller", () => {
 
     expect(controller.overlayFailed(OPERATION_ID)).toEqual({
       phase: "result",
+      revealAvailable: false,
       operationId: OPERATION_ID,
       result: { status: "failed", reason: "capture-failed" },
     });
@@ -598,6 +600,7 @@ describe("capture workflow controller", () => {
       harness.controller.stageCapture(OPERATION_ID, DESTINATION.id, "literal note"),
     ).resolves.toEqual({
       phase: "result",
+      revealAvailable: true,
       operationId: OPERATION_ID,
       result: {
         status: "dispatched-unverified",
@@ -636,7 +639,8 @@ describe("capture workflow controller", () => {
     expect(adapter.revealed).toEqual([{ destination: DESTINATION }]);
     expect(adapter.staged).toHaveLength(1);
     expect(harness.clipboard.writes).toBe(1);
-    expect(harness.controller.snapshot).toBe(resultSnapshot);
+    expect(resultSnapshot).toMatchObject({ revealAvailable: true });
+    expect(harness.controller.snapshot).toEqual({ ...resultSnapshot, revealAvailable: false });
     expect(harness.diagnostics.snapshot().reveal.revealed).toBe(1);
     expect(harness.mainSurface.published).toHaveLength(publishedCount);
   });

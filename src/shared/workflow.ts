@@ -63,6 +63,8 @@ const resultWorkflowSchema = z.strictObject({
   phase: z.literal("result"),
   operationId: operationIdSchema,
   result: deliveryResultSchema,
+  // Main-owned, one-shot action state. Absence never authorizes Reveal.
+  revealAvailable: z.boolean().optional(),
 });
 
 export const workflowSnapshotSchema = z
