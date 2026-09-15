@@ -60,7 +60,7 @@ export type ImageClipboard = {
 type ActiveCapture = {
   readonly operationId: string;
   readonly display: CaptureDisplay;
-  readonly fullImage: CaptureImage;
+  fullImage: CaptureImage | null;
   readonly returnedPixels: PixelSize;
   draft: CaptureDraft | null;
   croppedImage: CaptureImage | null;
@@ -185,7 +185,7 @@ export class CaptureSession {
 
   complete(operationId: string, selectionInput: DipSelectionInput): CaptureDraft {
     const active = this.#requireActive(operationId);
-    if (active.draft !== null) throw new CaptureSessionStateError();
+    if (active.draft !== null || active.fullImage === null) throw new CaptureSessionStateError();
     const selection = dipSelectionSchema.parse(selectionInput);
     const crop = mapDipSelectionToPixelCrop(selection, active.display, active.returnedPixels);
     const croppedImage = active.fullImage.crop(crop);
@@ -199,6 +199,8 @@ export class CaptureSession {
     });
     active.croppedImage = croppedImage;
     active.draft = draft;
+    // Review and delivery need only the crop, not the unselected display pixels.
+    active.fullImage = null;
     return draft;
   }
 
