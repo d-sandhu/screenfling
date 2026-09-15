@@ -119,7 +119,8 @@ export class CaptureController {
       }
       this.#diagnostics.mark(operationId, "main-hidden");
       const display = this.#capture.getDisplayAtPointer();
-      const [overlayPreparation, capturePreparation] = await Promise.allSettled([
+      // Either known failure can recover immediately; the other task may never settle.
+      const [, snapshot] = await Promise.all([
         this.#overlay.prepare(display).then(() => {
           this.#diagnostics.mark(operationId, "overlay-prepared");
         }),
@@ -128,9 +129,6 @@ export class CaptureController {
           return captureSnapshot;
         }),
       ]);
-      if (overlayPreparation.status === "rejected") throw overlayPreparation.reason;
-      if (capturePreparation.status === "rejected") throw capturePreparation.reason;
-      const snapshot = capturePreparation.value;
       if (!isActiveOperation(this.#workflow.snapshot, operationId)) {
         if (this.#capture.activeOperationId === operationId) this.#capture.release(operationId);
         // Cancellation already closed this operation's overlay. A newer one may now exist.

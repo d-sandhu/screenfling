@@ -2,7 +2,7 @@ import type { DestinationDiscoveryStatus } from "../../shared/destination-discov
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { CaptureDragTracker, selectionFromDrag } from "./capture-drag";
+import { CaptureDragTracker, pointOnDisplay, selectionFromDrag } from "./capture-drag";
 import { deliveryCopy, revealCopy } from "./delivery-copy";
 import { DestinationPicker } from "./destination-picker";
 import { WezTermSetupPanel } from "./wezterm-setup";
@@ -111,10 +111,11 @@ function CaptureOverlay() {
 
   const clampPoint = (event: ReactPointerEvent<HTMLElement>): CapturePoint => {
     const bounds = event.currentTarget.getBoundingClientRect();
-    return {
-      x: Math.min(bounds.width, Math.max(0, event.clientX - bounds.left)),
-      y: Math.min(bounds.height, Math.max(0, event.clientY - bounds.top)),
-    };
+    return pointOnDisplay(
+      { x: event.clientX, y: event.clientY },
+      bounds,
+      snapshot.display,
+    );
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLElement>) => {
@@ -185,9 +186,10 @@ function CaptureOverlay() {
         <div
           className="selection"
           style={{
-            height: selection.height,
-            transform: `translate(${selection.x}px, ${selection.y}px)`,
-            width: selection.width,
+            height: `${selection.height / snapshot.display.height * 100}%`,
+            left: `${selection.x / snapshot.display.width * 100}%`,
+            top: `${selection.y / snapshot.display.height * 100}%`,
+            width: `${selection.width / snapshot.display.width * 100}%`,
           }}
         >
           <span className="selection__size">
