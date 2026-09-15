@@ -367,8 +367,8 @@ describe("capture workflow controller", () => {
     expect(calls).toEqual(["display", "prepare", "capture", "send"]);
   });
 
-  it("settles pending overlay preparation before reporting capture failure", async () => {
-    const { backend, controller, mainSurface, overlay, session } = createHarness();
+  it("reports capture failure without waiting for pending overlay preparation", async () => {
+    const { backend, clipboard, controller, mainSurface, overlay, session } = createHarness();
     backend.error = new CapturePermissionBlockedError();
     overlay.waitForFinish = true;
     let settled = false;
@@ -377,21 +377,26 @@ describe("capture workflow controller", () => {
       settled = true;
       return snapshot;
     });
-    await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(settled).toBe(false);
-    expect(mainSurface.showCalls).toBe(0);
-    overlay.finish();
+    expect(settled).toBe(true);
+    expect(mainSurface.showCalls).toBe(1);
+    expect(session.activeOperationId).toBeNull();
     await expect(pending).resolves.toMatchObject({
       phase: "result",
       result: { status: "failed", reason: "permission-blocked" },
     });
+    overlay.finish();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mainSurface.showCalls).toBe(1);
+    expect(overlay.closeCalls).toBe(1);
+    expect(overlay.sent).toBeNull();
+    expect(clipboard.writes).toBe(0);
     expect(session.activeOperationId).toBeNull();
   });
 
-  it("settles pending capture before reporting overlay preparation failure", async () => {
-    const { backend, controller, mainSurface, overlay, session } = createHarness();
+  it("reports overlay preparation failure without waiting for pending capture", async () => {
+    const { backend, clipboard, controller, mainSurface, overlay, session } = createHarness();
     backend.waitForFinish = true;
     overlay.error = new Error("overlay failed");
     overlay.waitForFinish = true;
@@ -406,13 +411,19 @@ describe("capture workflow controller", () => {
     overlay.finish();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(settled).toBe(false);
-    expect(mainSurface.showCalls).toBe(0);
-    backend.finish();
+    expect(settled).toBe(true);
+    expect(mainSurface.showCalls).toBe(1);
+    expect(session.activeOperationId).toBeNull();
     await expect(pending).resolves.toMatchObject({
       phase: "result",
       result: { status: "failed", reason: "capture-failed" },
     });
+    backend.finish();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mainSurface.showCalls).toBe(1);
+    expect(overlay.closeCalls).toBe(1);
+    expect(overlay.sent).toBeNull();
+    expect(clipboard.writes).toBe(0);
     expect(session.activeOperationId).toBeNull();
   });
 
