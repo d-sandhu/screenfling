@@ -143,6 +143,13 @@ export class DestinationRegistry {
     return result;
   }
 
+  canReveal(operationId: string): boolean {
+    const lease = this.#revealLease;
+    return lease !== null && lease.operationId === operationId &&
+      supportsReveal(lease.destination) &&
+      this.#adapters.get(lease.destination.adapter)?.revealIfCurrent !== undefined;
+  }
+
   async reveal(operationId: string, destinationId: string): Promise<RevealResult> {
     const safeOperationId = operationIdSchema.parse(operationId);
     const safeDestinationId = destinationIdSchema.parse(destinationId);

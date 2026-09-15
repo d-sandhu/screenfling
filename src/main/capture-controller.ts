@@ -91,7 +91,10 @@ export class CaptureController {
   }
 
   get snapshot(): WorkflowSnapshot {
-    return this.#workflow.snapshot;
+    const snapshot = this.#workflow.snapshot;
+    return snapshot.phase === "result"
+      ? { ...snapshot, revealAvailable: this.#destinations.canReveal(snapshot.operationId) }
+      : snapshot;
   }
 
   async startCapture(trigger: DiagnosticTrigger = "button"): Promise<WorkflowSnapshot> {
@@ -337,18 +340,19 @@ export class CaptureController {
   }
 
   #publish(snapshot: WorkflowSnapshot): WorkflowSnapshot {
+    const published = snapshot.phase === "result" ? this.snapshot : snapshot;
     if (snapshot.phase === "selecting" || snapshot.phase === "result") {
       const startup = this.#startup;
       if (startup?.operationId === snapshot.operationId) {
         this.#startup = null;
         clearTimeout(startup.timeout);
-        startup.resolve(snapshot);
+        startup.resolve(published);
       }
     }
     if (snapshot.phase === "result") {
       this.#diagnostics.finish(snapshot.operationId, diagnosticOutcomeFor(snapshot.result));
     }
-    this.#mainSurface.publishWorkflow(snapshot);
-    return snapshot;
+    this.#mainSurface.publishWorkflow(published);
+    return published;
   }
 }

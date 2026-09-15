@@ -48,6 +48,15 @@ function installFixture(options) {
   const listeners = new Set();
   const initial = { phase: options.editing ? "editing" : "idle" };
   if (options.editing) initial.operationId = operationId;
+  if (options.restoredResult) {
+    Object.assign(initial, {
+      phase: "result", operationId,
+      result: { status: "dispatched-unverified", destination: {
+        id: "wezterm:fixture:7", adapter: "wezterm", surface: { kind: "pane", locator: "7" },
+      } },
+      ...(options.restoredResult === "unknown" ? {} : { revealAvailable: options.restoredResult === "available" }),
+    });
+  }
   let state = initial;
   let bootstrapResolvers = [];
   let startResolver = null;
@@ -98,7 +107,7 @@ function installFixture(options) {
   }
 
   function result(outcome) {
-    return publish({ phase: "result", operationId, result: outcome });
+    return publish({ phase: "result", operationId, result: outcome, revealAvailable: outcome.status === "dispatched-unverified" });
   }
 
   const shortcut = {
@@ -202,14 +211,16 @@ function installFixture(options) {
       if (options.stale) return result({ status: "failed", reason: "target-stale" });
       const selected = destinations.find((destination) => destination.id === request.destinationId);
       if (selected === undefined) throw new Error("fixture-target-not-selected");
-      const { id, adapter, endpoint, surface } = selected;
+      const { id, adapter, surface } = selected;
       return result({
         status: "dispatched-unverified",
-        destination: { id, adapter, endpoint, surface },
+        destination: { id, adapter, surface },
       });
     },
     revealDestination: async (request) => {
       calls.push({ action: "reveal", request });
+      if (!state.revealAvailable) return { status: "stale" };
+      state = { ...state, revealAvailable: false };
       if (options.delayReveal) return new Promise((resolve) => { revealResolver = resolve; });
       return { status: "revealed" };
     },
@@ -692,4 +703,30 @@ void test("renderer fixture: Escape cannot dismiss or repeat an in-flight Reveal
     await page.getByRole("button", { name: "Capture region" }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["stage", "reveal"]);
   });
+});
+
+void test("renderer fixture: a restored result can Reveal its retained exact target without replaying Stage", async () => {
+  await withPage({ restoredResult: "available" }, async (page) => {
+    await page.getByRole("heading", { name: "Staged — unverified" }).waitFor();
+    assert.match(await page.locator(".summary").innerText(), /pane 7/);
+    assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+    await page.getByRole("button", { name: "Reveal destination", exact: true }).click();
+    await page.getByText("Reveal requested.", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Reveal attempted" }).isEnabled(), false);
+    const calls = await page.evaluate(() => window.fixture.calls);
+    assert.deepEqual(calls, [{ action: "reveal", request: { operationId: "550e8400-e29b-41d4-a716-446655440000" } }]);
+    assert.equal(await page.getByRole("heading", { name: "Staged — unverified" }).count(), 1);
+  });
+});
+
+void test("renderer fixture: restoring consumed or unknown Reveal state does not create another attempt", async () => {
+  for (const restoredResult of ["consumed", "unknown"]) {
+    await withPage({ restoredResult }, async (page) => {
+      await page.getByRole("heading", { name: "Staged — unverified" }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
+      assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
+      await page.getByRole("button", { name: "Done", exact: true }).click();
+      await page.getByRole("button", { name: "Capture region" }).waitFor();
+    });
+  }
 });

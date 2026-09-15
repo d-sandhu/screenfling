@@ -23,6 +23,7 @@ describe("result-scoped Reveal availability", () => {
   it("offers Reveal only for the exact retained destination receipt", () => {
     const snapshot = {
       phase: "result",
+      revealAvailable: true,
       operationId: OPERATION_ID,
       result: {
         status: "dispatched-unverified",
@@ -30,7 +31,8 @@ describe("result-scoped Reveal availability", () => {
       },
     } as const;
 
-    expect(revealDestinationForResult(snapshot, DESTINATION)).toBe(DESTINATION);
+    expect(revealDestinationForResult(snapshot, DESTINATION)).toEqual(snapshot.result.destination);
+    expect(revealDestinationForResult(snapshot, null)).toEqual(snapshot.result.destination);
     expect(
       revealDestinationForResult(snapshot, {
         ...DESTINATION,
@@ -38,6 +40,17 @@ describe("result-scoped Reveal availability", () => {
         surface: { kind: "pane", locator: "8" },
       }),
     ).toBeNull();
+  });
+
+  it("does not recreate consumed or unknown availability from a local selection", () => {
+    const snapshot = {
+      phase: "result",
+      operationId: OPERATION_ID,
+      result: { status: "dispatched-unverified", destination: receiptForDestination(DESTINATION) },
+    } as const;
+    expect(revealDestinationForResult(snapshot, DESTINATION)).toBeNull();
+    expect(revealDestinationForResult(snapshot, null)).toBeNull();
+    expect(revealDestinationForResult({ ...snapshot, revealAvailable: false }, DESTINATION)).toBeNull();
   });
 
   it("does not offer Reveal for copy results or destinations without the capability", () => {
@@ -51,7 +64,7 @@ describe("result-scoped Reveal availability", () => {
 
     expect(
       revealDestinationForResult(
-        { phase: "result", operationId: OPERATION_ID, result: { status: "copied" } },
+        { phase: "result", operationId: OPERATION_ID, revealAvailable: true, result: { status: "copied" } },
         DESTINATION,
       ),
     ).toBeNull();
@@ -59,6 +72,7 @@ describe("result-scoped Reveal availability", () => {
       revealDestinationForResult(
         {
           phase: "result",
+          revealAvailable: true,
           operationId: OPERATION_ID,
           result: {
             status: "dispatched-unverified",
