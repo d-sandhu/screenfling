@@ -8,6 +8,8 @@ const path = require("node:path");
 const { promisify } = require("node:util");
 
 const { chromium } = require("playwright");
+const { z } = require("zod");
+const portAddress = z.object({ port: z.number().int().min(1).max(65535) });
 const { allowExpectedPageClose, readArtifactEvidence, readDiagnostics, startCapture } = require("./capture.cjs");
 
 // Hosted acceptance only. Real native capture and a real pinned Codex composer;
@@ -53,8 +55,7 @@ async function freePort() {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
-  const address = server.address();
-  assert.ok(address !== null && typeof address === "object");
+  const address = portAddress.parse(server.address());
   await new Promise((resolve) => server.close(resolve));
   return address.port;
 }
@@ -82,7 +83,7 @@ async function verifyNetworkDenied(env) {
   const server = net.createServer((socket) => { connections += 1; socket.destroy(); });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
-    const port = server.address().port;
+    const port = portAddress.parse(server.address()).port;
     const probe = `const s = require('node:net').connect(${port}, '127.0.0.1');
       s.on('connect', () => process.exit(1));
       s.on('error', e => process.exit(['EPERM','EACCES'].includes(e.code) ? 0 : 2));`;
