@@ -210,7 +210,7 @@ function installFixture(options) {
     },
     stageCapture: async (request) => {
       calls.push({ action: "stage", request });
-      if (options.stale) return result({ status: "failed", reason: "target-stale" });
+      if (options.stageFailure) return result({ status: "failed", reason: options.stageFailure });
       const selected = destinations.find((destination) => destination.id === request.destinationId);
       if (selected === undefined) throw new Error("fixture-target-not-selected");
       const { id, adapter, surface } = selected;
@@ -351,6 +351,7 @@ void test("renderer fixture: Copy works without destinations and Done returns to
     assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).isEnabled(), false);
     await page.getByRole("button", { name: "Copy only" }).click();
     await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+    assert.equal(await page.getByLabel("Note for manual handoff", { exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
     await page.getByRole("button", { name: "Done", exact: true }).press("Enter");
     await page.getByRole("button", { name: "Capture region" }).waitFor();
@@ -360,16 +361,53 @@ void test("renderer fixture: Copy works without destinations and Done returns to
   });
 });
 
+void test("renderer fixture: Copy retains a read-only note only until the result is left", async () => {
+  for (const exit of ["Done", "Capture another"]) {
+    await withPage({ editing: true, noDestinations: true }, async (page) => {
+      await editingReady(page);
+      const text = 'Manual context: "quote" café 😀';
+      await page.getByPlaceholder("What should the agent notice?").fill(text);
+      await page.getByRole("button", { name: "Copy only", exact: true }).click();
+      const note = page.getByLabel("Note for manual handoff", { exact: true });
+      await note.waitFor();
+      assert.equal(await note.inputValue(), text);
+      assert.equal(await note.evaluate((input) => input.readOnly), true);
+      assert.match(await page.locator("#result-note-help").innerText(), /Paste the image before copying this note/);
+      await note.selectText();
+      await note.press("a");
+      await note.press("Enter");
+      assert.equal(await note.inputValue(), text);
+      const calls = await page.evaluate(() => window.fixture.calls);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].action, "copy");
+      assert.equal(Object.hasOwn(calls[0].request, "note"), false);
+      await page.getByRole("button", { name: exit, exact: true }).click();
+      if (exit === "Done") {
+        await page.getByRole("button", { name: "Capture region", exact: true }).click();
+      }
+      await editingReady(page);
+      assert.equal(await page.getByPlaceholder("What should the agent notice?").inputValue(), "");
+      await page.getByRole("button", { name: "Copy only", exact: true }).click();
+      await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+      assert.equal(await note.count(), 0);
+      assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["copy", "start", "copy"]);
+    });
+  }
+});
+
 void test("renderer fixture: Done gains keyboard focus only after a pending result settles", async () => {
   await withPage({ editing: true, delayCopy: true }, async (page) => {
     await editingReady(page);
+    await page.getByPlaceholder("What should the agent notice?").fill("pending copy context");
     await page.getByRole("button", { name: "Copy only" }).click();
     await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+    assert.equal(await page.getByLabel("Note for manual handoff", { exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Done", exact: true }).isEnabled(), false);
     await page.keyboard.press("Escape");
     assert.equal(await page.getByRole("heading", { name: "Copied", exact: true }).count(), 1);
     await page.evaluate(() => window.fixture.releaseCopy());
     await page.waitForFunction(() => document.activeElement?.textContent === "Done");
+    assert.equal(await page.getByLabel("Note for manual handoff", { exact: true }).inputValue(), "pending copy context");
     await page.keyboard.press("Enter");
     await page.getByRole("button", { name: "Capture region" }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), [
@@ -389,6 +427,7 @@ void test("renderer fixture: explicit target, literal note, one Stage, then sepa
     assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
     await page.getByRole("button", { name: "Stage, don’t send" }).click();
     await page.getByRole("heading", { name: "Staged — unverified" }).waitFor();
+    assert.equal(await page.getByLabel("Note for manual handoff", { exact: true }).count(), 0);
     assert.match(await page.locator(".summary").innerText(), /pane 8/);
     assert.match(await page.locator(".summary").innerText(), /could not be verified/);
     const beforeReveal = await page.evaluate(() => window.fixture.calls);
@@ -406,18 +445,41 @@ void test("renderer fixture: explicit target, literal note, one Stage, then sepa
   });
 });
 
-void test("renderer fixture: stale Stage gives manual fallback without Reveal or retry", async () => {
-  await withPage({ editing: true, stale: true }, async (page) => {
-    await editingReady(page);
-    await page.getByRole("radio", { name: /pane 7/ }).check();
-    await page.getByRole("button", { name: "Stage, don’t send" }).click();
-    await page.getByRole("heading", { name: "Capture stopped" }).waitFor();
-    assert.match(await page.locator(".summary").innerText(), /clipboard for manual paste/);
-    assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
-    assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), [
-      "stage",
-    ]);
-  });
+void test("renderer fixture: failed Stage retains its note without Reveal or retry", async () => {
+  for (const stageFailure of ["target-stale", "dispatch-failed", "clipboard-failed", "unsupported"]) {
+    await withPage({ editing: true, stageFailure }, async (page) => {
+      await editingReady(page);
+      await page.getByRole("radio", { name: /pane 7/ }).check();
+      const text = "Keep this context for manual recovery";
+      await page.getByPlaceholder("What should the agent notice?").fill(text);
+      await page.getByRole("button", { name: "Stage, don’t send" }).click();
+      await page.getByRole("heading", { name: "Capture stopped" }).waitFor();
+      const note = page.getByLabel("Note for manual handoff", { exact: true });
+      await note.waitFor();
+      assert.equal(await note.inputValue(), text);
+      if (stageFailure === "clipboard-failed") {
+        assert.match(await page.locator(".summary").innerText(), /could not verify.*clipboard/);
+      } else {
+        assert.match(await page.locator(".summary").innerText(), /clipboard for manual paste/);
+      }
+      if (stageFailure === "dispatch-failed") {
+        assert.match(await page.locator(".summary").innerText(), /Check the chosen destination before pasting again/);
+      }
+      await note.press("Enter");
+      assert.equal(await page.getByRole("button", { name: "Reveal destination" }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: "Stage, don’t send" }).count(), 0);
+      const calls = await page.evaluate(() => window.fixture.calls);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].action, "stage");
+      assert.equal(calls[0].request.note, text);
+      assert.equal(calls[0].request.destinationId, "wezterm:fixture:7");
+      await note.press("Escape");
+      await page.getByRole("button", { name: "Capture region", exact: true }).click();
+      await editingReady(page);
+      assert.equal(await page.getByPlaceholder("What should the agent notice?").inputValue(), "");
+      assert.equal(await page.getByRole("radio", { name: /pane 7/ }).isChecked(), false);
+    });
+  }
 });
 
 void test("renderer fixture: Copy-only capability never enables Stage", async () => {
@@ -524,6 +586,9 @@ void test("renderer fixture: Copy ignores an invalid note and never stages it", 
     await page.getByRole("alert").waitFor();
     await page.getByRole("button", { name: "Copy only" }).click();
     await page.getByRole("heading", { name: "Copied", exact: true }).waitFor();
+    const note = page.getByLabel("Note for manual handoff", { exact: true });
+    await note.waitFor();
+    assert.equal(await note.inputValue(), "before\u2028after");
     const calls = await page.evaluate(() => window.fixture.calls);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].action, "copy");
@@ -697,6 +762,7 @@ void test("renderer fixture: Escape cancels review and dismisses the result with
     assert.deepEqual(await page.evaluate(() => window.fixture.calls), []);
     await note.press("Escape");
     await page.getByRole("button", { name: "Done", exact: true }).waitFor();
+    assert.equal(await page.getByLabel("Note for manual handoff", { exact: true }).count(), 0);
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Capture region" }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.fixture.calls.map((call) => call.action)), ["cancel"]);
@@ -708,6 +774,7 @@ void test("renderer fixture: Escape cannot dismiss or repeat an in-flight Reveal
     await editingReady(page);
     await page.getByRole("radio", { name: /pane 8/ }).check();
     await page.getByRole("button", { name: "Stage, don’t send" }).click();
+    await page.getByRole("heading", { name: "Staged — unverified" }).waitFor();
     await page.getByRole("button", { name: "Reveal destination" }).click();
     await page.keyboard.press("Escape");
     assert.equal(await page.getByRole("heading", { name: "Staged — unverified" }).count(), 1);
