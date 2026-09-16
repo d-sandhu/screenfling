@@ -24,6 +24,15 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const children = [];
 let checkpoint = "host";
 let completed = 0;
+let wrappedReadbacks = 0;
+const attachment = { labelVisible: false, noteVisible: false, rawNoteVisible: false,
+  imageFiles: 0, expectedImages: 0 };
+
+// get-text returns physical rows, not logical composer lines. Join only row
+// boundaries and their indentation; preserve whitespace inside each row.
+function composerText(text) {
+  return text.replace(/\r?\n[ \t]*/gu, "");
+}
 const startup = { modelVisible: false, authPrompt: false, attachmentRejected: false,
   textLength: 0, messages: [] };
 const STARTUP_MESSAGES = [
@@ -255,15 +264,24 @@ trust_level = "trusted"
       await page.getByPlaceholder("What should the agent notice?").fill(note);
       const previous = await images(agent.temp);
       assert.equal(previous.length, agent.count);
-      checkpoint = "actual-agent-attachment";
+      checkpoint = "stage-dispatch-result";
       await page.getByRole("button", { name: "Stage, don’t send", exact: true }).click();
       await page.getByRole("heading", { name: "Staged — unverified", exact: true }).waitFor();
       agent.count += 1;
+      attachment.expectedImages = agent.count;
+      checkpoint = "composer-attachment-observation";
       await waitUntil(async () => {
         const text = await paneText(agent.id);
+        const composer = composerText(text);
         startup.attachmentRejected = /Failed to paste image|does not support image/u.test(text);
-        return text.includes(`[Image #${agent.count}]`) && text.includes(note.trim());
+        attachment.labelVisible = composer.includes(`[Image #${agent.count}]`);
+        attachment.rawNoteVisible = text.includes(note.trim());
+        attachment.noteVisible = composer.includes(note.trim());
+        attachment.imageFiles = (await images(agent.temp)).length;
+        return attachment.labelVisible && attachment.noteVisible && attachment.imageFiles === agent.count;
       });
+      if (!attachment.rawNoteVisible) wrappedReadbacks += 1;
+      checkpoint = "attachment-file";
       const current = await images(agent.temp);
       assert.equal(current.length, agent.count);
       const added = current.filter((name) => !previous.includes(name));
@@ -272,10 +290,12 @@ trust_level = "trusted"
       assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
       assert.equal(png.readUInt32BE(16), pixels.width);
       assert.equal(png.readUInt32BE(20), pixels.height);
+      checkpoint = "unselected-pane";
       assert.equal((await images(other.temp)).length, other.count);
-      assert.equal((await paneText(other.id)).includes(note.trim()), false);
+      assert.equal(composerText(await paneText(other.id)).includes(note.trim()), false);
       const snapshot = await page.evaluate(() => window.screenFling.getSnapshot());
       assert.equal(snapshot.result.destination.id, targetId);
+      checkpoint = "no-submission";
       await assertNoSubmissions(agent.home);
       await page.getByRole("button", { name: "Done", exact: true }).click();
       await page.getByRole("button", { name: "Capture region", exact: true }).waitFor();
@@ -287,7 +307,7 @@ trust_level = "trusted"
     assert.equal(Object.values(diagnostics.delivery.failures).reduce((sum, count) => sum + count, 0), 0);
     for (const agent of agents) await assertNoSubmissions(agent.home);
     console.log(JSON.stringify({ acceptance: "codex-local-attachment", status: "passed", application: artifact,
-      codexVersion: VERSION, trials: completed, panes: 2, imagesPerPane: agents.map((agent) => agent.count),
+      codexVersion: VERSION, trials: completed, panes: 2, wrappedReadbacks, imagesPerPane: agents.map((agent) => agent.count),
       networkDenied: true, credentialsProvided: false, submissionObserved: false, physicalInteractionObserved: false,
       limitations: ["Exact hosted Codex/WezTerm tuple only; no inference, GUI focus, physical shortcut or permission-cycle acceptance.",
         "Attachment labels, unique literal notes and locally created PNG dimensions were observed. Product delivery remains dispatched-unverified."] }));
@@ -301,6 +321,6 @@ trust_level = "trusted"
 
 main().catch(() => {
   // Never emit the screenshot, raw terminal, private paths, note contents or agent logs.
-  console.error(JSON.stringify({ acceptance: "codex-local-attachment", status: "failed", checkpoint, completed, startup }));
+  console.error(JSON.stringify({ acceptance: "codex-local-attachment", status: "failed", checkpoint, completed, startup, attachment }));
   process.exitCode = 1;
 });
