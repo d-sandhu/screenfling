@@ -69,6 +69,7 @@ jobs:
         shell: bash
         run: |
           node tools/acceptance/lifecycle.cjs --capture-workflow
+          node tools/acceptance/codex-attachment.cjs | tee release/agent-observation.json
           # Shared hosted runners are not the release reference Mac. Keep every
           # timing result, including misses; only timing is observation-only here.
           # Explicit bash retains pipefail so tee cannot hide functional failures.
@@ -89,7 +90,8 @@ jobs:
         run: |
           node tools/acceptance/archive-macos.cjs
           cp release/capture-observation.json release/candidate/capture-observation.json
-          (cd release/candidate && shasum -a 256 capture-observation.json >> SHA256SUMS)
+          cp release/agent-observation.json release/candidate/agent-observation.json
+          (cd release/candidate && shasum -a 256 capture-observation.json agent-observation.json >> SHA256SUMS)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         with:
