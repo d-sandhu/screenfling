@@ -15,6 +15,13 @@ Copy does not include the note and does not need a terminal connection. **Done**
 returns to the start screen. Change the shortcut on that screen; a failed
 registration leaves the capture button available.
 
+After Copy or a failed Stage, **Note for manual handoff** keeps your text
+available in the current window. Check the result guidance and paste the image
+before selecting and copying the note: copying text replaces the image clipboard.
+The note is not saved. It clears when you dismiss the result, cancel, start a new
+capture, or reload/close the window. An uncertain Stage must still be inspected
+before another paste; retaining the note does not retry delivery.
+
 Escape cancels selection or review before delivery starts. During Copy, Stage,
 or Reveal, wait for the result rather than starting another operation.
 

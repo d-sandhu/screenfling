@@ -289,7 +289,10 @@ function ScreenFlingApp() {
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
   const [stagedDestination, setStagedDestination] = useState<Destination | null>(null);
   const [revealResult, setRevealResult] = useState<RevealResult | null>(null);
-  const [note, setNote] = useState("");
+  const [noteDraft, setNoteDraft] = useState<{
+    readonly operationId: string;
+    readonly text: string;
+  } | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const discoverySequence = useRef(0);
@@ -342,6 +345,16 @@ function ScreenFlingApp() {
     });
     return () => { current = false; };
   }, [bridge, idle, readinessRefresh]);
+
+  const operationId = snapshot === null ? null : operationIdOf(snapshot);
+  const noteOperationId = snapshot?.phase === "result" && snapshot.result.status === "cancelled"
+    ? null : operationId;
+  const note = noteOperationId !== null && noteDraft?.operationId === noteOperationId
+    ? noteDraft.text : "";
+  useEffect(() => {
+    // Retain text for manual fallback, never for a different capture or a cancelled draft.
+    setNoteDraft((current) => current?.operationId === noteOperationId ? current : null);
+  }, [noteOperationId]);
 
   const revealPending = snapshot?.phase === "result" && snapshot.revealPending === true;
   const actionPending = pending || revealPending;
@@ -413,7 +426,6 @@ function ScreenFlingApp() {
     discoverySequence.current += 1;
     setDestinations([]);
     setSelectedDestinationId(null);
-    setNote("");
     if (editingOperationId !== null) {
       setStagedDestination(null);
       setRevealResult(null);
@@ -467,7 +479,6 @@ function ScreenFlingApp() {
     return <main className="app app--loading">Opening ScreenFling…</main>;
   }
 
-  const operationId = operationIdOf(snapshot);
   const isActive = snapshot.phase !== "idle" && snapshot.phase !== "result";
   const selectedDestination = destinations.find(
     (destination) => destination.id === selectedDestinationId,
@@ -639,7 +650,7 @@ function ScreenFlingApp() {
                   // Keep over-limit drafts visibly invalid, never silently restore an older note.
                   // UTF-16 cap leaves even an all-emoji overflow above the 500-code-point limit.
                   maxLength={(MAX_NOTE_LENGTH + 1) * 2}
-                  onChange={(event) => setNote(event.currentTarget.value)}
+                  onChange={(event) => setNoteDraft({ operationId: snapshot.operationId, text: event.currentTarget.value })}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") event.preventDefault();
                   }}
@@ -650,7 +661,7 @@ function ScreenFlingApp() {
                 />
               </label>
               <p id="note-scope" className="empty-state">
-                Stage includes your note. Copy only copies the image.
+                Stage includes your note. Copy only copies the image; your note remains on the result.
               </p>
               {noteIsValid ? null : (
                 <p id="note-error" className="error" role="alert">
@@ -741,6 +752,31 @@ function ScreenFlingApp() {
 
         {snapshot.phase === "result" ? (
           <>
+            {!actionPending && note.length > 0 &&
+              (snapshot.result.status === "copied" || snapshot.result.status === "failed") ? (
+              <div className="handoff">
+                <label className="note-field">
+                  <span className="field-heading">Note for manual handoff</span>
+                  <input
+                    aria-describedby={noteIsValid ? "result-note-help" : "result-note-help result-note-warning"}
+                    autoComplete="off"
+                    readOnly
+                    spellCheck={false}
+                    type="text"
+                    value={note}
+                  />
+                </label>
+                <p id="result-note-help" className="empty-state">
+                  Follow the result guidance before any paste. Paste the image before copying this note;
+                  copying text replaces the image clipboard. This draft clears when you leave this result.
+                </p>
+                {noteIsValid ? null : (
+                  <p id="result-note-warning" className="error" role="alert">
+                    This note did not pass Stage validation. Review it in a text editor before pasting into a terminal.
+                  </p>
+                )}
+              </div>
+            ) : null}
             <div className="actions">
               {revealTarget === null && revealResult === null && !revealPending ? null : (
                 <button
