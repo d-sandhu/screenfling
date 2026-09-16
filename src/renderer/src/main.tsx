@@ -758,7 +758,7 @@ function ScreenFlingApp() {
                 <label className="note-field">
                   <span className="field-heading">Note for manual handoff</span>
                   <input
-                    aria-describedby="result-note-help"
+                    aria-describedby={noteIsValid ? "result-note-help" : "result-note-help result-note-warning"}
                     autoComplete="off"
                     readOnly
                     spellCheck={false}
@@ -767,9 +767,14 @@ function ScreenFlingApp() {
                   />
                 </label>
                 <p id="result-note-help" className="empty-state">
-                  Paste the image before copying this note; copying text replaces the image clipboard.
-                  This draft clears when you leave this result.
+                  Follow the result guidance before any paste. Paste the image before copying this note;
+                  copying text replaces the image clipboard. This draft clears when you leave this result.
                 </p>
+                {noteIsValid ? null : (
+                  <p id="result-note-warning" className="error" role="alert">
+                    This note did not pass Stage validation. Review it in a text editor before pasting into a terminal.
+                  </p>
+                )}
               </div>
             ) : null}
             <div className="actions">
