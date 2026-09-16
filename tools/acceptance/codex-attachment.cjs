@@ -25,13 +25,18 @@ const children = [];
 let checkpoint = "host";
 let completed = 0;
 let wrappedReadbacks = 0;
-const attachment = { labelVisible: false, noteVisible: false, rawNoteVisible: false,
+const attachment = { labelVisible: false, rawLabelVisible: false, noteVisible: false, rawNoteVisible: false,
   imageFiles: 0, expectedImages: 0 };
 
 // get-text returns physical rows, not logical composer lines. Join only row
 // boundaries and their indentation; preserve whitespace inside each row.
 function composerText(text) {
   return text.replace(/\r?\n[ \t]*/gu, "");
+}
+// The fixed display label may wrap at its space or across terminal row padding.
+// This normalization is only for Codex's label, never for the literal user note.
+function hasImageLabel(text, number) {
+  return text.replace(/[ \t\r\n]/gu, "").includes(`[Image#${number}]`);
 }
 const startup = { modelVisible: false, authPrompt: false, attachmentRejected: false,
   textLength: 0, messages: [] };
@@ -274,13 +279,14 @@ trust_level = "trusted"
         const text = await paneText(agent.id);
         const composer = composerText(text);
         startup.attachmentRejected = /Failed to paste image|does not support image/u.test(text);
-        attachment.labelVisible = composer.includes(`[Image #${agent.count}]`);
+        attachment.rawLabelVisible = text.includes(`[Image #${agent.count}]`);
+        attachment.labelVisible = hasImageLabel(text, agent.count);
         attachment.rawNoteVisible = text.includes(note.trim());
         attachment.noteVisible = composer.includes(note.trim());
         attachment.imageFiles = (await images(agent.temp)).length;
         return attachment.labelVisible && attachment.noteVisible && attachment.imageFiles === agent.count;
       });
-      if (!attachment.rawNoteVisible) wrappedReadbacks += 1;
+      if (!attachment.rawLabelVisible || !attachment.rawNoteVisible) wrappedReadbacks += 1;
       checkpoint = "attachment-file";
       const current = await images(agent.temp);
       assert.equal(current.length, agent.count);
