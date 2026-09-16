@@ -6,9 +6,11 @@ priorities; it is not a release announcement.
 
 ## Immediate implementation sequence
 
-1. **Finish one real-agent handoff.** Complete the isolated Codex attachment
-   work in [PR #52](https://github.com/d-sandhu/screenfling/pull/52), then verify the
-   installed WezTerm/agent combination. A byte receiver is not an image attachment.
+1. **Verify the installed real-agent handoff.** The isolated Codex attachment
+   work in [PR #52](https://github.com/d-sandhu/screenfling/pull/52) is merged and
+   passed on main: 30 scripted handoffs to the pinned hosted combination.
+   Verify the installed WezTerm/agent combination separately; that result does
+   not establish physical input, GUI focus, or broad agent compatibility.
 2. **Validate daily macOS use.** Complete the permission, physical capture,
    display, shortcut, recovery, performance, and routing checks in the
    [operator checklist](docs/acceptance/macos-operator-acceptance.md).
