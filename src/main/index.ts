@@ -210,7 +210,9 @@ async function initializeApplication(): Promise<void> {
         screen.on("display-added", (_event, display) => listener(String(display.id)));
       },
       displayMetricsChanged: (listener) => {
-        screen.on("display-metrics-changed", (_event, display) => listener(String(display.id)));
+        screen.on("display-metrics-changed", (_event, display, changedMetrics) =>
+          listener(String(display.id), changedMetrics),
+        );
       },
       displayRemoved: (listener) => {
         screen.on("display-removed", (_event, display) => listener(String(display.id)));

@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
+  failureObservation,
   allowExpectedPageClose,
   cancelOverlay,
   completeOverlaySelection,
@@ -339,4 +340,74 @@ void test("observation-only timing never masks a functional runner failure", () 
   assert.deepEqual(JSON.parse(result.stderr.trim()), {
     acceptance: "production-capture", status: "failed", reason: "package-not-found",
   });
+});
+
+
+void test("startCapture observes an early page failure while the click is still pending", () => {
+  const script = `
+    const assert = require("node:assert/strict");
+    const { startCapture } = require("./capture.cjs");
+    const context = { waitForEvent: () => Promise.reject(new Error("synthetic-page-failure")) };
+    const main = { getByRole: () => ({ click: () => new Promise(resolve => setTimeout(resolve, 20)) }) };
+    assert.rejects(startCapture(main, context, 100), /synthetic-page-failure/)
+      .catch(() => { process.exitCode = 2; });
+  `;
+  const result = spawnSync(process.execPath, ["--unhandled-rejections=strict", "-e", script], {
+    cwd: __dirname, encoding: "utf8", timeout: 5_000,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stderr);
+});
+
+void test("startCapture closes a late overlay after the click fails without retrying", async () => {
+  let resolvePage;
+  let closed = false;
+  let clicks = 0;
+  const page = {
+    close: async () => { closed = true; }, isClosed: () => closed,
+    waitForURL: async () => {}, getByText: () => ({ waitFor: async () => {} }),
+  };
+  const context = { waitForEvent: () => new Promise(resolve => { resolvePage = resolve; }) };
+  const main = { getByRole: () => ({ click: async () => { clicks += 1; throw new Error("synthetic-click-failure"); } }) };
+  await assert.rejects(startCapture(main, context, 100), /synthetic-click-failure/);
+  resolvePage(page);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(closed, true);
+  assert.equal(clicks, 1);
+});
+
+void test("startCapture retains the exact operation and bounds the single real click", async () => {
+  let clickOptions;
+  let pageWaitStarted = false;
+  const page = {
+    close: async () => { throw new Error("successful overlay must remain open"); }, isClosed: () => false,
+    waitForURL: async () => {}, getByText: () => ({ waitFor: async () => {} }),
+  };
+  const context = { waitForEvent: async () => { pageWaitStarted = true; return page; } };
+  const main = {
+    getByRole: () => ({ click: async (options) => { assert.equal(pageWaitStarted, true); clickOptions = options; } }),
+    evaluate: async () => ({ phase: "selecting", operationId: "exact-operation" }),
+  };
+  const result = await startCapture(main, context, 100);
+  assert.equal(result.overlay, page);
+  assert.equal(result.operationId, "exact-operation");
+  assert.deepEqual(Object.keys(clickOptions), ["timeout"]);
+  assert.ok(clickOptions.timeout > 0 && clickOptions.timeout <= 100);
+});
+
+void test("capture failure observations contain only allowed labels and counts", async () => {
+  const secret = "synthetic-private-note-and-path";
+  globalThis.window = { screenFling: {
+    getSnapshot: async () => ({ phase: "result", operationId: secret, result: { status: "failed", reason: secret }, note: secret }),
+    getDiagnostics: async () => ({ starts: { button: 3, shortcut: secret }, extra: secret }),
+  } };
+  const page = { isClosed: () => false, evaluate: async action => action() };
+  const observation = await failureObservation(page, new Error(`Execution context was destroyed: ${secret}`));
+  assert.equal(observation.category, "renderer-context-changed");
+  assert.deepEqual(observation.workflow, { phase: "result", result: "failed", reason: null, buttonStarts: 3, shortcutStarts: null });
+  assert.equal(JSON.stringify(observation).includes(secret), false);
+  const unavailable = await failureObservation({ isClosed: () => false, evaluate: async () => { throw new Error(secret); } }, new Error(secret));
+  assert.equal(unavailable.workflow, "unavailable");
+  assert.equal(unavailable.category, "unclassified");
+  assert.equal(JSON.stringify(unavailable).includes(secret), false);
 });
