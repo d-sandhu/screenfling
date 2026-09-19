@@ -294,11 +294,9 @@ export class WezTermAdapter implements DestinationAdapter {
     for (const pane of snapshot.panes) {
       const routeId = `wezterm:${snapshot.generation}:${pane.pane_id}`;
       // Labels help the user choose; only generation + pane ID address a route.
-      const context = {
-        observedAt,
-        ...(pane.title.trim().length === 0 ? {} : { title: pane.title }),
-        ...(pane.cwd === null || pane.cwd.length === 0 ? {} : { cwd: pane.cwd }),
-      };
+      const context: { observedAt: string; title?: string; cwd?: string } = { observedAt };
+      if (pane.title.trim().length > 0) context.title = pane.title;
+      if (pane.cwd !== null && pane.cwd.length > 0) context.cwd = pane.cwd;
       const destination = destinationSchema.safeParse({
         id: routeId,
         adapter: WEZTERM_ADAPTER_ID,
