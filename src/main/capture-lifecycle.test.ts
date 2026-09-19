@@ -6,7 +6,7 @@ import type { CaptureLifecycleRegistrations } from "./capture-lifecycle";
 
 type ListenerSet = {
   displayAdded: (displayId: string) => void;
-  displayMetricsChanged: (displayId: string) => void;
+  displayMetricsChanged: (displayId: string, changedMetrics: readonly string[]) => void;
   displayRemoved: (displayId: string) => void;
   resumed: () => void;
   suspended: () => void;
@@ -33,7 +33,7 @@ function createRegistrations(listeners: ListenerSet): CaptureLifecycleRegistrati
 }
 
 describe("capture lifecycle registration", () => {
-  it("routes every display and power event to the capture controller", () => {
+  it("ignores work-area-only changes but retains geometry, unknown, and power invalidation", () => {
     const listeners: ListenerSet = {
       displayAdded: () => undefined,
       displayMetricsChanged: () => undefined,
@@ -56,11 +56,20 @@ describe("capture lifecycle registration", () => {
 
     listeners.displayAdded("added");
     listeners.displayRemoved("removed");
-    listeners.displayMetricsChanged("metrics-changed");
+    listeners.displayMetricsChanged("metrics-changed", ["bounds"]);
+    listeners.displayMetricsChanged("work-area-only", ["workArea"]);
+    listeners.displayMetricsChanged("scale-changed", ["scaleFactor"]);
+    listeners.displayMetricsChanged("rotation-changed", ["rotation"]);
+    listeners.displayMetricsChanged("mixed-change", ["workArea", "bounds"]);
+    listeners.displayMetricsChanged("unspecified-change", []);
+    listeners.displayMetricsChanged("unknown-change", ["futureMetric"]);
     listeners.suspended();
     listeners.resumed();
 
-    expect(displayChanges).toEqual(["added", "removed", "metrics-changed"]);
+    expect(displayChanges).toEqual([
+      "added", "removed", "metrics-changed", "scale-changed", "rotation-changed",
+      "mixed-change", "unspecified-change", "unknown-change",
+    ]);
     expect(environmentChanges).toBe(2);
   });
 });

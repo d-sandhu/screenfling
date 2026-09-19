@@ -266,14 +266,21 @@ async function startCapture(mainWindow, context, timeoutMs = OVERLAY_READY_TIMEO
     return await withTimeout(
       async () => {
         progress.click = "pending";
-        const overlayPromise = waitForOverlay(context, timeoutMs);
-        await mainWindow.getByRole("button", { name: "Capture region" }).click();
-        progress.click = "completed";
-        overlay = await overlayPromise;
-        if (abandoned) {
-          await closeOverlayAfterFailure(overlay);
-          throw new Error("overlay-ready-timeout");
-        }
+        // Observe both failures immediately; a pending click must not orphan the page wait.
+        const overlayPromise = waitForOverlay(context, timeoutMs).then(async (page) => {
+          overlay = page;
+          if (abandoned) {
+            await closeOverlayAfterFailure(page);
+            throw new Error("overlay-ready-timeout");
+          }
+          return page;
+        });
+        await Promise.all([
+          overlayPromise,
+          mainWindow.getByRole("button", { name: "Capture region" }).click({
+            timeout: Math.max(1, timeoutMs - (performance.now() - startedAt)),
+          }).then(() => { progress.click = "completed"; }),
+        ]);
         progress.overlay = "selecting-state";
         const snapshot = await waitForWorkflowPhase(mainWindow, "selecting", timeoutMs);
         progress.overlay = "selecting";
@@ -645,7 +652,7 @@ async function failureObservation(mainWindow, cause) {
     observation.workflow = await withTimeout(() => mainWindow.evaluate(async () => {
       const snapshot = await window.screenFling?.getSnapshot();
       const diagnostics = await window.screenFling?.getDiagnostics();
-      const phases = ["idle", "snapshotting", "selecting", "editing", "target-selected", "dispatching", "verifying", "result"];
+      const phases = ["idle", "snapshotting", "selecting", "editing", "target-selected", "writing-clipboard", "staging", "result"];
       const outcomes = ["copied", "cancelled", "failed", "dispatched-unverified", "staged-verified", "sent-verified"];
       const reasons = ["capture-failed", "clipboard-failed", "dispatch-failed", "permission-blocked", "target-stale", "unsupported", "unexpected"];
       const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -832,6 +839,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  failureObservation,
   captureTimingResult,
   copySoftwareTiming,
   observeCopyTiming,
