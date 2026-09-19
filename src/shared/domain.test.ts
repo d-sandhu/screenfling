@@ -63,6 +63,40 @@ describe("note contract", () => {
 });
 
 describe("destination contract", () => {
+  it("keeps pane titles bounded, optional and out of delivery receipts", () => {
+    const destination = parseDestination({
+      ...validDestination,
+      context: {
+        observedAt: "2026-09-16T12:00:00.000Z",
+        title: "Codex · review 🖼️",
+      },
+    });
+    expect(destination.context?.title).toBe("Codex · review 🖼️");
+    expect(Object.isFrozen(destination.context)).toBe(true);
+    expect(receiptForDestination(destination)).toEqual({
+      id: validDestination.id,
+      adapter: validDestination.adapter,
+      surface: validDestination.surface,
+    });
+    const invalidTitles = [
+      "",
+      "a".repeat(4_097),
+      "line\nbreak",
+      "\u0000",
+      "\u001b[2J",
+      "\u2028",
+      "\u2029",
+    ];
+    for (const title of invalidTitles) {
+      expect(
+        destinationSchema.safeParse({
+          ...destination,
+          context: { ...destination.context, title },
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("accepts an exact stage destination and freezes the decoded value", () => {
     const destination = parseDestination(validDestination);
     expect(destination.capabilities.actions).toEqual(["copy", "stage"]);

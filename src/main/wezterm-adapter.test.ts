@@ -201,6 +201,7 @@ describe("WezTerm destination adapter", () => {
       endpoint: { scope: "local", instanceId: GENERATION_A },
       surface: { kind: "pane", locator: "7" },
       context: {
+        title: "Claude Code",
         cwd: "file:///screenfling",
         observedAt: "2026-08-20T16:00:00.000Z",
       },
@@ -214,6 +215,7 @@ describe("WezTerm destination adapter", () => {
       },
     });
     expect(destinations[1]?.context).toEqual({
+      title: "Claude Code",
       observedAt: "2026-08-20T16:00:00.000Z",
     });
     expect(runner.requests[0]?.arguments).toEqual(["--version"]);
@@ -228,6 +230,44 @@ describe("WezTerm destination adapter", () => {
     ]);
     expect(runner.requests[1]?.environment.WEZTERM_UNIX_SOCKET).toBe(SOCKET_PATH);
     expect(runner.requests[1]?.environment.WEZTERM_PANE).toBeUndefined();
+  });
+
+  it("updates a pane title on refresh without changing its exact route", async () => {
+    const runner = new FakeWezTermRunner();
+    const adapter = createAdapter(runner);
+    const before = await firstDestination(adapter);
+    runner.listResult = success(
+      JSON.stringify([
+        { ...paneFixture(7, "file:///another-project"), title: "Codex · tests" },
+        { ...paneFixture(8), title: "   " },
+      ]),
+    );
+    const refreshed = await adapter.discover();
+    expect(refreshed[0]?.id).toBe(before.id);
+    expect(refreshed[0]?.context?.title).toBe("Codex · tests");
+    expect(refreshed[1]?.context?.title).toBeUndefined();
+    await expect(
+      adapter.stageIfCurrent({ destination: before, note: "literal note", verifyClipboard }),
+    ).resolves.toEqual({ status: "dispatched-unverified" });
+    expect(runner.spawnedSendRequests).toHaveLength(1);
+    expect(runner.spawnedSendRequests[0]?.arguments).toEqual(sendArguments(7));
+    expect(runner.spawnedSendRequests[0]?.input).toEqual(
+      Uint8Array.from([...IMAGE_PASTE_INPUT, ...encoder.encode("literal note")]),
+    );
+  });
+
+  it("never substitutes a same-title pane when the selected pane closes", async () => {
+    const runner = new FakeWezTermRunner();
+    runner.listResult = success(JSON.stringify([paneFixture(7), paneFixture(8)]));
+    const adapter = createAdapter(runner);
+    const destination = await firstDestination(adapter);
+    runner.listResult = success(JSON.stringify([paneFixture(8)]));
+    await expect(
+      adapter.stageIfCurrent({ destination, note: null, verifyClipboard }),
+    ).resolves.toEqual({ status: "stale" });
+    await expect(adapter.revealIfCurrent({ destination })).resolves.toEqual({ status: "stale" });
+    expect(runner.spawnedSendRequests).toEqual([]);
+    expect(runner.spawnedRevealRequests).toEqual([]);
   });
 
   it("rejects unsupported versions before pane discovery", async () => {

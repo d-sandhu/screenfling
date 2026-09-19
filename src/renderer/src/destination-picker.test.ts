@@ -52,4 +52,57 @@ describe("destination picker recovery", () => {
     expect(markup).toContain("Copy only");
     expect(markup).not.toContain("Unverified");
   });
+  it("shows terminal titles as text beside the exact pane identity", () => {
+    const destination = parseDestination({
+      ...COPY_ONLY_DESTINATION,
+      context: {
+        title: '<img src=x onerror="alert(1)"> & review',
+        observedAt: "2026-09-16T12:00:00.000Z",
+      },
+    });
+    const markup = renderToStaticMarkup(
+      createElement(DestinationPicker, {
+        destinations: [destination],
+        loading: false,
+        selectedId: null,
+        onRefresh: () => undefined,
+        onSelect: () => undefined,
+      }),
+    );
+    expect(markup).toContain("instrumented · pane 7");
+    expect(markup).toContain("&lt;img");
+    expect(markup).toContain("&amp; review");
+    expect(markup).not.toContain("<img");
+    expect(markup).toContain("Context unavailable");
+    expect(markup).toContain("Copy only");
+  });
+
+  it("keeps duplicate titles distinct without selecting a pane", () => {
+    const destinations = [7, 8].map((id) =>
+      parseDestination({
+        ...COPY_ONLY_DESTINATION,
+        id: `instrumented:copy-only:${id}`,
+        surface: { kind: "pane", locator: String(id) },
+        context: {
+          title: "Same project",
+          cwd: "/same-project",
+          observedAt: "2026-09-16T12:00:00.000Z",
+        },
+      }),
+    );
+    const markup = renderToStaticMarkup(
+      createElement(DestinationPicker, {
+        destinations,
+        loading: false,
+        selectedId: null,
+        onRefresh: () => undefined,
+        onSelect: () => undefined,
+      }),
+    );
+    expect(markup).toContain("instrumented · pane 7");
+    expect(markup).toContain("instrumented · pane 8");
+    expect(markup.match(/type="radio"/gu)).toHaveLength(2);
+    expect(markup).not.toContain("checked=");
+  });
+
 });

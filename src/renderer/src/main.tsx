@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { CaptureDragTracker, pointOnDisplay, selectionFromDrag } from "./capture-drag";
 import { deliveryCopy, revealCopy } from "./delivery-copy";
 import { DestinationPicker } from "./destination-picker";
+import { PreviewViewport } from "./preview-viewport";
 import { WezTermSetupPanel } from "./wezterm-setup";
 import { revealDestinationForResult } from "./reveal-result";
 import { IdleCaptureActions } from "./screen-capture-readiness";
@@ -219,7 +220,7 @@ function phaseCopy(snapshot: WorkflowSnapshot): UiCopy {
     case "editing":
       return {
         detail:
-          "Review the exact pixels, add optional context, then choose Copy or one exact target.",
+          "Review the selected image, add optional context, then choose Copy or one exact target.",
         title: "Ready to hand off",
       };
     case "target-selected":
@@ -247,21 +248,13 @@ function CapturePreview({ draft, onReady, onError }: {
   if (imageUrl === null) return <div className="preview preview--loading" />;
 
   return (
-    <figure className="preview">
-      <img
-        alt="Selected screen region"
-        draggable={false}
-        onLoad={(event) => {
-          if (event.currentTarget.naturalWidth > 0 && event.currentTarget.naturalHeight > 0) onReady();
-          else onError();
-        }}
-        onError={onError}
-        src={imageUrl}
-      />
-      <figcaption>
-        {draft.pixels.width} × {draft.pixels.height} px
-      </figcaption>
-    </figure>
+    <PreviewViewport
+      key={imageUrl}
+      imageUrl={imageUrl}
+      pixels={draft.pixels}
+      onReady={onReady}
+      onError={onError}
+    />
   );
 }
 

@@ -293,8 +293,10 @@ export class WezTermAdapter implements DestinationAdapter {
     const destinations: Destination[] = [];
     for (const pane of snapshot.panes) {
       const routeId = `wezterm:${snapshot.generation}:${pane.pane_id}`;
-      const context =
-        pane.cwd === null || pane.cwd.length === 0 ? { observedAt } : { cwd: pane.cwd, observedAt };
+      // Labels help the user choose; only generation + pane ID address a route.
+      let context: NonNullable<Destination["context"]> = { observedAt };
+      if (pane.title.trim().length > 0) context = { ...context, title: pane.title };
+      if (pane.cwd !== null && pane.cwd.length > 0) context = { ...context, cwd: pane.cwd };
       const destination = destinationSchema.safeParse({
         id: routeId,
         adapter: WEZTERM_ADAPTER_ID,

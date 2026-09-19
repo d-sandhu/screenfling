@@ -73,7 +73,7 @@ jobs:
           # Shared hosted runners are not the release reference Mac. Keep every
           # timing result, including misses; only timing is observation-only here.
           # Explicit bash retains pipefail so tee cannot hide functional failures.
-          node tools/acceptance/capture.cjs --capture-runs=20 --cancel-runs=200 --observe-timing | tee release/capture-observation.json
+          node tools/acceptance/capture.cjs --capture-runs=200 --cancel-runs=200 --observe-timing | tee release/capture-observation.json
           node <<'NODE'
           const fs = require('node:fs');
           const report = JSON.parse(fs.readFileSync('release/capture-observation.json', 'utf8'));

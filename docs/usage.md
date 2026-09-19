@@ -10,6 +10,12 @@ On macOS, put the pointer on the display to capture and press **Cmd+Shift+9**.
 The **Capture region** button starts the same workflow. Drag over the relevant
 area on that display and review the resulting crop.
 
+Use **100%** to inspect small text, then scroll within the preview. **Fit** shows
+the whole crop without enlarging small images. The first Escape inside an enlarged
+preview returns to Fit; another Escape cancels review. Zoom is presentation only:
+it reuses the JPEG preview, with one image pixel per CSS pixel at 100%, and does
+not crop, resize, or recompress the PNG delivered to the clipboard.
+
 Choose **Copy only**, then paste the image manually in your destination.
 Copy does not include the note and does not need a terminal connection. **Done**
 returns to the start screen. Change the shortcut on that screen; a failed
@@ -77,6 +83,10 @@ or weaken the checks. A Lua config is executable code, not an inert settings fil
 ## Stage and inspect
 
 After a capture, explicitly select the correct pane in **Exact destination**.
+Pane titles and directories help you recognize sessions, but only the exact pane
+ID addresses a destination. Titles can change or repeat; they are not proof of
+which agent is running. Refresh updates the labels without choosing a pane for you.
+
 Add an optional single-line note and click **Stage, don’t send** once. ScreenFling
 copies the crop, checks the route, and writes the attachment key plus note to
 that pane. It does not automatically reveal the terminal or press Enter.
