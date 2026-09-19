@@ -27,6 +27,7 @@ import type { UiCopy } from "./delivery-copy";
 import { MAX_NOTE_LENGTH, noteSchema, supportsStage } from "../../shared/domain";
 
 declare const __SCREENFLING_BUILD__: string;
+declare const __SCREENFLING_VERSION__: string;
 
 function useJpegUrl(bytes: Uint8Array | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -831,8 +832,8 @@ function ScreenFlingApp() {
             ? "Operation in progress · no automatic submission"
             : "Nothing is sent automatically"}
         </span>
-        <span title={`Build ${__SCREENFLING_BUILD__}`} style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
-          dev · {__SCREENFLING_BUILD__.slice(0, 7)}
+        <span title={`ScreenFling ${__SCREENFLING_VERSION__} · Build ${__SCREENFLING_BUILD__}`} style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
+          {__SCREENFLING_VERSION__} · {__SCREENFLING_BUILD__.slice(0, 7)}
         </span>
       </footer>
     </main>

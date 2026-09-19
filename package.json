@@ -51,7 +51,8 @@
     "files": [
       "out/**/*",
       "!out/native/**/*",
-      "package.json"
+      "package.json",
+      "LICENSE"
     ],
     "afterPack": "tools/after-pack.cjs",
     "mac": {
