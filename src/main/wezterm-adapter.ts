@@ -16,7 +16,7 @@ import type {
 } from "./destination-adapter";
 import type { WezTermConnectionStatus } from "../shared/wezterm-setup";
 import type { DestinationDiscovery } from "../shared/destination-discovery";
-import type { Destination, DestinationInput } from "../shared/domain";
+import type { Destination } from "../shared/domain";
 import type { RevealResult } from "../shared/workflow";
 
 export const WEZTERM_ADAPTER_ID = "wezterm";
@@ -294,9 +294,9 @@ export class WezTermAdapter implements DestinationAdapter {
     for (const pane of snapshot.panes) {
       const routeId = `wezterm:${snapshot.generation}:${pane.pane_id}`;
       // Labels help the user choose; only generation + pane ID address a route.
-      const context: NonNullable<DestinationInput["context"]> = { observedAt };
-      if (pane.title.trim().length > 0) context.title = pane.title;
-      if (pane.cwd !== null && pane.cwd.length > 0) context.cwd = pane.cwd;
+      let context: NonNullable<Destination["context"]> = { observedAt };
+      if (pane.title.trim().length > 0) context = { ...context, title: pane.title };
+      if (pane.cwd !== null && pane.cwd.length > 0) context = { ...context, cwd: pane.cwd };
       const destination = destinationSchema.safeParse({
         id: routeId,
         adapter: WEZTERM_ADAPTER_ID,
