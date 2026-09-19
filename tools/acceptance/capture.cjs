@@ -18,6 +18,8 @@ const OVERLAY_ACTION_TIMEOUT_MS = 5_000;
 const OVERLAY_EMERGENCY_CLOSE_TIMEOUT_MS = 1_000;
 const OVERLAY_READY_TIMEOUT_MS = 5_000;
 const MAX_RUNS = 1_000;
+// Fixed labels and counts only. Never record screenshots, notes, paths, or raw errors.
+const progress = { phase: "initialization", iteration: 0, click: "not-started", overlay: "not-started" };
 const portAddressSchema = z.object({ port: z.number().int().min(1).max(65_535) });
 const processListSchema = z.string();
 const viewportSchema = z.strictObject({
@@ -233,13 +235,17 @@ async function waitForOverlay(context, timeoutMs = OVERLAY_READY_TIMEOUT_MS) {
   try {
     return await withTimeout(
       async () => {
+        progress.overlay = "page-event";
         overlay = await context.waitForEvent("page");
         if (abandoned) {
           await closeOverlayAfterFailure(overlay);
           throw new Error("overlay-open-timeout");
         }
+        progress.overlay = "capture-url";
         await overlay.waitForURL(/surface=capture/);
+        progress.overlay = "visible-instruction";
         await overlay.getByText("Drag to capture", { exact: true }).waitFor({ state: "visible" });
+        progress.overlay = "ready";
         return overlay;
       },
       timeoutMs,
@@ -259,14 +265,18 @@ async function startCapture(mainWindow, context, timeoutMs = OVERLAY_READY_TIMEO
   try {
     return await withTimeout(
       async () => {
+        progress.click = "pending";
         const overlayPromise = waitForOverlay(context, timeoutMs);
         await mainWindow.getByRole("button", { name: "Capture region" }).click();
+        progress.click = "completed";
         overlay = await overlayPromise;
         if (abandoned) {
           await closeOverlayAfterFailure(overlay);
           throw new Error("overlay-ready-timeout");
         }
+        progress.overlay = "selecting-state";
         const snapshot = await waitForWorkflowPhase(mainWindow, "selecting", timeoutMs);
+        progress.overlay = "selecting";
         return {
           overlay,
           operationId: snapshot.operationId,
@@ -618,6 +628,39 @@ function classifyFailure(cause) {
   return "acceptance-runner-failed";
 }
 
+function failureCategory(cause) {
+  if (!(cause instanceof Error)) return "unknown";
+  if (cause.name === "ZodError") return "invalid-structured-observation";
+  if (cause.name === "TimeoutError") return "browser-timeout";
+  if (/Execution context was destroyed|Cannot find context/iu.test(cause.message)) return "renderer-context-changed";
+  if (/Target.*closed|has been closed/iu.test(cause.message)) return "browser-target-closed";
+  if (/strict mode violation/iu.test(cause.message)) return "ambiguous-locator";
+  return "unclassified";
+}
+
+async function failureObservation(mainWindow, cause) {
+  const observation = { ...progress, category: failureCategory(cause), workflow: "unavailable" };
+  if (mainWindow === undefined || mainWindow.isClosed()) return observation;
+  try {
+    observation.workflow = await withTimeout(() => mainWindow.evaluate(async () => {
+      const snapshot = await window.screenFling?.getSnapshot();
+      const diagnostics = await window.screenFling?.getDiagnostics();
+      const phases = ["idle", "snapshotting", "selecting", "editing", "target-selected", "dispatching", "verifying", "result"];
+      const outcomes = ["copied", "cancelled", "failed", "dispatched-unverified", "staged-verified", "sent-verified"];
+      const reasons = ["capture-failed", "clipboard-failed", "dispatch-failed", "permission-blocked", "target-stale", "unsupported", "unexpected"];
+      const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+      return {
+        phase: phases.includes(snapshot?.phase) ? snapshot.phase : "unknown",
+        result: outcomes.includes(snapshot?.result?.status) ? snapshot.result.status : null,
+        reason: reasons.includes(snapshot?.result?.reason) ? snapshot.result.reason : null,
+        buttonStarts: count(diagnostics?.starts?.button),
+        shortcutStarts: count(diagnostics?.starts?.shortcut),
+      };
+    }), 1_000, "failure-observation-timeout");
+  } catch { /* A failed diagnostic read must not hide the original failure. */ }
+  return observation;
+}
+
 async function main() {
   const captureRuns = parseIntegerFlag("capture-runs", DEFAULT_CAPTURE_RUNS);
   const cancelRuns = parseIntegerFlag("cancel-runs", DEFAULT_CANCEL_RUNS);
@@ -642,34 +685,47 @@ async function main() {
     await terminateApplication(child);
     throw cause;
   }
+  let mainWindow;
   try {
+    progress.phase = "main-window";
     const context = browser.contexts()[0];
     if (context === undefined) throw new Error("main-window-unavailable");
-    const mainWindow = mainPage(context);
+    mainWindow = mainPage(context);
+    progress.phase = "capture-button";
     await mainWindow.getByRole("button", { name: "Capture region" }).waitFor({ state: "visible" });
     const packaged = mainWindow.url().startsWith("screenfling://");
     if (!packaged) throw new Error("unpackaged-application");
+    progress.phase = "user-agent";
     const userAgent = await mainWindow.evaluate(() => navigator.userAgent);
 
+    progress.phase = "cancel-warmup";
     await runWarmup(mainWindow, context);
     if (captureRuns > 0) {
       for (let index = 0; index < CAPTURE_WARMUP_RUNS; index += 1) {
+        progress.phase = "capture-warmup";
+        progress.iteration = index + 1;
         await runCapture(mainWindow, context);
       }
     }
     const captureSamples = [];
     for (let index = 0; index < captureRuns; index += 1) {
+      progress.phase = "capture";
+      progress.iteration = index + 1;
       captureSamples.push(await runCapture(mainWindow, context));
     }
 
     const memorySamples = [];
     const beforeCancelCycles = workingSetKib(child.pid);
     for (let index = 0; index < cancelRuns; index += 1) {
+      progress.phase = "cancel";
+      progress.iteration = index + 1;
       const memory = await runCancel(mainWindow, context, child.pid);
       if (memory !== null) memorySamples.push(memory);
     }
+    progress.phase = "cooldown";
     await delay(cooldownMs);
     const afterCooldown = workingSetKib(child.pid);
+    progress.phase = "report";
     const diagnostics = await readDiagnostics(mainWindow);
 
     const captureActionTimes = captureSamples.map(
@@ -757,6 +813,10 @@ async function main() {
       process.stderr.write("Timing target missed in observation-only mode; performance acceptance remains open.\n");
     }
     process.exitCode = timing.exitCode;
+  } catch (cause) {
+    const failure = new Error(classifyFailure(cause));
+    failure.observation = await failureObservation(mainWindow, cause);
+    throw failure;
   } finally {
     await closeApplication(browser, child);
   }
@@ -765,7 +825,7 @@ async function main() {
 if (require.main === module) {
   main().catch((cause) => {
     process.stderr.write(
-      `${JSON.stringify({ acceptance: "production-capture", status: "failed", reason: classifyFailure(cause) })}\n`,
+      `${JSON.stringify({ acceptance: "production-capture", status: "failed", reason: classifyFailure(cause), observation: cause.observation })}\n`,
     );
     process.exitCode = 1;
   });
