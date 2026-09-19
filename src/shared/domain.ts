@@ -55,6 +55,7 @@ export const destinationReceiptSchema = z
 
 const destinationContextSchema = z
   .strictObject({
+    title: contextLabelSchema.optional(),
     cwd: contextLabelSchema.optional(),
     repoRoot: contextLabelSchema.optional(),
     worktree: contextLabelSchema.optional(),

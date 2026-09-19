@@ -79,6 +79,11 @@ export function DestinationPicker({
               />
               <span className="destination__body">
                 <span className="destination__title">{destinationName(destination)}</span>
+                {destination.context?.title === undefined ? null : (
+                  <span className="destination__context" dir="auto" title={destination.context.title}>
+                    {destination.context.title}
+                  </span>
+                )}
                 <span className="destination__context" title={destinationContext(destination)}>
                   {destinationContext(destination)}
                 </span>
