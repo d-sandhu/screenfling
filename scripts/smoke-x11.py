@@ -4,6 +4,7 @@ Run: xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.p
 """
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess as sp
@@ -101,19 +102,26 @@ def main():
             start = time.monotonic()
             app = sp.Popen(['target/release/screenfling'], env=env, stdout=log, stderr=log)
 
-            def window(title):
+            def window(title, focus=False):
                 deadline = time.monotonic() + 12
                 while time.monotonic() < deadline:
                     assert app.poll() is None, 'Application exited unexpectedly'
                     found = command('xdotool', 'search', '--onlyvisible', '--pid', str(app.pid), '--name', title, check=False)
                     if found.returncode == 0 and found.stdout.strip():
-                        return found.stdout.splitlines()[0].decode()
+                        handle = found.stdout.splitlines()[0].decode()
+                        if not focus:
+                            return handle
+                        # SDL can unmap/remap a window while changing its border.
+                        # Wait for readiness; never repeat the key or delivery action.
+                        focused = command('xdotool', 'windowfocus', '--sync', handle, check=False)
+                        name = command('xdotool', 'getwindowname', handle, check=False)
+                        if focused.returncode == 0 and name.returncode == 0 and re.search(title, name.stdout.decode()):
+                            return handle
                     time.sleep(0.05)
                 raise AssertionError(f'Window did not reach {title}')
 
             def key(title, value):
-                handle = window(title)
-                command('xdotool', 'windowfocus', '--sync', handle)
+                window(title, focus=True)
                 command('xdotool', 'key', '--clearmodifiers', value)
 
             window('^ScreenFling$')
@@ -136,10 +144,9 @@ def main():
             window('^ScreenFling$')
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
             key('^ScreenFling$', 'F8')
-            handle = window('Select region$')
+            window('Select region$', focus=True)
             # Changing the desktop now must not change the frozen capture being reviewed.
             command('xsetroot', '-solid', '#112233')
-            command('xdotool', 'windowfocus', '--sync', handle)
             command('xdotool', 'mousemove', '100', '100', 'mousedown', '1', 'sleep', '0.15',
                     'mousemove', '300', '250', 'sleep', '0.15', 'mouseup', '1')
             window('Review crop$')
