@@ -101,3 +101,11 @@ jobs:
           compression-level: 0
           retention-days: 14
           if-no-files-found: error
+      - name: Retain Windows build for manual testing (not native acceptance)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: runner.os == 'Windows' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
+        with:
+          name: screenfling-windows-x64-build-only-${{ github.sha }}
+          path: release/win-unpacked/
+          retention-days: 14
+          if-no-files-found: error
