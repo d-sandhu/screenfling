@@ -26,11 +26,15 @@ Other distributions use different package names. An OpenGL 3.2-capable desktop i
 
 ```sh
 cargo fmt --all --check
+cargo clippy --release --locked --all-targets -- -D warnings
 cargo test --release --locked --all-targets
 cargo build --release --locked
+python3 scripts/check-cli.py
 ```
 
-Keep tests focused on behavior that could corrupt a crop, select the wrong destination, submit input, or leave the application unable to recover. The small Rust suite covers crop/buffer bounds, stale generations, review-gated one-shot delivery, no-submit input, exact IDs, clipboard write gating, and local endpoint replacement. New regression checks should reuse the native test runner, not add another test framework.
+Install the `rustfmt` and `clippy` components with rustup if they are not present. The CLI check runs the real release executable with no available desktop. It checks help/version output and rejects unknown or conflicting options before capture can start.
+
+Keep tests focused on behavior that could corrupt a crop, select the wrong destination, submit input, or leave the application unable to recover. The small Rust suite covers crop/buffer bounds, stale generations, review-gated one-shot delivery, no-submit input, exact IDs, settings persistence and draft isolation, clipboard write gating, and local endpoint replacement. The relay regression also passes the exact Stage bytes through native local sockets and checks that a rejected write sends no bytes. It does not simulate an agent's image-attachment acknowledgment. New regression checks should reuse the native test runner, not add another test framework.
 
 The one desktop smoke test runs against a synthetic X11 display:
 
@@ -39,17 +43,18 @@ sudo apt-get install xvfb xdotool xclip x11-xserver-utils libgl1-mesa-dri
 xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
 ```
 
-It launches the release binary and tests cancellation, frozen selection, review, and an external client's PNG clipboard read. No private desktop or live coding-agent session is involved. Run it from the repository root after the release build. It writes its diagnostic record to `dist/`.
+It launches the release binary and tests the native global shortcut, selection/review cancellation, frozen selection, and an external client's PNG clipboard read. An asymmetric desktop pattern checks every copied RGBA pixel and the crop origin. The desktop changes after capture, so the check also detects an accidental live-frame copy. No private desktop or live coding-agent session is involved. Run it from the repository root after the release build. It writes its diagnostic record to `dist/`.
 
-CI stays in `.github/workflows/check.yml`: one workflow, three native jobs. It runs the small test suite and packages Windows x86-64, macOS arm64, and Linux x86-64. Only Linux runs the Xvfb smoke. Build success on a hosted OS is not a physical acceptance result.
+CI stays in `.github/workflows/check.yml`: one workflow, three native jobs. Each runs formatting, Clippy with warnings treated as errors, the small test suite, release CLI checks, and packaging for Windows x86-64, macOS arm64, and Linux x86-64. Only Linux runs the Xvfb smoke. Build success on a hosted OS is not a physical acceptance result.
 
-For a focused code or dependency review, use `cargo clippy --release --locked --all-targets` and RustSec's `cargo audit` against `Cargo.lock`. These are development checks, not extra application dependencies. Do not silence an advisory or change routing protections just to obtain a green check.
+For a focused dependency review, use RustSec's `cargo audit` against `Cargo.lock`. This is a development check, not an extra application dependency. Do not silence an advisory or change routing protections just to obtain a green check.
 
 ## Code map and boundaries
 
 | File | Responsibility |
 | --- | --- |
 | `src/main.rs`, `src/desktop.rs` | SDL window, event wakeups, tray, global shortcut, and lifecycle |
+| `src/cli.rs` | Launch options, validated before desktop initialization |
 | `src/app.rs` | User actions, capture generation, crop review, and operation results |
 | `src/model.rs`, `src/frame.rs` | Pure state transitions, geometry, pixel-buffer validation, and no-submit bytes |
 | `src/capture/` | Small Windows, macOS, X11, and Wayland capture adapters |
@@ -64,7 +69,7 @@ Capture -> Selecting -> Review -> Delivering -> Result
 
 Only the current generation can advance. Selection and review do not deliver anything. The full desktop image is dropped after cropping. Crop pixels and notes are dropped after completion or cancellation; an explicitly copied image can remain owned by the OS clipboard.
 
-The UI runs on the main thread. Capture and terminal operations run in a bounded worker, posting results through the SDL event queue. A late result must not update a new capture or leave a stale discovery request active. The event loop waits when idle instead of continuously repainting.
+The UI runs on the main thread. Capture and terminal operations run in a bounded worker, posting results through the SDL event queue. A late result must not update a new capture or leave a stale discovery request active. The event loop waits when idle instead of continuously repainting. ScreenFling explicitly permits normal screensaver behavior instead of using SDL's default inhibition.
 
 Stage validates the selected local socket and pane/window/tab IDs. A short-lived AF_UNIX relay connects upstream before spawning the WezTerm CLI. It checks connection identity and the reviewed clipboard before upstream writes. There is no TCP listener, persistent relay service, focused-window fallback, or automatic delivery retry. The CLI is run without loading user configuration or starting an absent mux.
 
@@ -89,7 +94,7 @@ The script verifies the archive contents and executable bytes, then writes `buil
 
 These are **not run** by hosted build checks. Record the OS, hardware/compositor, exact commit/package, and observed result when performing them:
 
-- Windows, macOS, and Wayland: permission allow/deny and recovery, tray and global-shortcut behavior, closing/reopening, and a clean-machine installation.
+- Windows, macOS, and Wayland: permission allow/deny and recovery, tray and global-shortcut behavior, closing/reopening, normal idle screen locking, and a clean-machine installation.
 - Multiple monitors: mixed scale factors, negative origins, rotation, disconnection during capture, and captured color/orientation.
 - Real local coding agents: correct image attachment in the selected pane, a different focused pane, changed clipboard during Stage, closed/moved panes, and separate Reveal behavior. Confirm no submission.
 - Physical performance: cold/warm startup and idle CPU/RAM with the real GPU and normal desktop services. CI software rendering is not a hardware benchmark.

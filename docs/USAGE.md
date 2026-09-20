@@ -67,7 +67,7 @@ For a Linux application-menu entry, install the binary on the PATH used by your 
 
 ## Settings and recovery
 
-Saving connection settings does not save an unfinished shortcut edit. Applying a shortcut does not save unfinished connection edits. Controls are disabled while Stage is pending. If saving a shortcut fails, ScreenFling attempts to restore the previous binding and reports a rollback failure rather than hiding it.
+Saving connection settings does not save an unfinished shortcut edit. Applying a shortcut does not save unfinished connection edits. Settings controls are disabled while Stage is pending. If saving a shortcut fails, ScreenFling attempts to restore the previous binding and reports a rollback failure rather than hiding it.
 
 Only shortcut and connection preferences are saved, in `settings.json`:
 

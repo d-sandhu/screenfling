@@ -304,8 +304,9 @@ mod tests {
             loop {
                 assert!(Instant::now() < deadline, "Local relay did not finish");
                 let result = pending.pump(&mut source, &mut destination, &mut sent, &mut gate);
-                if !allowed && result.is_err() {
-                    assert_eq!(result.unwrap_err(), "clipboard changed");
+                if let Err(error) = result {
+                    assert!(!allowed, "An authorized write was rejected");
+                    assert_eq!(error, "clipboard changed");
                     assert_eq!(sent, 0);
                     receiver.set_nonblocking(true).unwrap();
                     let mut bytes = [0; 1];
@@ -315,8 +316,8 @@ mod tests {
                     );
                     break;
                 }
-                result.unwrap();
                 if pending.shutdown {
+                    assert!(allowed, "A rejected write reached the destination");
                     receiver
                         .set_read_timeout(Some(Duration::from_secs(2)))
                         .unwrap();
