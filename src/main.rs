@@ -51,6 +51,9 @@ fn run() -> Result<(), String> {
         .hidden()
         .build()
         .map_err(|e| e.to_string())?;
+    unsafe {
+        sdl3_sys::video::SDL_SetWindowMinimumSize(window.raw(), 640, 480);
+    }
     let _gl = window.gl_create_context().map_err(|e| e.to_string())?;
     let glow = Arc::new(unsafe {
         glow::Context::from_loader_function(|name| {

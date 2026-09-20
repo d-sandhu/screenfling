@@ -10,6 +10,15 @@ pub fn capture(pointer: [i32; 2]) -> Result<Captured> {
         monitor.width().map_err(message)? as i32,
         monitor.height().map_err(message)? as i32,
     ];
+    if bounds[2] <= 0
+        || bounds[3] <= 0
+        || (bounds[2] as usize)
+            .checked_mul(bounds[3] as usize)
+            .and_then(|n| n.checked_mul(4))
+            .is_none_or(|n| n > crate::model::MAX_IMAGE_BYTES)
+    {
+        return Err("This display is too large to capture safely.".into());
+    }
     let image = monitor.capture_image().map_err(message)?;
     let after = [
         monitor.x().map_err(message)?,

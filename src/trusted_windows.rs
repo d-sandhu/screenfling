@@ -120,7 +120,15 @@ pub fn validate(path: &Path, require_user_owner: bool, socket: bool) -> Result<V
         );
     }
     let mut acl_hash = Sha256::new();
-    const MUTATE: u32 = 0x4000_0000 | 0x1000_0000 | 0x0001_0000 | 0x0004_0000 | 0x0008_0000 | 0x116;
+    // Creating an unrelated sibling in an ancestor (for example C:\) is
+    // not replacement of an existing checked path. Delete-child is.
+    let ancestor = !require_user_owner
+        && std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
+    let mutate = if ancestor {
+        0x1000_0000 | 0x0001_0000 | 0x0004_0000 | 0x0008_0000 | 0x40
+    } else {
+        0x4000_0000 | 0x1000_0000 | 0x0001_0000 | 0x0004_0000 | 0x0008_0000 | 0x156
+    };
     unsafe {
         for index in 0..(*dacl).AceCount {
             let mut ace = ptr::null_mut();
@@ -143,7 +151,7 @@ pub fn validate(path: &Path, require_user_owner: bool, socket: bool) -> Result<V
                     return Err("Invalid Windows allow rule.".into());
                 }
                 let allow = &*ace.cast::<ACCESS_ALLOWED_ACE>();
-                if allow.Mask & MUTATE != 0
+                if allow.Mask & mutate != 0
                     && !privileged(
                         &sid_text(ptr::addr_of!(allow.SidStart).cast_mut().cast())?,
                         &user,
