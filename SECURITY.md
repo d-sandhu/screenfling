@@ -1,7 +1,7 @@
 # Security
 
-ScreenFling has no supported public release yet. Security fixes target current
-development; there is no supported-version or response-time guarantee.
+Security fixes target active development. There is no supported-version or
+response-time guarantee.
 
 ## Report privately
 
@@ -13,7 +13,7 @@ Otherwise, ask the repository owner for a private channel before sharing details
 Include the affected commit, OS, adapter/version, minimal reproduction, impact,
 and whether content was exposed or persisted.
 
-## What the app protects
+## Trust boundaries
 
 Renderers use Electron's sandbox and context isolation. Main validates IPC
 senders, payloads, and workflow state. Stage uses an explicitly selected local
@@ -38,6 +38,9 @@ checks do not make arbitrary configuration safe to execute, prove which agent
 is in a pane, or protect against a compromised same-user process or root.
 A successful CLI write is not proof of image attachment.
 
-See [architecture](docs/ARCHITECTURE.md) for boundaries and
-[releasing](docs/releasing.md) for the distinction between ad-hoc test builds and
-trusted distribution. Do not disable platform protections to make a check pass.
+[IPC validation](src/main/ipc-sender.ts), the
+[pinned transport](src/main/wezterm-process.ts), and the
+[read-only ACL helper](tools/native/selector-acl.c) are the implementation
+references. [Release preparation](docs/releasing.md) distinguishes ad-hoc test
+builds from trusted distribution. Do not disable platform protections to make a
+check pass.

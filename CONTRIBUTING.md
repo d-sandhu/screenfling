@@ -1,78 +1,74 @@
 # Contributing
 
-Start with the [README](README.md) to run the app. Read the relevant part of the
-[architecture](docs/ARCHITECTURE.md) when changing a process boundary; you do not
-need to read the project's research history first.
+[Run the app](README.md#run-from-source), reproduce a concrete problem, and keep
+the fix small. Discuss a new permission, native component, or integration before
+adding it. No extra framework, backend, or test job is needed for ordinary fixes.
 
 ## Development
 
-Use the exact Node version in `.node-version` and npm version in
-`package.json`. Run `npm ci` from a clean checkout. On macOS, install Apple's
-Command Line Tools for the small ACL helper. `npm start` builds that helper,
-installs the pinned Electron development binary when needed, and starts
-`electron-vite`.
+[`.node-version`](.node-version) and [`package.json`](package.json) own the toolchain
+versions and commands. Use the pinned npm for `npm ci` and lockfile updates.
 
-| Command | Purpose |
-| --- | --- |
-| `npm start` | Run the development app. |
-| `npm run check` | Lint, TypeScript, and unit/helper tests. |
-| `npm run build` | Build main, preload, renderer, and the macOS helper. |
-| `npm run package` | Build a local directory package for the current supported host. |
-| `npm run check:all` | Run `check`, then build and package. |
-| `npm run format:check` | Check configured source/config formatting; Markdown is not included. |
+Use `npm start` for development and `npm run package` for a local directory
+package on a supported host. `npm run format:check` checks source/config
+formatting, not Markdown.
 
-`check:all` does not run formatting, browser fixtures, or physical desktop
-acceptance. [Testing](docs/testing.md) has the separate commands and their side
-effects. [Releasing](docs/releasing.md) covers distribution, not everyday changes.
+## Checks
 
-## Changes worth making
+Run the checks affected by the change:
 
-Fix a reproducible daily-use problem first: a confusing setting, a failed
-capture, a wrong crop, inaccessible controls, or an unreliable handoff. Keep a
-pull request focused on that problem. Do not add a backend, database, framework,
-platform abstraction, or integration just to increase the stack.
+```bash
+npm run check
+npm run build
+npx --no-install playwright install chromium --only-shell
+node --test tools/acceptance/ui.test.cjs
+npm audit --audit-level=high
+```
 
-Discuss new permissions, native code, storage, or adapters in an issue before
-implementation. A short explanation of the need and alternatives is enough.
+`check` runs lint, TypeScript, unit tests, and helper tests. The browser suite uses
+the built renderer with synthetic bridges; it does not capture the desktop or
+use the OS clipboard. `npm run check:all` adds packaging, not every acceptance
+check. The [workflow](.github/workflows/check.yml) defines which checks run in CI.
 
-Keep these existing boundaries:
+On macOS, [prepare-wezterm.cjs](tools/acceptance/prepare-wezterm.cjs) supplies the
+checksum-pinned disposable fixture for native transport tests. Missing fixture
+inputs mean those tests are skipped, not passed. After `npm run package:mac`,
+`node tools/acceptance/lifecycle.cjs` checks the packaged app. Full saved-connection
+restart checks need the fixture. Its `--capture-workflow` option additionally
+needs Screen Recording permission and replaces the clipboard.
 
-- Privileged work stays in main; validate data at IPC and subprocess boundaries.
-- Use exact endpoint/pane identity, not a title, working directory, or active pane.
-- Never retry an uncertain Stage, submit automatically, or turn a failed
-  clipboard write into a successful fallback message.
-- Keep screenshots, note text, clipboard contents, terminal output, and local
-  paths out of logs and public reports.
+**Capture and agent runners have side effects.** They need a desktop, existing
+permissions, and disposable destinations. Quit other builds and use only
+synthetic content. `npm run acceptance:capture -- --capture-runs=200 --cancel-runs=200`
+measures an existing package and replaces the clipboard. Do not interact with an
+unattended run. [The release checklist](docs/acceptance/macos-operator-acceptance.md)
+owns physical measurement rules and required observations.
 
-Use the existing TypeScript, Oxlint, and formatter settings. Add the smallest
-regression test that catches the bug; a documentation change does not need a new
-test framework. Do not remove a regression test just to reduce a count.
+Hosted timing observation does not establish reference-Mac performance. Keep
+misses and unavailable cases; never lower a limit or retry uncertain delivery to
+make a result green. [Issue #32](https://github.com/d-sandhu/screenfling/issues/32)
+tracks release acceptance. [Historical results](https://github.com/d-sandhu/screenfling/blob/68baf5f74597284921dfb866dd256b4debff7add/docs/testing.md#recorded-evidence-not-a-rolling-scorecard)
+remain tied to their original artifacts, not the next build.
 
-## Dependencies
+## Pull requests
 
-Pin direct dependencies and toolchain versions. Update the lockfile with the
-pinned npm, and run the audit and affected tests. A newer major version is not a
-reason to ignore a build tool's peer requirements.
+Explain the problem, the change, the checks run, and anything not checked. Add a
+focused regression for a bug; do not remove a useful test just to reduce a count.
 
-## Pull requests and docs
+Keep privileged effects in main and validate boundary inputs. Route by exact
+instance/pane identity. Preserve no automatic submission, no uncertain retry,
+and separate Reveal. Never include private images, notes, local paths, terminal
+output, or credentials in tests or public reports. See [Security](SECURITY.md).
 
-Explain what changed, why, how you tested it, and any known limits. Separate
-scripted tests from physical observations. Mention checks you did not run.
+## Documentation
 
-Update the document that owns the information:
+Keep setup in [Usage](docs/usage.md), development here, and distribution in
+[Releasing](docs/releasing.md). Put changing plans, check results, and compatibility
+observations in issues or PRs. Link to implementation instead of maintaining
+parallel architecture inventories, dependency lists, roadmaps, or test counts.
+Check relative links and the rendered README after edits.
 
-| Information | Document |
-| --- | --- |
-| First look and source setup | [README](README.md) |
-| Daily use and connection help | [Usage](docs/usage.md) |
-| Implementation and durable decisions | [Architecture](docs/ARCHITECTURE.md) and linked ADRs |
-| Test commands and evidence | [Testing](docs/testing.md) |
-| Release preparation | [Releasing](docs/releasing.md) |
-| Next priorities | [Roadmap](ROADMAP.md) |
+Keep UI previews labelled as fixtures until a real capture-to-agent demo exists.
+Previous design records remain in [Git history](https://github.com/d-sandhu/screenfling/tree/68baf5f74597284921dfb866dd256b4debff7add/docs/adr).
 
-Link instead of repeating. Keep temporary plans, run-by-run updates, and review
-notes in the relevant issue or PR. Remove superseded instructions in the same
-change as their replacement. Do not put job-search claims, generated marketing
-copy, or unsupported performance numbers in product documentation.
-
-Contributions are distributed under the [MIT license](LICENSE).
+Contributions use the [MIT license](LICENSE).
