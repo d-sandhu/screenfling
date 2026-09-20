@@ -4,7 +4,7 @@ Protocol: `screenfling-macos-operator-acceptance/v2`
 
 Use this checklist before claiming support for a specific Mac, display setup,
 terminal, and agent. It covers observations that automated tests cannot replace.
-The [test guide](../testing.md) owns commands and measurement definitions;
+The [development guide](../../CONTRIBUTING.md#checks) owns automated check commands;
 [issue #32](https://github.com/d-sandhu/screenfling/issues/32) tracks completion.
 Existing row IDs are retained so older reports remain traceable.
 
@@ -47,7 +47,7 @@ observations separate, including when several appear in the same CI job.
 
 Confirm the package matches the recorded source and identity
 (`com.dsandhu.screenfling`), contains `Contents/Resources/app.asar`, and passes the
-relevant [code, built-UI, and packaged checks](../testing.md). Record signing and
+relevant [code, built-UI, and packaged checks](../../CONTRIBUTING.md#checks). Record signing and
 notarization separately. `npm run check:all` runs code checks and packaging, not
 all native acceptance rows.
 
@@ -197,5 +197,5 @@ Record start/end times and operator consent with the report. Add the detailed
 permission outcomes and raw numeric timing/resource samples where applicable.
 No unchecked row becomes a pass. The
 [original v1 protocol](https://github.com/d-sandhu/screenfling/blob/b7e321217faf94ee2016217405f3c39e1e872cb6/docs/acceptance/macos-operator-acceptance.md)
-and [historical results](../testing.md#recorded-evidence-not-a-rolling-scorecard)
+and [historical results](https://github.com/d-sandhu/screenfling/blob/68baf5f74597284921dfb866dd256b4debff7add/docs/testing.md#recorded-evidence-not-a-rolling-scorecard)
 remain available for comparison.
