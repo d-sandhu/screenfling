@@ -209,6 +209,8 @@ async function main() {
   let temporary = null;
   let completed = false;
   try {
+    // Build from the committed lockfile, not a developer's existing node_modules.
+    run("Locked dependency install", "npm", ["ci", "--no-audit", "--include=dev"], 600_000);
     fixture = await prepareWezTermFixture(tmpdir());
     Object.assign(process.env, fixture.environment);
     console.log("Checking source, dependencies, and the production UI before signing.");
@@ -293,7 +295,8 @@ Required environment variables (no passwords or private keys go in this reposito
   SCREENFLING_SIGNING_IDENTITY  Installed Developer ID certificate SHA-1 (40 hex characters)
   SCREENFLING_APPLE_TEAM_ID     Certificate's ten-character Apple team ID
   SCREENFLING_NOTARY_PROFILE    Existing xcrun notarytool Keychain profile
-Downloads the checksum-pinned headless WezTerm fixture into a disposable directory,
+Reinstalls the committed lockfile, then downloads the checksum-pinned headless
+WezTerm fixture into a disposable directory,
 then runs the audit, existing code/browser checks, and the full packaged restart checks.
 Signs with hardened runtime and JIT-only entitlements, notarizes, staples, verifies
 Gatekeeper and the extracted ZIP, then writes release/distribution/.

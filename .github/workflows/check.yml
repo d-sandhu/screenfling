@@ -60,7 +60,16 @@ jobs:
           grep -qx 'Signature=adhoc' <<< "$SIGNATURE"
           echo 'Ad-hoc bundle and helper signature verification passed. No Developer ID or notarization claim.'
       - if: runner.os == 'Windows' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
-        run: npx --no-install electron-builder --publish never --dir --win --x64
+        name: Build Windows app and installer (not installed or native-accepted)
+        shell: pwsh
+        run: |
+          npx --no-install electron-builder --publish never --win --x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $metadata = Get-Content package.json -Raw | ConvertFrom-Json
+          $installer = Get-Item -LiteralPath ("release/{0} Setup {1}.exe" -f $metadata.build.productName, $metadata.build.extraMetadata.version)
+          if ($installer.Length -eq 0) { throw "The Windows installer is empty." }
+          $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content release/SHA256SUMS -Encoding ascii
       - run: npx --no-install playwright install chromium --only-shell
       - name: Built renderer fixture acceptance (not native capture)
         run: node --test tools/acceptance/ui.test.cjs
@@ -101,11 +110,14 @@ jobs:
           compression-level: 0
           retention-days: 14
           if-no-files-found: error
-      - name: Retain Windows build for manual testing (not native acceptance)
+      - name: Retain Windows app and installer (not native acceptance)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: runner.os == 'Windows' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
         with:
           name: screenfling-windows-x64-build-only-${{ github.sha }}
-          path: release/win-unpacked/
+          path: |
+            release/win-unpacked/
+            release/* Setup *.exe
+            release/SHA256SUMS
           retention-days: 14
           if-no-files-found: error
