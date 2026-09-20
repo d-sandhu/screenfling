@@ -109,8 +109,10 @@ impl Connection {
                 .ok_or("The socket path has no filename.")?,
         );
         let mut stamps = vec![
-            stamp(&executable, Kind::Executable)?,
-            stamp(&socket, Kind::Socket)?,
+            stamp(&executable, Kind::Executable)
+                .map_err(|error| format!("WezTerm executable: {error}"))?,
+            stamp(&socket, Kind::Socket)
+                .map_err(|error| format!("WezTerm socket: {error}"))?,
         ];
         for (path, private) in [(&executable, false), (&socket, true)] {
             let mut first = true;
@@ -120,7 +122,10 @@ impl Connection {
                 } else {
                     Kind::Parent
                 };
-                let entry = stamp(parent, kind)?;
+                let entry = stamp(parent, kind).map_err(|error| {
+                    let item = if private { "socket" } else { "executable" };
+                    format!("WezTerm {item} directory: {error}")
+                })?;
                 if !stamps.iter().any(|s| s.path == entry.path) {
                     stamps.push(entry);
                 }
@@ -265,15 +270,18 @@ mod tests {
         use socket2::{Domain, SockAddr, Socket, Type};
         let directory = TemporaryDirectory::new().unwrap();
         let path = directory.0.join("s");
+        // Test identity, not execution. A CI workspace need not be a trusted install directory.
+        let executable = directory.0.join("terminal-fixture");
+        fs::write(&executable, b"identity fixture").unwrap();
         let listener = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
         listener.bind(&SockAddr::unix(&path).unwrap()).unwrap();
         listener.listen(1).unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
             fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
         }
-        let executable = std::env::current_exe().unwrap();
         let connection =
             Connection::inspect(executable.to_str().unwrap(), path.to_str().unwrap()).unwrap();
         connection.unchanged().unwrap();
@@ -283,5 +291,6 @@ mod tests {
         fs::remove_file(&path).unwrap();
         fs::write(&path, b"not a socket").unwrap();
         assert!(connection.unchanged().is_err());
+        fs::remove_file(executable).unwrap();
     }
 }

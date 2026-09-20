@@ -41,7 +41,7 @@ jobs:
           cargo build --release --locked --quiet
       - name: Native desktop smoke
         if: runner.os == 'Linux'
-        run: xvfb-run -a -s '-screen 0 1280x800x24' python3 scripts/smoke-x11.py
+        run: xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
       - name: Package and record build evidence
         shell: bash
         run: |
