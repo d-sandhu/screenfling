@@ -27,20 +27,32 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxfixes-dev libxi-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool
+          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool
       - name: Test invariants
-        run: cargo test --all-targets
+        shell: bash
+        run: |
+          mkdir -p dist
+          set -o pipefail
+          cargo test --all-targets 2>&1 | tee dist/check.txt
       - name: Build native release
         run: cargo build --release
       - name: Collect build evidence
         shell: bash
         run: |
-          mkdir -p dist
           cp Cargo.lock dist/
-          cargo tree --edges normal > dist/dependencies.txt
+          cargo tree --edges normal --color never > dist/dependencies.txt
           if [ -f target/release/screenfling.exe ]; then cp target/release/screenfling.exe dist/; else cp target/release/screenfling dist/; fi
           ls -lh dist
+      - name: Source and diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p dist/source
+          cp Cargo.toml dist/source/
+          if [ -f Cargo.lock ]; then cp Cargo.lock dist/source/; fi
+          cp -R src dist/source/
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: screenfling-${{ runner.os }}-${{ runner.arch }}
           path: dist/

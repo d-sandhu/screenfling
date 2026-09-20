@@ -5,7 +5,6 @@ use screenfling::model::{Pixels, Result};
 pub struct Clipboard(arboard::Clipboard);
 #[cfg(target_os = "linux")]
 pub struct Clipboard;
-
 impl Clipboard {
     pub fn new() -> Result<Self> {
         #[cfg(not(target_os = "linux"))]
@@ -13,7 +12,6 @@ impl Clipboard {
         #[cfg(target_os = "linux")]
         { Ok(Self) }
     }
-
     pub fn copy(&mut self, image: &Pixels) -> Result<()> {
         #[cfg(not(target_os = "linux"))]
         self.0.set_image(arboard::ImageData { width: image.width as usize, height: image.height as usize, bytes: std::borrow::Cow::Borrowed(&image.rgba) }).map_err(|_| "The image clipboard is busy or unavailable.")?;
@@ -22,8 +20,7 @@ impl Clipboard {
         if !self.matches(image) { return Err("The clipboard write could not be verified. Nothing was staged.".into()); }
         Ok(())
     }
-
-    /// Read-only. In particular, never repair a replaced clipboard during Stage.
+    /// Read-only. Never repair a replaced clipboard during Stage.
     pub fn matches(&mut self, expected: &Pixels) -> bool {
         #[cfg(not(target_os = "linux"))]
         { self.0.get_image().is_ok_and(|actual| actual.width == expected.width as usize && actual.height == expected.height as usize && actual.bytes.as_ref() == expected.rgba) }
@@ -37,10 +34,9 @@ mod linux {
     use super::*;
     use screenfling::model::MAX_IMAGE_BYTES;
     use std::{ffi::{c_char, c_void}, io::Cursor};
-    use sdl3_sys::{clipboard::{SDL_GetClipboardData, SDL_SetClipboardData}, stdinc::SDL_free};
-
+    use sdl3_sys::{clipboard::{SDL_ClearClipboardData, SDL_GetClipboardData, SDL_SetClipboardData}, stdinc::SDL_free};
     unsafe extern "C" fn provide(userdata: *mut c_void, _: *const c_char, size: *mut usize) -> *const c_void {
-        // SDL invokes this on the main thread. SDL owns the box until cleanup.
+        // SDL owns the allocation after SDL_SetClipboardData, even if its backend fails.
         let bytes = unsafe { &*userdata.cast::<Vec<u8>>() };
         unsafe { *size = bytes.len(); }
         bytes.as_ptr().cast()
@@ -51,9 +47,10 @@ mod linux {
     pub fn write(png: Vec<u8>) -> Result<()> {
         let data = Box::into_raw(Box::new(png));
         let mimes = [c"image/png".as_ptr()];
+        // Called on the main thread after successful video initialization, with valid
+        // callbacks and MIME types. SDL therefore owns data; cleanup is its only owner.
         if !unsafe { SDL_SetClipboardData(Some(provide), Some(cleanup), data.cast(), mimes.as_ptr(), mimes.len()) } {
-            // SDL does not take ownership when setting the clipboard fails.
-            drop(unsafe { Box::from_raw(data) });
+            unsafe { SDL_ClearClipboardData(); }
             return Err("The desktop did not accept the image clipboard.".into());
         }
         Ok(())
