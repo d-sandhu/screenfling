@@ -56,13 +56,17 @@ def third_party_notices() -> tuple[str, int]:
              'License texts from the resolved Cargo packages for this build host.\n'
              'This inventory also includes build-time dependencies; it is not a list\n'
              'of only the code linked into the executable. System libraries are separate.\n']
+    overrides = json.loads((ROOT / 'assets' / 'license-overrides.json').read_text(encoding='utf-8'))
     missing = []
     for package in packages:
         root = Path(package['manifest_path']).parent
         files = {p for p in root.rglob('*') if p.is_file() and
                  p.suffix.lower() in ('', '.txt', '.md', '.rst') and
-                 p.name.lower().startswith(('license', 'licence', 'copying', 'notice',
-                                            'ofl', 'copyright'))}
+                 (p.name.lower().startswith(('license', 'licence', 'copying', 'notice',
+                                             'ofl', 'ufl', 'copyright')) or
+                  any(part.lower() in ('licenses', 'licences') for part in p.relative_to(root).parts[:-1]))}
+        if package['name'] == 'epaint_default_fonts':
+            files.update((root / 'fonts').glob('*.txt'))
         if package.get('license_file'):
             explicit = root / package['license_file']
             if explicit.is_file():
@@ -76,6 +80,15 @@ def third_party_notices() -> tuple[str, int]:
                 texts.append((path.relative_to(root).as_posix(), path.read_text(encoding='utf-8')))
             except UnicodeError:
                 continue
+        if not texts:
+            # A few published crates omit their repository's license files. Use
+            # reviewed upstream texts only for the exact versions recorded here.
+            for entry in overrides:
+                if entry['packages'].get(package['name']) == package['version']:
+                    if 'MIT' not in (package.get('license') or '').split():
+                        raise RuntimeError(f"License changed for {package['name']}")
+                    texts.append((entry['source'], entry['text']))
+                    break
         if not texts:
             missing.append(f"{package['name']} {package['version']}")
             continue
