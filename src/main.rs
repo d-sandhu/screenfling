@@ -1,8 +1,8 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+mod clipboard;
 use egui_sdl3::{egui, egui_glow::glow};
 use sdl3::event::Event;
 use std::{sync::Arc, time::{Duration, Instant}};
-
 fn main() {
     if let Err(error) = run() {
         eprintln!("ScreenFling: {error}");
@@ -10,7 +10,6 @@ fn main() {
         std::process::exit(1);
     }
 }
-
 fn run() -> Result<(), String> {
     let sdl = sdl3::init().map_err(|e| e.to_string())?;
     let video = sdl.video().map_err(|e| e.to_string())?;
@@ -24,7 +23,7 @@ fn run() -> Result<(), String> {
     let mut deadline = Instant::now();
     'app: loop {
         let wait = deadline.saturating_duration_since(Instant::now());
-        if let Some(event) = events.wait_event_timeout(wait.as_millis().min(i32::MAX as u128) as u32) {
+        if let Some(event) = events.wait_event_timeout(wait) {
             if matches!(event, Event::Quit { .. }) { break; }
             gui.state.on_event(&window, &event);
         }
