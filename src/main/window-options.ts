@@ -8,8 +8,9 @@ export function createMainWindowOptions(preload: string): BrowserWindowConstruct
   return {
     backgroundColor: "#101114",
     height: 720,
-    minHeight: 640,
-    minWidth: 760,
+    // Match the compact layout exercised by the built-renderer acceptance test.
+    minHeight: 480,
+    minWidth: 520,
     show: false,
     useContentSize: true,
     webPreferences: {
