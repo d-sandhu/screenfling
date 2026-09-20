@@ -289,7 +289,9 @@ impl App {
         self.routes.clear();
         self.selected = None;
         if connection != self.settings.connection {
-            self.status = "Connection settings changed. Refresh panes to select a current destination.".into();
+            self.status =
+                "Connection settings changed. Refresh panes to select a current destination."
+                    .into();
             return;
         }
         match result {
