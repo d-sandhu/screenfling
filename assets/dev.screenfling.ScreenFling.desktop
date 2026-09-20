@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=ScreenFling
+Comment=Capture a region and stage it in an exact coding session
+Exec=screenfling
+Icon=dev.screenfling.ScreenFling
+Terminal=false
+Categories=Utility;Graphics;
+StartupWMClass=dev.screenfling.ScreenFling
+Actions=Capture;
+
+[Desktop Action Capture]
+Name=Capture
+Exec=screenfling --capture

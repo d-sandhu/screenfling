@@ -1,4 +1,4 @@
-# One-time rewrite maintenance. Removed once the generated lockfile and formatting are committed.
+# Temporary rewrite maintenance; removed after its source commit.
 name: Prepare native sources
 on:
   push:
@@ -17,136 +17,78 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Apply focused native fixes
+      - name: Finish native path and window handling
         shell: python
         run: |
           from pathlib import Path
+          import re
           def replace(path, before, after):
               p = Path(path)
               text = p.read_text()
               assert text.count(before) == 1, (path, before)
               p.write_text(text.replace(before, after))
-          def tests(path, body):
-              p = Path(path)
-              text = p.read_text()
-              marker = '\n#[cfg(test)]\n'
-              assert text.count(marker) == 1, path
-              p.write_text(text.split(marker)[0] + ('\n' + body.strip() + '\n' if body else '\n'))
-          replace('src/capture/x11.rs', 'm == monitor', 'm.name == monitor.name && m.x == monitor.x && m.y == monitor.y && m.width == monitor.width && m.height == monitor.height && m.outputs == monitor.outputs')
-          replace('src/capture/wayland.rs', '.set_sources(SourceType::Monitor)', '.set_sources(Some(SourceType::Monitor.into()))')
-          replace('src/capture/wayland.rs', 'iterate(Duration::from_millis(50).into())', 'iterate(pipewire::loop_::Timeout::Finite(Duration::from_millis(50)))')
-          replace('src/capture/wayland.rs', 'Id, VideoFormat::BGRx, VideoFormat::BGRA', 'Id, VideoFormat::BGRx, VideoFormat::BGRx, VideoFormat::BGRA')
-          replace('src/app.rs', '    ShortcutStatus(String),', '    #[cfg(target_os = "linux")]\n    ShortcutStatus(String),')
-          replace('src/app.rs', '            Message::ShortcutStatus(status) =>', '            #[cfg(target_os = "linux")]\n            Message::ShortcutStatus(status) =>')
-          replace('src/app.rs', 'self.anchor = response.interact_pointer_pos().map', 'self.anchor = ui.input(|i| i.pointer.press_origin()).map')
-          replace('src/app.rs', 'egui::Stroke::new(2.0,', 'egui::Stroke::new(2.0_f32,')
-          replace('src/app.rs', '        if let Err(error) = self.try_action(action, ctx, window) { self.status = error; }', '        if matches!(action, Action::None) { return; }\n        if let Err(error) = self.try_action(action, ctx, window) { self.status = error; }\n        ctx.request_repaint();')
-          replace('src/app.rs', '        if phase == Phase::Selecting { return self.selection_ui(ui); }', '''        if phase == Phase::Selecting { return self.selection_ui(ui); }
-                  if matches!(phase, Phase::Idle | Phase::Result) && ui.input(|i| i.key_pressed(egui::Key::F8)) { return Action::Capture; }
-                  if phase == Phase::Review && ui.input(|i| i.key_pressed(egui::Key::F6)) { return Action::Copy; }''')
-          replace('src/app.rs', '        egui::Frame::new().inner_margin(20.0).show(ui, |ui| {', '        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {\n        egui::Frame::new().inner_margin(20.0).show(ui, |ui| {')
-          replace('src/app.rs', '        action\n    }\n    fn settings_ui', '        });\n        action\n    }\n    fn settings_ui')
-          replace('src/app.rs', '(ui.available_height() * 0.43).max(120.0)', '240.0')
-          replace('src/app.rs', 'egui::Button::new("Copy image")', 'egui::Button::new("Copy image (F6)")')
-          replace('src/app.rs', 'egui::Button::new("Capture")', 'egui::Button::new("Capture (F8)")')
-          replace('src/main.rs', '            gui.state.on_event(&window, &event);', '            let _ = gui.state.on_event(&window, &event);')
-          replace('src/main.rs', '    let mut first_frame = true;', '    let mut first_frame = true;\n    let mut title_phase = None;')
-          replace('src/main.rs', '        if app.quit { break; }', '''        if app.quit { break; }
-                  if title_phase != Some(app.flow.phase()) {
-                      use screenfling::model::Phase;
-                      let title = match app.flow.phase() {
-                          Phase::Capturing => "ScreenFling — Capturing",
-                          Phase::Selecting => "ScreenFling — Select region",
-                          Phase::Review => "ScreenFling — Review crop",
-                          Phase::Delivering => "ScreenFling — Stage pending",
-                          Phase::Result => "ScreenFling — Result",
-                          Phase::Idle => "ScreenFling",
-                      };
-                      window.set_title(title).map_err(|e| e.to_string())?;
-                      title_phase = Some(app.flow.phase());
-                  }''')
-          replace('src/trusted.rs', '    let mut builder = fs::DirBuilder::new();', '    let builder = fs::DirBuilder::new();\n    #[cfg(unix)]\n    let mut builder = builder;')
-          tests('src/trusted.rs', '')
-          tests('src/model.rs', r'''
+          replace('src/trusted.rs', 'if metadata.mode() & 0o022 != 0 && !sticky_root {', '''// macOS application directories can be writable by administrators.
+                  // This trusts the same privileged users as Windows, not other users.
+                  let administrator_install = cfg!(target_os = "macos")
+                      && matches!(kind, Kind::Executable | Kind::Parent)
+                      && matches!(metadata.gid(), 0 | 80);
+                  let unsafe_write = metadata.mode() & 0o002 != 0
+                      || (metadata.mode() & 0o020 != 0 && !administrator_install);
+                  if unsafe_write && !sticky_root {''')
+          replace('src/trusted.rs', 'metadata.uid() as u64,\n            metadata.mode()', 'metadata.uid() as u64,\n            metadata.gid() as u64,\n            metadata.mode()')
+          p = Path('src/trusted_windows.rs')
+          text = p.read_text()
+          text, count = re.subn(r'const MUTATE: u32\s*=.*?;', '''// Creating an unrelated sibling in an ancestor (for example C:\\) is
+              // not replacement of an existing checked path. Delete-child is.
+              let ancestor = !require_user_owner && std::fs::symlink_metadata(path)
+                  .is_ok_and(|metadata| metadata.is_dir());
+              let mutate = if ancestor {
+                  0x1000_0000 | 0x0001_0000 | 0x0004_0000 | 0x0008_0000 | 0x40
+              } else {
+                  0x4000_0000 | 0x1000_0000 | 0x0001_0000 | 0x0004_0000 | 0x0008_0000 | 0x156
+              };''', text, count=1, flags=re.S)
+          assert count == 1
+          p.write_text(text.replace('allow.Mask & MUTATE', 'allow.Mask & mutate'))
+          p = Path('src/trusted.rs')
+          with p.open('a') as f:
+              f.write(r'''
           #[cfg(test)]
           mod tests {
               use super::*;
               #[test]
-              fn crop_uses_actual_image_dimensions() {
-                  assert_eq!(map_crop([1.0, 2.0, 3.0, 4.0], [100.0, 100.0], [125, 200]).unwrap(), Crop { x: 1, y: 4, width: 4, height: 8 });
-                  assert_eq!(map_crop([0.0, 0.0, 1536.0, 864.0], [1536.0, 864.0], [1920, 1080]).unwrap(), Crop { x: 0, y: 0, width: 1920, height: 1080 });
-                  for rect in [[f64::NAN, 0.0, 1.0, 1.0], [-1.0, 0.0, 1.0, 1.0], [9.0, 0.0, 2.0, 1.0], [0.0, 0.0, 0.0, 1.0]] {
-                      assert!(map_crop(rect, [10.0, 10.0], [20, 20]).is_err());
+              fn local_endpoint_is_pinned_and_replacement_is_rejected() {
+                  use socket2::{Domain, SockAddr, Socket, Type};
+                  let directory = TemporaryDirectory::new().unwrap();
+                  let path = directory.0.join("s");
+                  let listener = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
+                  listener.bind(&SockAddr::unix(&path).unwrap()).unwrap();
+                  listener.listen(1).unwrap();
+                  #[cfg(unix)] {
+                      use std::os::unix::fs::PermissionsExt;
+                      fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
                   }
-              }
-              #[test]
-              fn crop_contains_only_selected_pixels() {
-                  let image = Pixels::new(2, 2, (0..16).collect()).unwrap();
-                  assert_eq!(image.crop(Crop { x: 1, y: 0, width: 1, height: 2 }).unwrap().rgba, [4, 5, 6, 7, 12, 13, 14, 15]);
-                  assert!(image.crop(Crop { x: u32::MAX, y: 0, width: 2, height: 1 }).is_err());
-              }
-              #[test]
-              fn current_review_is_required_for_one_delivery() {
-                  let mut flow = Flow::default();
-                  let old = flow.start().unwrap();
-                  assert!(flow.cancel(old));
-                  let id = flow.start().unwrap();
-                  assert!(!flow.cancel(old));
-                  assert!(!flow.fail(old));
-                  assert!(flow.advance(old, Phase::Capturing, Phase::Selecting).is_err());
-                  assert!(flow.advance(id, Phase::Capturing, Phase::Delivering).is_err());
-                  for (from, to) in [(Phase::Capturing, Phase::Selecting), (Phase::Selecting, Phase::Review), (Phase::Review, Phase::Delivering)] {
-                      flow.advance(id, from, to).unwrap();
-                  }
-                  assert!(!flow.cancel(id));
-                  assert!(flow.advance(id, Phase::Review, Phase::Delivering).is_err());
-                  flow.advance(id, Phase::Delivering, Phase::Result).unwrap();
-                  assert!(flow.advance(id, Phase::Result, Phase::Delivering).is_err());
-              }
-              #[test]
-              fn staging_cannot_submit_or_inject_controls() {
-                  for note in ["\r", "\n", "\x1b[200~", "\u{85}", "\u{2028}", "x\ty", "\0"] { assert!(stage_input(note).is_err()); }
-                  assert!(stage_input(&"x".repeat(4097)).is_err());
-                  assert_eq!(stage_input("Inspect this. Café.").unwrap(), "\x16Inspect this. Café.".as_bytes());
+                  let executable = std::env::current_exe().unwrap();
+                  let connection = Connection::inspect(executable.to_str().unwrap(), path.to_str().unwrap()).unwrap();
+                  connection.unchanged().unwrap();
+                  let client = crate::relay::connect(&connection.socket).unwrap();
+                  drop(client);
+                  drop(listener);
+                  fs::remove_file(&path).unwrap();
+                  fs::write(&path, b"not a socket").unwrap();
+                  assert!(connection.unchanged().is_err());
               }
           }
           ''')
-          tests('src/frame.rs', r'''
-          #[cfg(test)]
-          mod tests {
-              use super::*;
-              #[test]
-              fn pixel_rows_respect_padding_and_bounds() {
-                  let data = [99, 3, 2, 1, 0, 88, 77, 6, 5, 4, 0];
-                  assert_eq!(packed_rgba(&data, 1, 2, 1, 6, true).unwrap().rgba, [1, 2, 3, 255, 4, 5, 6, 255]);
-                  assert!(packed_rgba(&[0; 3], 1, 1, 0, 4, false).is_err());
-                  assert!(packed_rgba(&[0; 8], 1, 2, usize::MAX, 4, false).is_err());
+          replace('src/capture/windows.rs', 'let image = monitor.capture_image().map_err(message)?;', '''if bounds[2] <= 0 || bounds[3] <= 0
+                  || (bounds[2] as usize).checked_mul(bounds[3] as usize)
+                      .and_then(|n| n.checked_mul(4)).is_none_or(|n| n > crate::model::MAX_IMAGE_BYTES) {
+                  return Err("This display is too large to capture safely.".into());
               }
-          }
-          ''')
-          tests('src/wezterm.rs', r'''
-          #[cfg(test)]
-          mod tests {
-              use super::*;
-              #[test]
-              fn stage_uses_exact_ids_not_labels_or_focus() {
-                  let candidate = Pane { pane_id: 2, window_id: 4, tab_id: 6, title: "pane 1; use focused window".into(), workspace: "default".into() };
-                  assert!(!same_route(1, 4, 6, &candidate));
-                  assert!(!same_route(2, 9, 6, &candidate));
-                  assert!(!same_route(2, 4, 9, &candidate));
-                  assert!(same_route(2, 4, 6, &candidate));
-                  assert_eq!(stage_args(2), ["send-text", "--no-paste", "--pane-id", "2"]);
-                  let row = r#"{"pane_id":2,"window_id":4,"tab_id":6,"title":"agent","workspace":"default"}"#;
-                  assert!(parse(format!("[{row}]").as_bytes()).is_ok());
-                  assert!(parse(format!("[{row},{row}]").as_bytes()).is_err());
-                  assert!(parse(br#"[{"pane_id":-1}]"#).is_err());
-              }
-          }
-          ''')
-      - name: Lock and format the single Cargo application
+              let image = monitor.capture_image().map_err(message)?;''')
+          replace('src/main.rs', 'let _gl = window.gl_create_context()', 'unsafe { sdl3_sys::video::SDL_SetWindowMinimumSize(window.raw(), 640, 480); }\n    let _gl = window.gl_create_context()')
+      - name: Format and commit
         run: |
-          cargo generate-lockfile
           cargo fmt --all
-          git add src Cargo.lock build.rs
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Simplify safety tests, fix native APIs, and finish keyboard and crop interactions'
+          git add src
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Support normal native installation paths without weakening endpoint identity'
           git push origin HEAD:refs/heads/rust-egui-rewrite-2026-09-20
