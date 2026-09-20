@@ -103,7 +103,10 @@ async function verifyIdle(page) {
   await page.getByRole("button", { name: "Capture region" }).waitFor({ timeout: 10_000 });
   assert.ok(page.url().startsWith("screenfling://"));
   if (/^[a-f0-9]{40}$/u.test(process.env.GITHUB_SHA ?? "")) {
-    await page.getByTitle(`Build ${process.env.GITHUB_SHA}`, { exact: true }).waitFor();
+    const version = require("../../package.json").build.extraMetadata.version;
+    const buildLabel = page.getByTitle(`ScreenFling ${version} · Build ${process.env.GITHUB_SHA}`, { exact: true });
+    await buildLabel.waitFor();
+    assert.equal(await buildLabel.innerText(), `${version} · ${process.env.GITHUB_SHA.slice(0, 7)}`);
   }
   const boundary = await page.evaluate(async () => ({
     snapshot: await window.screenFling.getSnapshot(),
