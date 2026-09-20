@@ -85,7 +85,7 @@ def third_party_notices() -> tuple[str, int]:
             # reviewed upstream texts only for the exact versions recorded here.
             for entry in overrides:
                 if entry['packages'].get(package['name']) == package['version']:
-                    if 'MIT' not in (package.get('license') or '').split():
+                    if entry['license'] not in (package.get('license') or '').split():
                         raise RuntimeError(f"License changed for {package['name']}")
                     texts.append((entry['source'], entry['text']))
                     break
