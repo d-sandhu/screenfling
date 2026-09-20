@@ -4,6 +4,12 @@ use sha2::{Digest, Sha256};
 use std::{ffi::c_void, mem::size_of, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows_sys::Win32::{Foundation::{CloseHandle, LocalFree, INVALID_HANDLE_VALUE}, Security::{*, Authorization::*}, Storage::FileSystem::*, System::Threading::{GetCurrentProcess, OpenProcessToken}};
 
+// ACE_HEADER::AceType values from winnt.h. Avoid enabling a large unrelated API
+// module just for these three ABI constants.
+const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+const ACCESS_DENIED_ACE_TYPE: u8 = 1;
+const SYSTEM_AUDIT_ACE_TYPE: u8 = 2;
+
 struct Local(*mut c_void);
 impl Drop for Local { fn drop(&mut self) { if !self.0.is_null() { unsafe { LocalFree(self.0); } } } }
 fn sid_text(sid: PSID) -> Result<String> {
@@ -11,7 +17,7 @@ fn sid_text(sid: PSID) -> Result<String> {
     if sid.is_null() || unsafe { IsValidSid(sid) } == 0 || unsafe { ConvertSidToStringSidW(sid, &mut value) } == 0 { return Err("Could not inspect the Windows security identifier.".into()); }
     let _allocation = Local(value.cast());
     let mut len = 0;
-    unsafe { while *value.add(len) != 0 && len < 256 { len += 1; } }
+    unsafe { while len < 256 && *value.add(len) != 0 { len += 1; } }
     if len == 256 { return Err("Invalid Windows security identifier.".into()); }
     Ok(String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(value, len) }))
 }
@@ -47,7 +53,6 @@ pub fn validate(path: &Path, require_user_owner: bool, socket: bool) -> Result<V
         return Err("The configured path has an untrusted Windows owner or unrestricted permissions.".into());
     }
     let mut acl_hash = Sha256::new();
-    // Generic/all/write, delete, ownership and DACL changes, file data/append/EA/attributes.
     const MUTATE: u32 = 0x4000_0000 | 0x1000_0000 | 0x0001_0000 | 0x0004_0000 | 0x0008_0000 | 0x116;
     unsafe {
         for index in 0..(*dacl).AceCount {
@@ -57,13 +62,13 @@ pub fn validate(path: &Path, require_user_owner: bool, socket: bool) -> Result<V
             if header.AceSize < size_of::<ACE_HEADER>() as u16 { return Err("Invalid Windows access rule.".into()); }
             acl_hash.update(std::slice::from_raw_parts(ace.cast::<u8>(), header.AceSize as usize));
             if header.AceFlags & INHERIT_ONLY_ACE as u8 != 0 { continue; }
-            if header.AceType == ACCESS_ALLOWED_ACE_TYPE as u8 {
+            if header.AceType == ACCESS_ALLOWED_ACE_TYPE {
                 if header.AceSize < size_of::<ACCESS_ALLOWED_ACE>() as u16 { return Err("Invalid Windows allow rule.".into()); }
                 let allow = &*ace.cast::<ACCESS_ALLOWED_ACE>();
                 if allow.Mask & MUTATE != 0 && !privileged(&sid_text(ptr::addr_of!(allow.SidStart).cast_mut().cast())?, &user) {
                     return Err("The configured path is writable by another Windows user. Copy remains available.".into());
                 }
-            } else if header.AceType != ACCESS_DENIED_ACE_TYPE as u8 && header.AceType != SYSTEM_AUDIT_ACE_TYPE as u8 {
+            } else if header.AceType != ACCESS_DENIED_ACE_TYPE && header.AceType != SYSTEM_AUDIT_ACE_TYPE {
                 return Err("The configured path uses an access rule that cannot be safely verified.".into());
             }
         }

@@ -1,5 +1,5 @@
-//! One-command, one-client local relay. The upstream is connected and checked before
-//! WezTerm starts, so replacing a socket path cannot redirect an authorized operation.
+//! One-command, one-client local relay. Connect upstream before starting WezTerm
+//! so a replaced socket path cannot redirect an authorized operation.
 use crate::trusted::{self, Connection};
 use screenfling::model::Result;
 use socket2::{Domain, SockAddr, Socket, Type};
@@ -24,9 +24,7 @@ impl Drop for ChildGuard {
     }
 }
 
-/// The gate is read-only and is called immediately before each client-to-terminal
-/// write. Stage uses it to reject a replaced clipboard and a stale connection.
-/// An error is terminal for this command; this function never retries or reroutes.
+/// Gate every upstream write. Never retry, reroute, or restore the clipboard.
 pub fn command(connection: &Connection, arguments: &[String], input: Vec<u8>, mut gate: impl FnMut() -> Result<()>) -> Result<Vec<u8>> {
     connection.unchanged()?;
     let mut upstream = connect(&connection.socket)?;
@@ -62,7 +60,7 @@ pub fn command(connection: &Connection, arguments: &[String], input: Vec<u8>, mu
     let reader = thread::Builder::new().name("screenfling-cli-output".into()).spawn(move || {
         let mut bytes = Vec::new();
         let result = stdout.take((MAX_OUTPUT + 1) as u64).read_to_end(&mut bytes);
-        let result = if result.is_err() || bytes.len() > MAX_OUTPUT { Err("The terminal returned an invalid or excessive response.".into()) } else { Ok(bytes) };
+        let result: Result<Vec<u8>> = if result.is_err() || bytes.len() > MAX_OUTPUT { Err("The terminal returned an invalid or excessive response.".into()) } else { Ok(bytes) };
         let _ = output_sender.send(result);
     }).map_err(|_| "Could not start the bounded terminal response operation.")?;
     let deadline = Instant::now() + TIMEOUT;
@@ -101,16 +99,16 @@ pub fn command(connection: &Connection, arguments: &[String], input: Vec<u8>, mu
                 if !status.success() || input_ok == Some(false) {
                     return Err(if sent == 0 { "WezTerm rejected the operation before ScreenFling forwarded a request. Check the executable and exact socket settings." } else { "WezTerm reported a failure after communication began. Delivery is uncertain. Inspect the exact selected pane; do not automatically retry." }.into());
                 }
-                if let (Some(output), Some(true)) = (output.take(), input_ok) {
-                    if !accepted || sent == 0 { return Err("WezTerm did not use the pinned connection. The operation is not verified.".into()); }
-                    return output;
+                if input_ok == Some(true) {
+                    if let Some(output) = output.take() {
+                        if !accepted || sent == 0 { return Err("WezTerm did not use the pinned connection. The operation is not verified.".into()); }
+                        return output;
+                    }
                 }
             }
             if !progress { thread::sleep(Duration::from_millis(2)); }
         }
     })();
-    // Kill/reap before joining pipes. --skip-config and --no-auto-start prevent
-    // loading user code or starting a GUI/mux child for an absent destination.
     drop(child);
     if writer.is_finished() { let _ = writer.join(); }
     if reader.is_finished() { let _ = reader.join(); }
@@ -140,18 +138,22 @@ impl Pending {
             }
         }
         if self.offset < self.bytes.len() {
-            gate()?;
-            match destination.write(&self.bytes[self.offset..]) {
-                Ok(0) => return Err("The pinned terminal stopped accepting data. The result is uncertain.".into()),
-                Ok(count) => { self.offset += count; *sent += count; progress = true; }
-                Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) => {},
-                Err(_) => return Err("The pinned terminal write failed. The result is uncertain; do not retry automatically.".into()),
-            }
+            let count = guarded_write(destination, &self.bytes[self.offset..], gate)?;
+            self.offset += count; *sent += count; progress |= count != 0;
         }
         if self.eof && self.offset == self.bytes.len() && !self.shutdown {
             let _ = destination.shutdown(Shutdown::Write); self.shutdown = true;
         }
         Ok(progress)
+    }
+}
+fn guarded_write(destination: &mut impl Write, bytes: &[u8], gate: &mut impl FnMut() -> Result<()>) -> Result<usize> {
+    gate()?;
+    match destination.write(bytes) {
+        Ok(0) => Err("The pinned terminal stopped accepting data. The result is uncertain.".into()),
+        Ok(count) => Ok(count),
+        Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) => Ok(0),
+        Err(_) => Err("The pinned terminal write failed. The result is uncertain; do not retry automatically.".into()),
     }
 }
 fn io_error(_: impl std::fmt::Display) -> String { "The private local terminal transport is unavailable. No fallback destination was used.".into() }
@@ -160,19 +162,11 @@ fn io_error(_: impl std::fmt::Display) -> String { "The private local terminal t
 mod tests {
     use super::*;
     #[test]
-    fn gate_failure_forwards_no_bytes() {
-        let dir = trusted::TemporaryDirectory::new().unwrap();
-        let listener = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
-        let path = dir.0.join("s");
-        listener.bind(&SockAddr::unix(&path).unwrap()).unwrap(); listener.listen(1).unwrap();
-        let mut client = connect(&path).unwrap();
-        let (mut server, _) = listener.accept().unwrap();
-        server.set_nonblocking(true).unwrap();
-        let mut pending = Pending { bytes: b"dangerous request".to_vec(), ..Default::default() };
-        let mut sent = 0;
-        assert!(pending.pump(&mut server, &mut client, &mut sent, &mut || Err("replaced clipboard".into())).is_err());
-        let mut data = [0; 32];
-        assert_eq!(server.read(&mut data).unwrap_err().kind(), io::ErrorKind::WouldBlock);
-        assert_eq!(sent, 0);
+    fn replaced_clipboard_blocks_the_write() {
+        let mut output = Vec::new();
+        assert!(guarded_write(&mut output, b"stage", &mut || Err("replaced clipboard".into())).is_err());
+        assert!(output.is_empty());
+        assert_eq!(guarded_write(&mut output, b"stage", &mut || Ok(())).unwrap(), 5);
+        assert_eq!(output, b"stage");
     }
 }
