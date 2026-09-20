@@ -111,8 +111,7 @@ impl Connection {
         let mut stamps = vec![
             stamp(&executable, Kind::Executable)
                 .map_err(|error| format!("WezTerm executable: {error}"))?,
-            stamp(&socket, Kind::Socket)
-                .map_err(|error| format!("WezTerm socket: {error}"))?,
+            stamp(&socket, Kind::Socket).map_err(|error| format!("WezTerm socket: {error}"))?,
         ];
         for (path, private) in [(&executable, false), (&socket, true)] {
             let mut first = true;
