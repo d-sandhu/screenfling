@@ -1,24 +1,53 @@
-use crate::{clipboard::Clipboard, desktop, settings::Settings, wezterm::{self, Destination}};
+use crate::{
+    clipboard::Clipboard,
+    desktop,
+    settings::Settings,
+    wezterm::{self, Destination},
+};
 use egui_sdl3::egui::{self, Color32, Pos2, Rect, Sense, TextureHandle, Vec2};
-use screenfling::{capture::{self, Captured}, model::{self, Flow, Phase, Pixels, Result}};
+use screenfling::{
+    capture::{self, Captured},
+    model::{self, Flow, Phase, Pixels, Result},
+};
 use sdl3::video::Window;
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc}, thread::JoinHandle, time::{Duration, Instant}};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread::JoinHandle,
+    time::{Duration, Instant},
+};
 
 pub enum Message {
-    Capture, Open, Quit, Shortcut(u32),
+    Capture,
+    Open,
+    Quit,
+    Shortcut(u32),
     Captured(u64, Result<Captured>),
     Destinations(u64, wezterm::ConnectionSettings, Result<Vec<Destination>>),
     VerifyClipboard(u64, mpsc::SyncSender<bool>),
     Staged(u64, Destination, Result<String>),
     Revealed(u64, Result<String>),
+    #[cfg(target_os = "linux")]
     ShortcutStatus(String),
 }
 #[derive(Default)]
 pub enum Action {
     #[default]
     None,
-    Capture, Cancel, Crop([f64; 4], [f64; 2]), Copy, Discover, Stage, Reveal,
-    SaveSettings, ApplyShortcut, Hide, Quit,
+    Capture,
+    Cancel,
+    Crop([f64; 4], [f64; 2]),
+    Copy,
+    Discover,
+    Stage,
+    Reveal,
+    SaveSettings,
+    ApplyShortcut,
+    Hide,
+    Quit,
 }
 pub struct App {
     pub flow: Flow,
@@ -48,35 +77,92 @@ pub struct App {
     pub quit: bool,
 }
 impl App {
-    pub fn new(settings: Settings, status: String, shortcut: desktop::Shortcut, shortcut_status: String) -> Self {
-        Self { flow: Flow::default(), settings, status, shortcut_status, shortcut, full: None, crop: None, texture: None, note: String::new(), anchor: None, selection: None, routes: Vec::new(), selected: None, reveal: None, clipboard: None, worker: None, cancelled: Arc::new(AtomicBool::new(false)), capture_due: None, restore: [100, 100, 820, 680], settings_open: false, discovering: false, revealing: false, show_after_paint: false, tray_available: false, quit: false }
+    pub fn new(
+        settings: Settings,
+        status: String,
+        shortcut: desktop::Shortcut,
+        shortcut_status: String,
+    ) -> Self {
+        Self {
+            flow: Flow::default(),
+            settings,
+            status,
+            shortcut_status,
+            shortcut,
+            full: None,
+            crop: None,
+            texture: None,
+            note: String::new(),
+            anchor: None,
+            selection: None,
+            routes: Vec::new(),
+            selected: None,
+            reveal: None,
+            clipboard: None,
+            worker: None,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            capture_due: None,
+            restore: [100, 100, 820, 680],
+            settings_open: false,
+            discovering: false,
+            revealing: false,
+            show_after_paint: false,
+            tray_available: false,
+            quit: false,
+        }
     }
     fn reap(&mut self) -> bool {
         if self.worker.as_ref().is_some_and(JoinHandle::is_finished) {
-            if let Some(worker) = self.worker.take() { let _ = worker.join(); }
+            if let Some(worker) = self.worker.take() {
+                let _ = worker.join();
+            }
         }
         self.worker.is_none()
     }
     fn spawn(&mut self, work: impl FnOnce() + Send + 'static) -> Result<()> {
-        if !self.reap() { return Err("The previous operation is still ending. No new operation was started.".into()); }
-        self.worker = Some(std::thread::Builder::new().name("screenfling-action".into()).spawn(work).map_err(|_| "Could not start the desktop operation.")?);
+        if !self.reap() {
+            return Err(
+                "The previous operation is still ending. No new operation was started.".into(),
+            );
+        }
+        self.worker = Some(
+            std::thread::Builder::new()
+                .name("screenfling-action".into())
+                .spawn(work)
+                .map_err(|_| "Could not start the desktop operation.")?,
+        );
         Ok(())
     }
     fn clear_images(&mut self) {
-        self.full = None; self.crop = None; self.texture = None;
-        self.note.clear(); self.anchor = None; self.selection = None;
+        self.full = None;
+        self.crop = None;
+        self.texture = None;
+        self.note.clear();
+        self.anchor = None;
+        self.selection = None;
     }
     fn load_texture(&mut self, ctx: &egui::Context, pixels: &Pixels) {
-        self.texture = Some(ctx.load_texture("reviewed-capture", egui::ColorImage::from_rgba_unmultiplied([pixels.width as usize, pixels.height as usize], &pixels.rgba), egui::TextureOptions::LINEAR));
+        self.texture = Some(ctx.load_texture(
+            "reviewed-capture",
+            egui::ColorImage::from_rgba_unmultiplied(
+                [pixels.width as usize, pixels.height as usize],
+                &pixels.rgba,
+            ),
+            egui::TextureOptions::LINEAR,
+        ));
     }
-    pub fn next_deadline(&self) -> Option<Instant> { self.capture_due.map(|(when, _)| when) }
+    pub fn next_deadline(&self) -> Option<Instant> {
+        self.capture_due.map(|(when, _)| when)
+    }
     pub fn tick(&mut self) {
         if let Some((when, pointer)) = self.capture_due {
             if Instant::now() >= when {
                 self.capture_due = None;
                 let id = self.flow.generation();
                 let cancelled = self.cancelled.clone();
-                if let Err(error) = self.spawn(move || { desktop::post(Message::Captured(id, capture::capture(pointer, &cancelled))); }) {
+                if let Err(error) = self.spawn(move || {
+                    desktop::post(Message::Captured(id, capture::capture(pointer, &cancelled)));
+                }) {
                     desktop::post(Message::Captured(id, Err(error)));
                 }
             }
@@ -84,14 +170,21 @@ impl App {
         self.reap();
     }
     pub fn after_paint(&mut self, window: &mut Window) {
-        if self.show_after_paint { self.show_after_paint = false; window.show(); window.raise(); }
+        if self.show_after_paint {
+            self.show_after_paint = false;
+            window.show();
+            window.raise();
+        }
     }
     fn normal_window(&mut self, window: &mut Window) {
         desktop::restore(window, self.restore);
         self.show_after_paint = true;
     }
     pub fn topology_changed(&mut self, window: &mut Window) {
-        if matches!(self.flow.phase(), Phase::Capturing | Phase::Selecting | Phase::Review) {
+        if matches!(
+            self.flow.phase(),
+            Phase::Capturing | Phase::Selecting | Phase::Review
+        ) {
             self.cancel(window);
             self.status = "The display layout changed. The capture was cancelled; the clipboard was not changed.".into();
         }
@@ -100,7 +193,10 @@ impl App {
         if self.flow.cancel(self.flow.generation()) {
             self.cancelled.store(true, Ordering::Release);
             self.capture_due = None;
-            self.clear_images(); self.routes.clear(); self.selected = None; self.discovering = false;
+            self.clear_images();
+            self.routes.clear();
+            self.selected = None;
+            self.discovering = false;
             self.status = "Capture cancelled. The clipboard was not changed.".into();
             self.normal_window(window);
         }
@@ -108,103 +204,227 @@ impl App {
     pub fn message(&mut self, message: Message, ctx: &egui::Context, window: &mut Window) {
         match message {
             Message::Capture => self.action(Action::Capture, ctx, window),
-            Message::Shortcut(id) if self.shortcut.accepts(id) => self.action(Action::Capture, ctx, window),
-            Message::Shortcut(_) => {},
-            Message::Open => { window.show(); window.raise(); },
+            Message::Shortcut(id) if self.shortcut.accepts(id) => {
+                self.action(Action::Capture, ctx, window)
+            }
+            Message::Shortcut(_) => {}
+            Message::Open => {
+                window.show();
+                window.raise();
+            }
             Message::Quit => self.action(Action::Quit, ctx, window),
             Message::Captured(id, result) if self.flow.is_current(id, Phase::Capturing) => {
                 match result {
                     Ok(captured) => {
-                        if self.flow.advance(id, Phase::Capturing, Phase::Selecting).is_err() { return; }
+                        if self
+                            .flow
+                            .advance(id, Phase::Capturing, Phase::Selecting)
+                            .is_err()
+                        {
+                            return;
+                        }
                         self.load_texture(ctx, &captured.pixels);
                         if let Err(error) = desktop::overlay(window, captured.bounds) {
-                            self.flow.fail(id); self.clear_images(); self.status = error; self.normal_window(window); return;
+                            self.flow.fail(id);
+                            self.clear_images();
+                            self.status = error;
+                            self.normal_window(window);
+                            return;
                         }
-                        self.full = Some(captured); self.show_after_paint = true;
+                        self.full = Some(captured);
+                        self.show_after_paint = true;
                     }
-                    Err(error) => { self.flow.fail(id); self.status = error; self.normal_window(window); }
+                    Err(error) => {
+                        self.flow.fail(id);
+                        self.status = error;
+                        self.normal_window(window);
+                    }
                 }
             }
-            Message::Destinations(id, connection, result) if self.flow.is_current(id, Phase::Review) && connection == self.settings.connection => {
+            Message::Destinations(id, connection, result)
+                if self.flow.is_current(id, Phase::Review)
+                    && connection == self.settings.connection =>
+            {
                 self.discovering = false;
                 match result {
-                    Ok(routes) => { self.routes = routes; self.selected = None; self.status = if self.routes.is_empty() { "No panes were found in the selected WezTerm instance.".into() } else { "Select the exact coding-session pane. Nothing has been delivered.".into() }; }
-                    Err(error) => { self.routes.clear(); self.selected = None; self.status = error; }
+                    Ok(routes) => {
+                        self.routes = routes;
+                        self.selected = None;
+                        self.status = if self.routes.is_empty() {
+                            "No panes were found in the selected WezTerm instance.".into()
+                        } else {
+                            "Select the exact coding-session pane. Nothing has been delivered."
+                                .into()
+                        };
+                    }
+                    Err(error) => {
+                        self.routes.clear();
+                        self.selected = None;
+                        self.status = error;
+                    }
                 }
             }
             Message::VerifyClipboard(id, reply) => {
                 let matches = self.flow.is_current(id, Phase::Delivering)
-                    && self.crop.as_ref().zip(self.clipboard.as_mut()).is_some_and(|(crop, clipboard)| clipboard.matches(crop));
+                    && self
+                        .crop
+                        .as_ref()
+                        .zip(self.clipboard.as_mut())
+                        .is_some_and(|(crop, clipboard)| clipboard.matches(crop));
                 let _ = reply.try_send(matches);
             }
-            Message::Staged(id, destination, result) if self.flow.is_current(id, Phase::Delivering) => {
+            Message::Staged(id, destination, result)
+                if self.flow.is_current(id, Phase::Delivering) =>
+            {
                 let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
                 self.reveal = Some(destination);
                 self.status = result.unwrap_or_else(|error| error);
                 self.clear_images();
             }
             Message::Revealed(id, result) if self.flow.is_current(id, Phase::Result) => {
-                self.revealing = false; self.status = result.unwrap_or_else(|error| error);
+                self.revealing = false;
+                self.status = result.unwrap_or_else(|error| error);
             }
+            #[cfg(target_os = "linux")]
             Message::ShortcutStatus(status) => self.shortcut_status = status,
             _ => {} // Stale work cannot mutate the workflow or clipboard.
         }
         ctx.request_repaint();
     }
     pub fn action(&mut self, action: Action, ctx: &egui::Context, window: &mut Window) {
-        if let Err(error) = self.try_action(action, ctx, window) { self.status = error; }
+        if matches!(action, Action::None) {
+            return;
+        }
+        if let Err(error) = self.try_action(action, ctx, window) {
+            self.status = error;
+        }
+        ctx.request_repaint();
     }
-    fn try_action(&mut self, action: Action, ctx: &egui::Context, window: &mut Window) -> Result<()> {
+    fn try_action(
+        &mut self,
+        action: Action,
+        ctx: &egui::Context,
+        window: &mut Window,
+    ) -> Result<()> {
         let id = self.flow.generation();
         match action {
-            Action::None => {},
+            Action::None => {}
             Action::Capture => {
-                if !matches!(self.flow.phase(), Phase::Idle | Phase::Result) { window.show(); window.raise(); return Ok(()); }
-                if !self.reap() { return Err("The previous desktop operation is still ending.".into()); }
-                self.flow.start()?; self.clear_images();
-                self.routes.clear(); self.selected = None; self.reveal = None; self.discovering = false; self.revealing = false;
+                if !matches!(self.flow.phase(), Phase::Idle | Phase::Result) {
+                    window.show();
+                    window.raise();
+                    return Ok(());
+                }
+                if !self.reap() {
+                    return Err("The previous desktop operation is still ending.".into());
+                }
+                self.flow.start()?;
+                self.clear_images();
+                self.routes.clear();
+                self.selected = None;
+                self.reveal = None;
+                self.discovering = false;
+                self.revealing = false;
                 self.cancelled = Arc::new(AtomicBool::new(false));
                 self.restore = desktop::geometry(window);
                 let pointer = desktop::pointer();
                 window.hide();
                 self.capture_due = Some((Instant::now() + Duration::from_millis(100), pointer));
-                self.status = if capture::is_wayland() { "Choose one display in the desktop sharing dialog.".into() } else { "Capturing the display under the pointer…".into() };
+                self.status = if capture::is_wayland() {
+                    "Choose one display in the desktop sharing dialog.".into()
+                } else {
+                    "Capturing the display under the pointer…".into()
+                };
             }
             Action::Cancel => self.cancel(window),
             Action::Crop(rect, size) if self.flow.phase() == Phase::Selecting => {
-                let full = self.full.as_ref().ok_or("The captured image is no longer available.")?;
-                let geometry = model::map_crop(rect, size, [full.pixels.width, full.pixels.height])?;
+                let full = self
+                    .full
+                    .as_ref()
+                    .ok_or("The captured image is no longer available.")?;
+                let geometry =
+                    model::map_crop(rect, size, [full.pixels.width, full.pixels.height])?;
                 let crop = full.pixels.crop(geometry)?;
                 self.flow.advance(id, Phase::Selecting, Phase::Review)?;
-                self.full = None; self.load_texture(ctx, &crop); self.crop = Some(crop);
-                self.anchor = None; self.selection = None;
+                self.full = None;
+                self.load_texture(ctx, &crop);
+                self.crop = Some(crop);
+                self.anchor = None;
+                self.selection = None;
                 self.status = "Review this crop before copying or staging it.".into();
                 self.normal_window(window);
             }
             Action::Copy if self.flow.phase() == Phase::Review => {
-                if self.clipboard.is_none() { self.clipboard = Some(Clipboard::new()?); }
+                if self.clipboard.is_none() {
+                    self.clipboard = Some(Clipboard::new()?);
+                }
                 self.flow.advance(id, Phase::Review, Phase::Delivering)?;
-                let result = self.clipboard.as_mut().ok_or("Clipboard unavailable.")?.copy(self.crop.as_ref().ok_or("The reviewed crop is unavailable.")?);
-                self.flow.advance(id, Phase::Delivering, Phase::Result)?; self.clear_images();
+                let result = self
+                    .clipboard
+                    .as_mut()
+                    .ok_or("Clipboard unavailable.")?
+                    .copy(
+                        self.crop
+                            .as_ref()
+                            .ok_or("The reviewed crop is unavailable.")?,
+                    );
+                self.flow.advance(id, Phase::Delivering, Phase::Result)?;
+                self.clear_images();
                 self.status = match result { Ok(()) => "Image copied and verified. The optional note was not copied. Nothing was sent to a destination.".into(), Err(error) => error };
             }
             Action::Discover if self.flow.phase() == Phase::Review => {
-                if !self.reap() { return Err("Another desktop operation is still ending. Copy remains available.".into()); }
-                self.routes.clear(); self.selected = None;
+                if !self.reap() {
+                    return Err(
+                        "Another desktop operation is still ending. Copy remains available.".into(),
+                    );
+                }
+                self.routes.clear();
+                self.selected = None;
                 let connection = self.settings.connection.clone();
-                self.spawn(move || { let result = wezterm::discover(&connection); desktop::post(Message::Destinations(id, connection, result)); })?;
-                self.discovering = true; self.status = "Reading panes from the configured WezTerm instance…".into();
+                self.spawn(move || {
+                    let result = wezterm::discover(&connection);
+                    desktop::post(Message::Destinations(id, connection, result));
+                })?;
+                self.discovering = true;
+                self.status = "Reading panes from the configured WezTerm instance…".into();
             }
             Action::Stage if self.flow.phase() == Phase::Review => {
-                if !self.reap() { return Err("Another desktop operation is still ending. Nothing was staged.".into()); }
-                if !self.settings.connection.paste_confirmed { return Err("Confirm the coding agent's image-paste binding in connection settings first.".into()); }
+                if !self.reap() {
+                    return Err(
+                        "Another desktop operation is still ending. Nothing was staged.".into(),
+                    );
+                }
+                if !self.settings.connection.paste_confirmed {
+                    return Err("Confirm the coding agent's image-paste binding in connection settings first.".into());
+                }
                 model::stage_input(&self.note)?;
-                let destination = self.selected.and_then(|i| self.routes.get(i)).cloned().ok_or("Select an exact destination first.")?;
-                if !destination.belongs_to(&self.settings.connection) { return Err("The connection changed. Refresh and select the destination again.".into()); }
-                if self.clipboard.is_none() { self.clipboard = Some(Clipboard::new()?); }
+                let destination = self
+                    .selected
+                    .and_then(|i| self.routes.get(i))
+                    .cloned()
+                    .ok_or("Select an exact destination first.")?;
+                if !destination.belongs_to(&self.settings.connection) {
+                    return Err(
+                        "The connection changed. Refresh and select the destination again.".into(),
+                    );
+                }
+                if self.clipboard.is_none() {
+                    self.clipboard = Some(Clipboard::new()?);
+                }
                 self.flow.advance(id, Phase::Review, Phase::Delivering)?;
-                if let Err(error) = self.clipboard.as_mut().ok_or("Clipboard unavailable.")?.copy(self.crop.as_ref().ok_or("The reviewed crop is unavailable.")?) {
-                    self.flow.fail(id); self.clear_images(); return Err(error);
+                if let Err(error) = self
+                    .clipboard
+                    .as_mut()
+                    .ok_or("Clipboard unavailable.")?
+                    .copy(
+                        self.crop
+                            .as_ref()
+                            .ok_or("The reviewed crop is unavailable.")?,
+                    )
+                {
+                    self.flow.fail(id);
+                    self.clear_images();
+                    return Err(error);
                 }
                 let note = self.note.clone();
                 let spawn = self.spawn(move || {
@@ -215,29 +435,61 @@ impl App {
                     });
                     desktop::post(Message::Staged(id, destination, result));
                 });
-                if let Err(error) = spawn { self.flow.fail(id); self.clear_images(); return Err(error); }
+                if let Err(error) = spawn {
+                    self.flow.fail(id);
+                    self.clear_images();
+                    return Err(error);
+                }
                 self.status = "Staging once, without submitting. Do not paste or retry while this operation is pending.".into();
             }
             Action::Reveal if self.flow.phase() == Phase::Result => {
-                let destination = self.reveal.clone().ok_or("There is no staged destination to reveal.")?;
-                self.spawn(move || { desktop::post(Message::Revealed(id, wezterm::reveal(&destination))); })?;
+                let destination = self
+                    .reveal
+                    .clone()
+                    .ok_or("There is no staged destination to reveal.")?;
+                self.spawn(move || {
+                    desktop::post(Message::Revealed(id, wezterm::reveal(&destination)));
+                })?;
                 self.revealing = true;
             }
-            Action::SaveSettings => { self.settings.save()?; self.status = "Connection settings saved. Images and notes are never stored in settings.".into(); },
+            Action::SaveSettings => {
+                self.settings.save()?;
+                self.status =
+                    "Connection settings saved. Images and notes are never stored in settings."
+                        .into();
+            }
             Action::ApplyShortcut => {
                 let old = self.shortcut.current().to_owned();
                 self.shortcut.set(&self.settings.shortcut)?;
-                if let Err(error) = self.settings.save() { let _ = self.shortcut.set(&old); return Err(error); }
+                if let Err(error) = self.settings.save() {
+                    let _ = self.shortcut.set(&old);
+                    return Err(error);
+                }
                 self.shortcut_status = format!("Capture shortcut: {}", self.settings.shortcut);
             }
             Action::Hide => {
-                if self.flow.phase() == Phase::Delivering { return Err("Stage is still pending. This window stays available until its result is known.".into()); }
-                if self.flow.phase() == Phase::Selecting { self.cancel(window); }
-                else { self.cancel(window); self.show_after_paint = false; if self.tray_available { window.hide(); } else { self.quit = true; } }
+                if self.flow.phase() == Phase::Delivering {
+                    return Err("Stage is still pending. This window stays available until its result is known.".into());
+                }
+                if self.flow.phase() == Phase::Selecting {
+                    self.cancel(window);
+                } else {
+                    self.cancel(window);
+                    self.show_after_paint = false;
+                    if self.tray_available {
+                        window.hide();
+                    } else {
+                        self.quit = true;
+                    }
+                }
             }
             Action::Quit => {
-                if self.flow.phase() == Phase::Delivering { return Err("Stage is still pending. Wait for its result before quitting; do not retry it.".into()); }
-                self.cancelled.store(true, Ordering::Release); self.clear_images(); self.quit = true;
+                if self.flow.phase() == Phase::Delivering {
+                    return Err("Stage is still pending. Wait for its result before quitting; do not retry it.".into());
+                }
+                self.cancelled.store(true, Ordering::Release);
+                self.clear_images();
+                self.quit = true;
             }
             _ => return Err("This action is no longer available for the current capture.".into()),
         }
@@ -247,9 +499,24 @@ impl App {
         let mut action = Action::None;
         let phase = self.flow.phase();
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            return if matches!(phase, Phase::Capturing | Phase::Selecting | Phase::Review) { Action::Cancel } else { Action::Hide };
+            return if matches!(phase, Phase::Capturing | Phase::Selecting | Phase::Review) {
+                Action::Cancel
+            } else {
+                Action::Hide
+            };
         }
-        if phase == Phase::Selecting { return self.selection_ui(ui); }
+        if phase == Phase::Selecting {
+            return self.selection_ui(ui);
+        }
+        if matches!(phase, Phase::Idle | Phase::Result)
+            && ui.input(|i| i.key_pressed(egui::Key::F8))
+        {
+            return Action::Capture;
+        }
+        if phase == Phase::Review && ui.input(|i| i.key_pressed(egui::Key::F6)) {
+            return Action::Copy;
+        }
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::new().inner_margin(20.0).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("ScreenFling");
@@ -263,7 +530,7 @@ impl App {
             if self.settings_open { self.settings_ui(ui, &mut action); ui.separator(); }
             match phase {
                 Phase::Idle | Phase::Result => {
-                    if ui.add_sized([180.0, 42.0], egui::Button::new("Capture")).clicked() { action = Action::Capture; }
+                    if ui.add_sized([180.0, 42.0], egui::Button::new("Capture (F8)")).clicked() { action = Action::Capture; }
                     ui.add_space(8.0); ui.label(&self.shortcut_status);
                     if capture::is_wayland() { ui.label("Wayland: the desktop asks which display to share. Select your display, then drag a region on its frozen image."); }
                     ui.add_space(16.0); ui.label(&self.status);
@@ -280,7 +547,7 @@ impl App {
                 Phase::Review => {
                     ui.heading("Review crop");
                     if let (Some(texture), Some(crop)) = (&self.texture, &self.crop) {
-                        let available = Vec2::new(ui.available_width(), (ui.available_height() * 0.43).max(120.0));
+                        let available = Vec2::new(ui.available_width(), 240.0);
                         ui.image((texture.id(), fit_size(texture.size_vec2(), available)));
                         ui.small(format!("{} × {} pixels · only this crop can be delivered", crop.width, crop.height));
                     }
@@ -289,7 +556,7 @@ impl App {
                     if let Err(error) = model::stage_input(&self.note) { ui.colored_label(Color32::LIGHT_RED, error); }
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.add_sized([160.0, 36.0], egui::Button::new("Copy image")).clicked() { action = Action::Copy; }
+                        if ui.add_sized([160.0, 36.0], egui::Button::new("Copy image (F6)")).clicked() { action = Action::Copy; }
                         if ui.button("Cancel").clicked() { action = Action::Cancel; }
                         ui.small("Copy does not include the note.");
                     });
@@ -312,6 +579,7 @@ impl App {
                 Phase::Selecting => {}
             }
         });
+        });
         action
     }
     fn settings_ui(&mut self, ui: &mut egui::Ui, action: &mut Action) {
@@ -327,45 +595,120 @@ impl App {
         });
         ui.horizontal(|ui| {
             ui.label("Capture shortcut");
-            ui.add_enabled(!capture::is_wayland(), egui::TextEdit::singleline(&mut self.settings.shortcut).desired_width(210.0));
-            if ui.add_enabled(!capture::is_wayland(), egui::Button::new("Apply shortcut")).clicked() { *action = Action::ApplyShortcut; }
+            ui.add_enabled(
+                !capture::is_wayland(),
+                egui::TextEdit::singleline(&mut self.settings.shortcut).desired_width(210.0),
+            );
+            if ui
+                .add_enabled(!capture::is_wayland(), egui::Button::new("Apply shortcut"))
+                .clicked()
+            {
+                *action = Action::ApplyShortcut;
+            }
         });
         ui.small(&self.shortcut_status);
-        if capture::is_wayland() { ui.small("Wayland global shortcuts are managed by the desktop portal. The Capture button is always available."); }
+        if capture::is_wayland() {
+            ui.small("Wayland global shortcuts are managed by the desktop portal. The Capture button is always available.");
+        }
     }
     fn selection_ui(&mut self, ui: &mut egui::Ui) -> Action {
-        let (Some(texture), Some(full)) = (&self.texture, &self.full) else { return Action::Cancel; };
+        let (Some(texture), Some(full)) = (&self.texture, &self.full) else {
+            return Action::Cancel;
+        };
         let screen = ui.max_rect();
-        let image_rect = Rect::from_center_size(screen.center(), fit_size(texture.size_vec2(), screen.size()));
+        let image_rect = Rect::from_center_size(
+            screen.center(),
+            fit_size(texture.size_vec2(), screen.size()),
+        );
         ui.painter().rect_filled(screen, 0.0, Color32::BLACK);
-        ui.painter().image(texture.id(), image_rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
-        let response = ui.interact(image_rect, ui.id().with(("frozen-region", self.flow.generation())), Sense::drag());
-        if response.drag_started() { self.anchor = response.interact_pointer_pos().map(|p| p.clamp(image_rect.min, image_rect.max)); }
-        if let (Some(anchor), Some(pointer)) = (self.anchor, ui.input(|i| i.pointer.interact_pos())) {
-            self.selection = Some(Rect::from_two_pos(anchor, pointer.clamp(image_rect.min, image_rect.max)));
+        ui.painter().image(
+            texture.id(),
+            image_rect,
+            Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+            Color32::WHITE,
+        );
+        let response = ui.interact(
+            image_rect,
+            ui.id().with(("frozen-region", self.flow.generation())),
+            Sense::drag(),
+        );
+        if response.drag_started() {
+            self.anchor = ui
+                .input(|i| i.pointer.press_origin())
+                .map(|p| p.clamp(image_rect.min, image_rect.max));
+        }
+        if let (Some(anchor), Some(pointer)) = (self.anchor, ui.input(|i| i.pointer.interact_pos()))
+        {
+            self.selection = Some(Rect::from_two_pos(
+                anchor,
+                pointer.clamp(image_rect.min, image_rect.max),
+            ));
         }
         if let Some(selection) = self.selection {
             let dim = Color32::from_black_alpha(115);
             for rect in [
                 Rect::from_min_max(image_rect.min, Pos2::new(image_rect.max.x, selection.min.y)),
                 Rect::from_min_max(Pos2::new(image_rect.min.x, selection.max.y), image_rect.max),
-                Rect::from_min_max(Pos2::new(image_rect.min.x, selection.min.y), Pos2::new(selection.min.x, selection.max.y)),
-                Rect::from_min_max(Pos2::new(selection.max.x, selection.min.y), Pos2::new(image_rect.max.x, selection.max.y)),
-            ] { ui.painter().rect_filled(rect, 0.0, dim); }
-            ui.painter().rect_stroke(selection, 0.0, egui::Stroke::new(2.0, Color32::WHITE), egui::StrokeKind::Inside);
+                Rect::from_min_max(
+                    Pos2::new(image_rect.min.x, selection.min.y),
+                    Pos2::new(selection.min.x, selection.max.y),
+                ),
+                Rect::from_min_max(
+                    Pos2::new(selection.max.x, selection.min.y),
+                    Pos2::new(image_rect.max.x, selection.max.y),
+                ),
+            ] {
+                ui.painter().rect_filled(rect, 0.0, dim);
+            }
+            ui.painter().rect_stroke(
+                selection,
+                0.0,
+                egui::Stroke::new(2.0_f32, Color32::WHITE),
+                egui::StrokeKind::Inside,
+            );
             if response.drag_stopped() && selection.width() > 0.0 && selection.height() > 0.0 {
-                return Action::Crop([(selection.min.x - image_rect.min.x) as f64, (selection.min.y - image_rect.min.y) as f64, selection.width() as f64, selection.height() as f64], [image_rect.width() as f64, image_rect.height() as f64]);
+                return Action::Crop(
+                    [
+                        (selection.min.x - image_rect.min.x) as f64,
+                        (selection.min.y - image_rect.min.y) as f64,
+                        selection.width() as f64,
+                        selection.height() as f64,
+                    ],
+                    [image_rect.width() as f64, image_rect.height() as f64],
+                );
             }
         }
-        let label_rect = Rect::from_center_size(Pos2::new(screen.center().x, screen.min.y + 32.0), Vec2::new(440.0, 38.0));
-        ui.painter().rect_filled(label_rect, 8.0, Color32::from_black_alpha(220));
-        ui.painter().text(label_rect.center(), egui::Align2::CENTER_CENTER, "Drag a region  ·  Space: whole display  ·  Esc: cancel", egui::FontId::proportional(15.0), Color32::WHITE);
+        let label_rect = Rect::from_center_size(
+            Pos2::new(screen.center().x, screen.min.y + 32.0),
+            Vec2::new(440.0, 38.0),
+        );
+        ui.painter()
+            .rect_filled(label_rect, 8.0, Color32::from_black_alpha(220));
+        ui.painter().text(
+            label_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "Drag a region  ·  Space: whole display  ·  Esc: cancel",
+            egui::FontId::proportional(15.0),
+            Color32::WHITE,
+        );
         if ui.input(|i| i.key_pressed(egui::Key::Space)) {
-            return Action::Crop([0.0, 0.0, full.pixels.width as f64, full.pixels.height as f64], [full.pixels.width as f64, full.pixels.height as f64]);
+            return Action::Crop(
+                [
+                    0.0,
+                    0.0,
+                    full.pixels.width as f64,
+                    full.pixels.height as f64,
+                ],
+                [full.pixels.width as f64, full.pixels.height as f64],
+            );
         }
         Action::None
     }
 }
 fn fit_size(source: Vec2, available: Vec2) -> Vec2 {
-    source * (available.x / source.x).min(available.y / source.y).min(1.0).max(0.001)
+    source
+        * (available.x / source.x)
+            .min(available.y / source.y)
+            .min(1.0)
+            .max(0.001)
 }
