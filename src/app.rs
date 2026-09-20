@@ -52,6 +52,7 @@ pub enum Action {
 pub struct App {
     pub flow: Flow,
     pub settings: Settings,
+    saved_settings: Settings,
     pub status: String,
     pub shortcut_status: String,
     pub shortcut: desktop::Shortcut,
@@ -85,6 +86,7 @@ impl App {
     ) -> Self {
         Self {
             flow: Flow::default(),
+            saved_settings: settings.clone(),
             settings,
             status,
             shortcut_status,
@@ -112,10 +114,10 @@ impl App {
         }
     }
     fn reap(&mut self) -> bool {
-        if self.worker.as_ref().is_some_and(JoinHandle::is_finished) {
-            if let Some(worker) = self.worker.take() {
-                let _ = worker.join();
-            }
+        if self.worker.as_ref().is_some_and(JoinHandle::is_finished)
+            && let Some(worker) = self.worker.take()
+        {
+            let _ = worker.join();
         }
         self.worker.is_none()
     }
@@ -155,16 +157,16 @@ impl App {
         self.capture_due.map(|(when, _)| when)
     }
     pub fn tick(&mut self) {
-        if let Some((when, pointer)) = self.capture_due {
-            if Instant::now() >= when {
-                self.capture_due = None;
-                let id = self.flow.generation();
-                let cancelled = self.cancelled.clone();
-                if let Err(error) = self.spawn(move || {
-                    desktop::post(Message::Captured(id, capture::capture(pointer, &cancelled)));
-                }) {
-                    desktop::post(Message::Captured(id, Err(error)));
-                }
+        if let Some((when, pointer)) = self.capture_due
+            && Instant::now() >= when
+        {
+            self.capture_due = None;
+            let id = self.flow.generation();
+            let cancelled = self.cancelled.clone();
+            if let Err(error) = self.spawn(move || {
+                desktop::post(Message::Captured(id, capture::capture(pointer, &cancelled)));
+            }) {
+                desktop::post(Message::Captured(id, Err(error)));
             }
         }
         self.reap();
@@ -314,6 +316,16 @@ impl App {
             self.status = error;
         }
         ctx.request_repaint();
+    }
+    fn connection_settings_to_save(&self) -> Settings {
+        let mut next = self.saved_settings.clone();
+        next.connection = self.settings.connection.clone();
+        next
+    }
+    fn shortcut_settings_to_save(&self) -> Settings {
+        let mut next = self.saved_settings.clone();
+        next.shortcut = self.settings.shortcut.clone();
+        next
     }
     fn try_action(
         &mut self,
@@ -469,20 +481,29 @@ impl App {
                 })?;
                 self.revealing = true;
             }
-            Action::SaveSettings => {
-                self.settings.save()?;
+            Action::SaveSettings if self.flow.phase() != Phase::Delivering => {
+                let next = self.connection_settings_to_save();
+                next.save()?;
+                self.saved_settings = next;
                 self.status =
                     "Connection settings saved. Images and notes are never stored in settings."
                         .into();
             }
-            Action::ApplyShortcut => {
+            Action::ApplyShortcut if self.flow.phase() != Phase::Delivering => {
                 let old = self.shortcut.current().to_owned();
                 self.shortcut.set(&self.settings.shortcut)?;
-                if let Err(error) = self.settings.save() {
-                    let _ = self.shortcut.set(&old);
+                let next = self.shortcut_settings_to_save();
+                if let Err(error) = next.save() {
+                    if let Err(rollback) = self.shortcut.restore(&old) {
+                        self.shortcut_status =
+                            format!("Active shortcut: {} (not saved)", self.shortcut.current());
+                        return Err(format!("{error} {rollback}"));
+                    }
                     return Err(error);
                 }
-                self.shortcut_status = format!("Capture shortcut: {}", self.settings.shortcut);
+                self.saved_settings = next;
+                self.shortcut_status = format!("Capture shortcut: {}", self.shortcut.current());
+                self.status = "Capture shortcut saved.".into();
             }
             Action::Hide => {
                 if self.flow.phase() == Phase::Delivering {
@@ -544,7 +565,10 @@ impl App {
                 });
             });
             ui.label("Capture what you see. Stage it in the right coding session."); ui.add_space(10.0);
-            if self.settings_open { self.settings_ui(ui, &mut action); ui.separator(); }
+            if self.settings_open {
+                ui.add_enabled_ui(phase != Phase::Delivering, |ui| self.settings_ui(ui, &mut action));
+                ui.separator();
+            }
             match phase {
                 Phase::Idle | Phase::Result => {
                     if ui.add_sized([180.0, 42.0], egui::Button::new("Capture (F8)")).clicked() { action = Action::Capture; }
@@ -726,8 +750,7 @@ fn fit_size(source: Vec2, available: Vec2) -> Vec2 {
     source
         * (available.x / source.x)
             .min(available.y / source.y)
-            .min(1.0)
-            .max(0.001)
+            .clamp(0.001, 1.0)
 }
 
 #[cfg(test)]
@@ -772,5 +795,25 @@ mod tests {
         );
         assert!(!app.discovering);
         assert_eq!(app.status, "unavailable");
+    }
+
+    #[test]
+    fn applying_one_settings_section_does_not_persist_other_drafts() {
+        let saved = Settings::default();
+        let mut app = App::new(
+            saved.clone(),
+            String::new(),
+            desktop::Shortcut::default(),
+            String::new(),
+        );
+        app.settings.shortcut = "not a registered shortcut".into();
+        app.settings.connection.socket = "/an/unsaved/socket".into();
+        let connection = app.connection_settings_to_save();
+        assert_eq!(connection.shortcut, saved.shortcut);
+        assert_eq!(connection.connection, app.settings.connection);
+        let shortcut = app.shortcut_settings_to_save();
+        assert_eq!(shortcut.connection, saved.connection);
+        assert_eq!(shortcut.shortcut, app.settings.shortcut);
+        assert_eq!(app.saved_settings, saved);
     }
 }

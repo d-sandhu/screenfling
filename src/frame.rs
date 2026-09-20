@@ -31,7 +31,7 @@ pub fn packed_rgba(
     let mut rgba = Vec::with_capacity(len);
     for y in 0..height as usize {
         let start = offset + y * stride;
-        for p in bytes[start..start + row].chunks_exact(4) {
+        for p in bytes[start..start + row].as_chunks::<4>().0 {
             if blue_first {
                 rgba.extend_from_slice(&[p[2], p[1], p[0], 255]);
             } else {

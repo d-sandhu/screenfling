@@ -222,11 +222,8 @@ pub fn validate(path: &Path, require_user_owner: bool, socket: bool) -> Result<V
         }
         acl_hash.update(owner.as_bytes());
         let hash = acl_hash.finalize();
-        for part in hash.chunks_exact(8) {
-            result.push(u64::from_le_bytes(
-                part.try_into()
-                    .map_err(|_| "Invalid permission fingerprint.")?,
-            ));
+        for part in hash[..].as_chunks::<8>().0 {
+            result.push(u64::from_le_bytes(*part));
         }
         Ok(result)
     })();

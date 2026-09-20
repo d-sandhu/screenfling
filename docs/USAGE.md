@@ -6,7 +6,7 @@ ScreenFling captures one display, lets you select and review a crop, then copies
 
 On Windows, extract the portable ZIP and run `screenfling.exe`. On macOS, extract the archive and move `ScreenFling.app` to Applications. On Linux, extract the archive and run `./screenfling`; the system must provide the graphics and desktop libraries described below.
 
-Launch one copy of the application. Use its tray or global shortcut for later captures. `screenfling --capture` starts a new application with Capture; it does not send an activation message to an existing process. `screenfling --version` reports the version.
+Launch one copy of the application. Use its tray or global shortcut for later captures. `screenfling --capture` starts a new application with Capture; it does not send an activation message to an existing process. `screenfling --version` reports the version and `screenfling --help` shows launch options. Both work without opening the desktop. Unknown or conflicting options exit with an error before any capture starts.
 
 | Action | Control |
 | --- | --- |
@@ -20,6 +20,8 @@ Launch one copy of the application. Use its tray or global shortcut for later ca
 Windows, macOS, and X11 capture the display under the pointer. Wayland asks you to choose one display in the system sharing dialog. ScreenFling obtains a frame through the granted PipeWire connection, then closes the sharing session. It does not save a portal screenshot or silently switch to X11 capture.
 
 Review shows only the crop that can be delivered. Copy includes the image, not the optional note. Nothing is copied just because you selected a region. Cancellation leaves the existing clipboard unchanged.
+
+ScreenFling allows the desktop's normal screensaver behavior; leaving it open is not a request to keep the screen awake.
 
 Close hides the application when a tray is available. Use Quit in the tray or application to exit. Without a tray, closing the idle window exits. On Linux, keep ScreenFling running until you paste: another application may need it to serve the clipboard image. Closing the selection window cancels selection first.
 
@@ -64,6 +66,8 @@ The `.app` is ad-hoc signed and verified during packaging, but is not notarized.
 For a Linux application-menu entry, install the binary on the PATH used by your desktop session. Put `dev.screenfling.ScreenFling.desktop` in `~/.local/share/applications/` and `dev.screenfling.ScreenFling.svg` in `~/.local/share/icons/hicolor/scalable/apps/`. If that session cannot find the executable, set the launcher's Exec entries to its absolute installed path. Do not add multiple autostart entries.
 
 ## Settings and recovery
+
+Saving connection settings does not save an unfinished shortcut edit. Applying a shortcut does not save unfinished connection edits. Controls are disabled while Stage is pending. If saving a shortcut fails, ScreenFling attempts to restore the previous binding and reports a rollback failure rather than hiding it.
 
 Only shortcut and connection preferences are saved, in `settings.json`:
 

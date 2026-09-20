@@ -1,5 +1,6 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 mod app;
+mod cli;
 mod clipboard;
 mod desktop;
 #[cfg(target_os = "linux")]
@@ -15,12 +16,24 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn main() {
-    if std::env::args().any(|arg| arg == "--version") {
-        println!("ScreenFling {}", env!("CARGO_PKG_VERSION"));
-        return;
-    }
-    if let Err(error) = run() {
+fn main() -> std::process::ExitCode {
+    let capture_on_start = match cli::parse(std::env::args_os().skip(1)) {
+        Ok(cli::Startup::Open) => false,
+        Ok(cli::Startup::Capture) => true,
+        Ok(cli::Startup::Version) => {
+            println!("ScreenFling {}", env!("CARGO_PKG_VERSION"));
+            return std::process::ExitCode::SUCCESS;
+        }
+        Ok(cli::Startup::Help) => {
+            println!("{}", cli::HELP);
+            return std::process::ExitCode::SUCCESS;
+        }
+        Err(error) => {
+            eprintln!("ScreenFling: {error}\nRun screenfling --help for usage.");
+            return std::process::ExitCode::from(2);
+        }
+    };
+    if let Err(error) = run(capture_on_start) {
         eprintln!("ScreenFling: {error}");
         let _ = sdl3::messagebox::show_simple_message_box(
             sdl3::messagebox::MessageBoxFlag::ERROR,
@@ -28,15 +41,21 @@ fn main() {
             &error,
             None,
         );
-        std::process::exit(1);
+        return std::process::ExitCode::FAILURE;
     }
+    std::process::ExitCode::SUCCESS
 }
-fn run() -> Result<(), String> {
+fn run(capture_on_start: bool) -> Result<(), String> {
+    // A screenshot utility must not keep an idle desktop awake.
+    sdl3::hint::set("SDL_VIDEO_ALLOW_SCREENSAVER", "1");
     sdl3::hint::set("SDL_APP_NAME", "ScreenFling");
     sdl3::hint::set("SDL_APP_ID", "dev.screenfling.ScreenFling");
     sdl3::hint::set("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
     let sdl = sdl3::init().map_err(|e| e.to_string())?;
     let video = sdl.video().map_err(|e| e.to_string())?;
+    if !unsafe { sdl3_sys::video::SDL_EnableScreenSaver() } {
+        return Err("Could not allow the desktop's normal screensaver behavior.".into());
+    }
     let receiver = desktop::install(&sdl)?;
     video
         .gl_attr()
@@ -77,7 +96,6 @@ fn run() -> Result<(), String> {
     let mut deadline = Instant::now();
     let mut first_frame = true;
     let mut title_phase = None;
-    let capture_on_start = std::env::args().any(|arg| arg == "--capture");
     while !app.quit {
         let scheduled = app
             .next_deadline()

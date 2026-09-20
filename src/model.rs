@@ -27,7 +27,7 @@ impl Pixels {
     }
 
     pub fn opaque(mut self) -> Self {
-        for pixel in self.rgba.chunks_exact_mut(4) {
+        for pixel in self.rgba.as_chunks_mut::<4>().0 {
             pixel[3] = 255;
         }
         self

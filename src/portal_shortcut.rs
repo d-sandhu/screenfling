@@ -16,7 +16,7 @@ impl PortalShortcut {
         let worker = std::thread::Builder::new().name("screenfling-shortcut".into()).spawn(move || {
             let result = block_on(run(&receiver));
             if result.is_err() {
-                desktop::post(Message::ShortcutStatus("This desktop did not provide a global shortcut. Use Capture, the tray, or bind screenfling --capture in your desktop settings.".into()));
+                desktop::post(Message::ShortcutStatus("This desktop did not provide a global shortcut. Use Capture or the tray in this running application.".into()));
             }
         }).ok();
         if worker.is_none() {
@@ -30,10 +30,10 @@ impl PortalShortcut {
 impl Drop for PortalShortcut {
     fn drop(&mut self) {
         let _ = self.stop.try_send(());
-        if self.worker.as_ref().is_some_and(JoinHandle::is_finished) {
-            if let Some(worker) = self.worker.take() {
-                let _ = worker.join();
-            }
+        if self.worker.as_ref().is_some_and(JoinHandle::is_finished)
+            && let Some(worker) = self.worker.take()
+        {
+            let _ = worker.join();
         }
     }
 }

@@ -151,10 +151,10 @@ pub fn command(
             if input_ok.is_none() {
                 input_ok = input_result.try_recv().ok();
             }
-            if output.is_none() {
-                if let Ok(value) = output_result.try_recv() {
-                    output = Some(value);
-                }
+            if output.is_none()
+                && let Ok(value) = output_result.try_recv()
+            {
+                output = Some(value);
             }
             if let Some(Err(error)) = output.as_ref() {
                 return Err(error.clone());
@@ -163,13 +163,13 @@ pub fn command(
                 if !status.success() || input_ok == Some(false) {
                     return Err(if sent == 0 { "WezTerm rejected the operation before ScreenFling forwarded a request. Check the executable and exact socket settings." } else { "WezTerm reported a failure after communication began. Delivery is uncertain. Inspect the exact selected pane; do not automatically retry." }.into());
                 }
-                if input_ok == Some(true) {
-                    if let Some(output) = output.take() {
-                        if !accepted || sent == 0 {
-                            return Err("WezTerm did not use the pinned connection. The operation is not verified.".into());
-                        }
-                        return output;
+                if input_ok == Some(true)
+                    && let Some(output) = output.take()
+                {
+                    if !accepted || sent == 0 {
+                        return Err("WezTerm did not use the pinned connection. The operation is not verified.".into());
                     }
+                    return output;
                 }
             }
             if !progress {
@@ -270,5 +270,65 @@ mod tests {
             5
         );
         assert_eq!(output, b"stage");
+    }
+
+    #[test]
+    fn native_relay_preserves_stage_bytes_and_blocks_a_rejected_write() {
+        let directory = trusted::TemporaryDirectory::new().unwrap();
+        let endpoint = directory.0.join("s");
+        let listener = Socket::new(Domain::UNIX, Type::STREAM, None).unwrap();
+        listener.bind(&SockAddr::unix(&endpoint).unwrap()).unwrap();
+        listener.listen(4).unwrap();
+        let input = screenfling::model::stage_input("Inspect this crop.").unwrap();
+        for allowed in [true, false] {
+            let mut sender = connect(&endpoint).unwrap();
+            let (mut source, _) = listener.accept().unwrap();
+            let mut receiver = connect(&endpoint).unwrap();
+            let (mut destination, _) = listener.accept().unwrap();
+            source.set_nonblocking(true).unwrap();
+            destination.set_nonblocking(true).unwrap();
+            sender.write_all(&input).unwrap();
+            sender.shutdown(Shutdown::Write).unwrap();
+            let mut pending = Pending::default();
+            let mut sent = 0;
+            let mut checked = false;
+            let mut gate = || {
+                checked = true;
+                if allowed {
+                    Ok(())
+                } else {
+                    Err("clipboard changed".into())
+                }
+            };
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                assert!(Instant::now() < deadline, "Local relay did not finish");
+                let result = pending.pump(&mut source, &mut destination, &mut sent, &mut gate);
+                if !allowed && result.is_err() {
+                    assert_eq!(result.unwrap_err(), "clipboard changed");
+                    assert_eq!(sent, 0);
+                    receiver.set_nonblocking(true).unwrap();
+                    let mut bytes = [0; 1];
+                    assert_eq!(
+                        receiver.read(&mut bytes).unwrap_err().kind(),
+                        io::ErrorKind::WouldBlock
+                    );
+                    break;
+                }
+                result.unwrap();
+                if pending.shutdown {
+                    receiver
+                        .set_read_timeout(Some(Duration::from_secs(2)))
+                        .unwrap();
+                    let mut actual = Vec::new();
+                    receiver.read_to_end(&mut actual).unwrap();
+                    assert_eq!(actual, input);
+                    assert_eq!(sent, input.len());
+                    break;
+                }
+                thread::sleep(Duration::from_millis(1));
+            }
+            assert!(checked);
+        }
     }
 }

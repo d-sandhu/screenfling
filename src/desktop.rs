@@ -35,19 +35,18 @@ pub fn install(sdl: &sdl3::Sdl) -> Result<mpsc::Receiver<Message>> {
     Ok(receiver)
 }
 pub fn wake() {
-    if ACTIVE.load(Ordering::Acquire) {
-        if let Some(bus) = BUS.get() {
-            let _ = bus.events.push_custom_event(Wake);
-        }
+    if ACTIVE.load(Ordering::Acquire)
+        && let Some(bus) = BUS.get()
+    {
+        let _ = bus.events.push_custom_event(Wake);
     }
 }
 pub fn post(message: Message) {
-    if ACTIVE.load(Ordering::Acquire) {
-        if let Some(bus) = BUS.get() {
-            if bus.sender.send(message).is_ok() {
-                wake();
-            }
-        }
+    if ACTIVE.load(Ordering::Acquire)
+        && let Some(bus) = BUS.get()
+        && bus.sender.send(message).is_ok()
+    {
+        wake();
     }
 }
 pub fn shutdown() {
@@ -145,6 +144,20 @@ impl Shortcut {
             self.key.as_ref().is_some_and(|key| key.id() == id)
         }
     }
+    /// Roll back a failed preferences save, including an initially unbound shortcut.
+    pub fn restore(&mut self, value: &str) -> Result<()> {
+        if !value.is_empty() {
+            return self.set(value);
+        }
+        if let (Some(manager), Some(key)) = (&self.manager, self.key) {
+            manager
+                .unregister(key)
+                .map_err(|_| "The unsaved shortcut could not be removed.")?;
+        }
+        self.key = None;
+        self.current.clear();
+        Ok(())
+    }
     pub fn set(&mut self, value: &str) -> Result<()> {
         if capture::is_wayland() {
             return Err("Change this shortcut through the desktop portal settings.".into());
@@ -169,11 +182,11 @@ impl Shortcut {
         manager
             .register(next)
             .map_err(|_| "This shortcut is already in use or could not be registered.")?;
-        if let Some(previous) = self.key {
-            if manager.unregister(previous).is_err() {
-                let _ = manager.unregister(next);
-                return Err("The old shortcut could not be replaced; it was kept.".into());
-            }
+        if let Some(previous) = self.key
+            && manager.unregister(previous).is_err()
+        {
+            let _ = manager.unregister(next);
+            return Err("The old shortcut could not be replaced; it was kept.".into());
         }
         self.key = Some(next);
         self.current = value.to_owned();
@@ -195,8 +208,8 @@ impl Tray {
         let mut icon = vec![0u8; 24 * 24 * 4];
         for y in 4usize..20 {
             for x in 4usize..20 {
-                if ((x < 7 || x >= 17) && (y < 10 || y >= 14))
-                    || ((y < 7 || y >= 17) && (x < 10 || x >= 14))
+                if (!(7..17).contains(&x) && !(10..14).contains(&y))
+                    || (!(7..17).contains(&y) && !(10..14).contains(&x))
                 {
                     let i = (y * 24 + x) * 4;
                     icon[i..i + 4].copy_from_slice(&[78, 170, 245, 255]);

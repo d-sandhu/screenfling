@@ -127,10 +127,10 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
     let _listener = stream
         .add_local_listener_with_user_data(VideoInfoRaw::default())
         .param_changed(|_, format, id, param| {
-            if id == ParamType::Format.as_raw() {
-                if let Some(param) = param {
-                    let _ = format.parse(param);
-                }
+            if id == ParamType::Format.as_raw()
+                && let Some(param) = param
+            {
+                let _ = format.parse(param);
             }
         })
         .process(move |stream, format| {

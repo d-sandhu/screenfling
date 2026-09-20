@@ -21,10 +21,27 @@ def cpu_ticks(pid):
     return int(fields[11]) + int(fields[12])
 
 
+def marked(x, y):
+    # An asymmetric tile catches wrong crop origins, channel order, and flipped rows.
+    x, y = x % 19, y % 17
+    return (x * 7 + y * 11 + x * y) % 23 < 9
+
+
+def install_pattern(directory):
+    bitmap = Path(directory) / 'pattern.xbm'
+    values = [sum(int(marked(x, y)) << (x % 8)
+                  for x in range(start, min(start + 8, 19)))
+              for y in range(17) for start in range(0, 19, 8)]
+    bitmap.write_text('#define pattern_width 19\n#define pattern_height 17\n'
+                      'static unsigned char pattern_bits[] = {' +
+                      ','.join(hex(value) for value in values) + '};\n')
+    command('xsetroot', '-bitmap', str(bitmap), '-fg', '#c43a71', '-bg', '#345678')
+
+
 def check_png(data):
     assert data[:8] == b'\x89PNG\r\n\x1a\n', 'Copy did not provide a PNG image'
-    width, height, depth, color = struct.unpack('>IIBB', data[16:26])
-    assert (width, height, depth, color) == (200, 150, 8, 6), (width, height, depth, color)
+    width, height, depth, color, compression, filtering, interlace = struct.unpack('>IIBBBBB', data[16:29])
+    assert (width, height, depth, color, compression, filtering, interlace) == (200, 150, 8, 6, 0, 0, 0)
     offset, compressed = 8, bytearray()
     while offset + 12 <= len(data):
         length = struct.unpack('>I', data[offset:offset + 4])[0]
@@ -32,8 +49,30 @@ def check_png(data):
             compressed.extend(data[offset + 8:offset + 8 + length])
         offset += length + 12
     rows = zlib.decompress(compressed)
-    # All PNG filter predictors are zero at the first pixel of the first row.
-    assert rows[0] <= 4 and rows[1:5] == bytes([0x34, 0x56, 0x78, 255]), rows[:5]
+    stride = width * 4
+    assert len(rows) == height * (stride + 1), 'PNG has an incomplete pixel buffer'
+    previous = bytearray(stride)
+    for y in range(height):
+        start = y * (stride + 1)
+        kind = rows[start]
+        assert 0 <= kind <= 4, 'Unsupported PNG row filter'
+        current = bytearray(rows[start + 1:start + 1 + stride])
+        for i in range(stride):
+            left = current[i - 4] if i >= 4 else 0
+            above = previous[i]
+            upper_left = previous[i - 4] if i >= 4 else 0
+            if kind == 4:
+                prediction = left + above - upper_left
+                pa, pb, pc = abs(prediction - left), abs(prediction - above), abs(prediction - upper_left)
+                predictor = left if pa <= pb and pa <= pc else above if pb <= pc else upper_left
+            else:
+                predictor = (0, left, above, (left + above) // 2)[kind]
+            current[i] = (current[i] + predictor) & 255
+        expected = bytes(channel for x in range(width)
+                         for channel in ((196, 58, 113, 255) if marked(x + 100, y + 100)
+                                         else (52, 86, 120, 255)))
+        assert current == expected, f'Crop pixels differ from the frozen fixture on row {y}'
+        previous = current
     return [width, height]
 
 
@@ -42,7 +81,6 @@ def main():
     os.environ.pop('WAYLAND_DISPLAY', None)
     output = Path('dist')
     output.mkdir(exist_ok=True)
-    command('xsetroot', '-solid', '#345678')
     sentinel = b'screenfling-cancel-must-not-change-clipboard'
     owner = sp.Popen(['xclip', '-selection', 'clipboard', '-in', '-quiet'], stdin=sp.PIPE,
                      stdout=sp.DEVNULL, stderr=sp.DEVNULL)
@@ -50,6 +88,7 @@ def main():
     owner.stdin.close()
     app = None
     with tempfile.TemporaryDirectory(prefix='sf-smoke-') as config, tempfile.TemporaryFile() as log:
+        install_pattern(config)
         env = os.environ.copy()
         env['XDG_CONFIG_HOME'] = config
         try:
@@ -86,8 +125,16 @@ def main():
             key('Select region$', 'Escape')
             window('^ScreenFling$')
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
+            # Exercise the native global shortcut and whole-display review, then cancel.
+            command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9')
+            key('Select region$', 'space')
+            key('Review crop$', 'Escape')
+            window('^ScreenFling$')
+            assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
             key('^ScreenFling$', 'F8')
             handle = window('Select region$')
+            # Changing the desktop now must not change the frozen capture being reviewed.
+            command('xsetroot', '-solid', '#112233')
             command('xdotool', 'windowfocus', '--sync', handle)
             command('xdotool', 'mousemove', '100', '100', 'mousedown', '1', 'sleep', '0.15',
                     'mousemove', '300', '250', 'sleep', '0.15', 'mouseup', '1')
@@ -103,7 +150,10 @@ def main():
                 'idle_cpu_percent_of_one_core': round(idle_cpu, 2),
                 'idle_rss_kib': int(status['VmRSS'].split()[0]),
                 'idle_threads': int(status['Threads'].strip()),
-                'checks': ['start', 'cancel keeps clipboard', 'frozen crop review keeps clipboard', 'explicit Copy serves exact PNG pixels'],
+                'checks': ['start', 'cancel keeps clipboard', 'native global shortcut',
+                           'whole-display review cancellation keeps clipboard',
+                           'frozen crop review keeps clipboard',
+                           'explicit Copy serves every expected pixel from the original frozen frame'],
                 'copied_dimensions': size,
             }
             (output / 'smoke-x11.json').write_text(json.dumps(result, indent=2) + '\n')
