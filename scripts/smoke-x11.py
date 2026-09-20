@@ -13,7 +13,10 @@ import zlib
 
 
 def command(*args, check=True):
-    return sp.run(args, check=check, stdout=sp.PIPE, stderr=sp.PIPE, timeout=8)
+    result = sp.run(args, stdout=sp.PIPE, stderr=sp.PIPE, timeout=8)
+    if check and result.returncode:
+        raise RuntimeError(f'{args}: {result.stderr.decode(errors="replace").strip()}')
+    return result
 
 
 def cpu_ticks(pid):
@@ -33,8 +36,9 @@ def install_pattern(directory):
                   for x in range(start, min(start + 8, 19)))
               for y in range(17) for start in range(0, 19, 8)]
     bitmap.write_text('#define pattern_width 19\n#define pattern_height 17\n'
-                      'static unsigned char pattern_bits[] = {' +
-                      ','.join(hex(value) for value in values) + '};\n')
+                      'static unsigned char pattern_bits[] = {\n' +
+                      ',\n'.join(','.join(hex(v) for v in values[i:i + 12])
+                                  for i in range(0, len(values), 12)) + '\n};\n')
     command('xsetroot', '-bitmap', str(bitmap), '-fg', '#c43a71', '-bg', '#345678')
 
 
@@ -88,10 +92,10 @@ def main():
     owner.stdin.close()
     app = None
     with tempfile.TemporaryDirectory(prefix='sf-smoke-') as config, tempfile.TemporaryFile() as log:
-        install_pattern(config)
         env = os.environ.copy()
         env['XDG_CONFIG_HOME'] = config
         try:
+            install_pattern(config)
             time.sleep(0.2)
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
             start = time.monotonic()
