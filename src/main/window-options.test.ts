@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import { createCaptureWindowOptions, createMainWindowOptions } from "./window-options";
 
 describe("createMainWindowOptions", () => {
-  it("keeps the renderer sandboxed behind a preload boundary", () => {
+  it("keeps the renderer sandboxed and permits the tested compact layout", () => {
     const options = createMainWindowOptions("/tmp/preload.js");
 
     expect(options.show).toBe(false);
     expect(options).toMatchObject({
       height: 720,
-      minHeight: 640,
-      minWidth: 760,
+      minHeight: 480,
+      minWidth: 520,
       width: 920,
     });
     expect(options.webPreferences).toMatchObject({
