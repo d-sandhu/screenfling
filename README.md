@@ -1,76 +1,59 @@
 # ScreenFling
 
-Capture what you see. Stage it in the exact coding session. Keep working.
+**Capture what you see. Stage it in the right coding session. Keep working.**
 
-ScreenFling is a native Rust + egui desktop utility. One process, an event-driven SDL3/OpenGL window, no Chromium, WebView, JavaScript runtime, account, upload, or telemetry. Windows, macOS, Linux/X11, and Linux/Wayland have native capture implementations.
+A native desktop tool that turns a screen region into a reviewed image you can copy or stage in an exact local WezTerm pane. No screenshot file to manage. No switching to a guessed terminal window. No automatic prompt submission.
 
-## Use
+[![Native checks](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml/badge.svg?branch=rust-egui-rewrite-2026-09-20&event=pull_request)](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml)
 
-Open ScreenFling and select **Capture** (or press **F8** in its window). The default global shortcut is **Ctrl+Shift+9**, or **Command+Shift+9** on macOS. Change it in Settings. Wayland uses the desktop's shortcut portal; the desktop controls the final binding.
+![ScreenFling's native crop review window showing a clipped button in a synthetic example UI](docs/preview.webp)
 
-The display under the pointer is captured on Windows, macOS, and X11. On Wayland, choose one display in the system sharing dialog. ScreenFling obtains one frame through PipeWire and closes the sharing session. This explicit chooser is a desktop security requirement, not a silent X11 fallback.
+*Actual Linux application, reviewing a synthetic UI example. Stage stays disabled until a destination is selected.*
 
-Drag a region on the frozen image. **Space** selects the full image. **Escape** cancels. Review the crop, then choose **Copy image** (**F6**) or select an exact WezTerm pane and **Stage**. The optional single-line note is used only by Stage. Copy copies the image, not the note.
+## Why it exists
 
-**Stage does not submit.** It writes the configured image-paste shortcut and note to the selected pane, without Enter. It does not prove that the coding agent attached the image. Use the separate **Reveal destination** action, inspect the attachment, then submit yourself. Reveal activates the exact pane/tab; some desktops still require switching to its window.
+A screenshot can explain a layout bug faster than a paragraph. Getting that screenshot into the correct coding session should not require saving a file, finding its path, or trusting whichever window has focus.
 
-Copy does not need WezTerm. Close hides the application when a tray is available; use Quit in the tray or application to exit. Without a tray, closing the idle application quits. Keep it running on Linux while pasting copied images, since Linux clipboard ownership can depend on the source application.
+ScreenFling keeps the workflow small:
 
-## WezTerm setup
+1. **Capture and select.** Use a global shortcut or the Capture button, then drag a region on the frozen image.
+2. **Review.** Check the exact crop and optionally add a one-line note.
+3. **Copy or Stage.** Copy the image for manual use, or request an image paste in one selected WezTerm pane. Reveal that pane separately and inspect the attachment before submitting.
 
-Run the coding agent locally inside WezTerm. In ScreenFling Settings, select the absolute **WezTerm executable** and the exact **local mux socket**. Inside the intended WezTerm window, print its socket path:
+Copy works without WezTerm. Stage writes **Ctrl+V and the note, never Enter**. A successful write is not proof that the agent attached the image; the result says so.
 
-```sh
-# macOS / Linux shell
-printf '%s\n' "$WEZTERM_UNIX_SOCKET"
-```
+## Try the native rewrite
 
-```powershell
-# Windows PowerShell, inside WezTerm
-$env:WEZTERM_UNIX_SOCKET
-```
+**Pre-release.** This rewrite is being prepared in [PR #64](https://github.com/d-sandhu/screenfling/pull/64). Native builds and automated checks are available; physical desktop acceptance and public signing are still pending. The commands deliberately select the rewrite branch, not the previous implementation on `main`.
 
-Launching ScreenFling from that pane also supplies the socket as a default. Executable examples are `/Applications/WezTerm.app/Contents/MacOS/wezterm`, `/usr/bin/wezterm`, and the absolute `wezterm.exe` path on Windows. Do not enter a window title or guess a socket. Refresh destinations after reconnecting or restarting WezTerm.
-
-Confirm the Settings checkbox only after checking that **Ctrl+V is the coding agent's image-paste binding**. It must reach the agent, not a shell command or a terminal text-paste binding. Remote/SSH/WSL agents with a different clipboard are not supported as image destinations. Copy remains available.
-
-Routing checks the selected socket, filesystem identity, and pane/window/tab IDs. Window titles are display labels only. If the socket changes, the pane closes/moves, or the clipboard no longer matches the reviewed crop, Stage stops. It does not switch to a focused window, restore an old clipboard image, press Enter, or automatically retry an uncertain write.
-
-## Build and run
-
-Install stable Rust and a native C/C++ toolchain (MSVC on Windows; Xcode Command Line Tools on macOS). SDL3's video/tray subset is built and linked statically. OpenGL 3.2 support is required. macOS requires **14 or later** for ScreenCaptureKit still images. Windows requires Windows 10 with AF_UNIX support (1803 or later) for WezTerm staging.
-
-On Debian/Ubuntu, install the native development libraries:
+Install Rust, CMake, and your platform's native compiler first. Linux also needs the development libraries listed in the [build guide](docs/DEVELOPMENT.md#build-prerequisites).
 
 ```sh
-sudo apt-get install build-essential cmake pkg-config clang libclang-dev \
-  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
-  libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-  libegl1-mesa-dev libgl1-mesa-dev libdrm-dev libgbm-dev libdecor-0-dev \
-  libpipewire-0.3-dev libdbus-1-dev
+git clone --branch rust-egui-rewrite-2026-09-20 https://github.com/d-sandhu/screenfling.git
+cd screenfling
 cargo run --release --locked
 ```
 
-On Windows/macOS, use the same Cargo command after installing the native toolchain. `screenfling --capture` starts with Capture; `screenfling --version` reports the version. A second invocation is a separate process, not an IPC command to an existing process.
+The default capture shortcut is **Ctrl+Shift+9**, or **Command+Shift+9** on macOS. Wayland's desktop portal controls its own binding. In the application, **F8** captures, **Space** selects the whole frozen image, **F6** copies a reviewed crop, and **Escape** cancels a capture.
 
-macOS requests screen-recording permission only when you capture. Enable ScreenFling in **System Settings → Privacy & Security → Screen & System Audio Recording** when requested. ScreenFling does not capture audio.
+For Stage, configure the local WezTerm executable and socket, confirm the agent's Ctrl+V image binding, and select a pane. The [usage guide](docs/USAGE.md) covers setup, packages, permissions, shortcuts, and recovery.
 
-On Wayland, install your desktop's **xdg-desktop-portal backend and PipeWire**. ScreenCast and GlobalShortcuts portal support varies by desktop. Capture works independently of shortcut/tray availability; a missing portal produces an actionable error, never a fake successful capture. ScreenFling does not use an X11-only capture path under Wayland.
+## Engineering choices
 
-## Native packages
+**Rust + egui + SDL3/OpenGL.** One desktop application process, with short-lived WezTerm command processes only when needed. No Electron, Chromium, WebView, JavaScript runtime, account, or cloud service.
 
-```sh
-cargo build --release --locked
-python3 scripts/package.py
-```
+| Concern | Implementation and tradeoff |
+| --- | --- |
+| Native capture | Windows capture, macOS ScreenCaptureKit, X11, and Wayland ScreenCast/PipeWire. Wayland uses an explicit display-sharing chooser. |
+| Correct crops | Map the displayed selection to the actual captured pixel dimensions, not an assumed screen scale. |
+| Explicit delivery | Review is required. Copy and Stage are separate user actions. Cancel does not replace the clipboard. |
+| Exact routing | Pin the local socket and check pane/window/tab IDs. Titles are labels, never routing identities. |
+| Failure handling | Reject stale work and changed clipboard contents. Never fall back to focus or automatically retry uncertain delivery. |
+| Small runtime | Event-driven UI and a statically linked SDL video/tray subset. System graphics and desktop services remain dependencies. |
 
-Python 3.11+ is needed only to package, not to run ScreenFling. The `dist` directory receives a Windows portable ZIP, a macOS `.app` in a tar archive, or a Linux binary/desktop-icon tar archive. The build record includes executable size, package size, and SHA-256.
+Start with [`app.rs`](src/app.rs) for the workflow, [`model.rs`](src/model.rs) for its invariants, [`capture/`](src/capture) for platform code, and [`wezterm.rs`](src/wezterm.rs) / [`relay.rs`](src/relay.rs) for delivery. The [development guide](docs/DEVELOPMENT.md) explains the boundaries and checks.
 
-macOS packages are **ad-hoc signed, not notarized**. Windows packages are unsigned. CI artifacts are development builds, not signed public releases. On macOS, move the app into Applications and use the system's Open Anyway flow only after verifying that you trust this build; do not disable Gatekeeper globally.
-
-For Linux, put `screenfling` on your PATH. Install `dev.screenfling.ScreenFling.desktop` in `~/.local/share/applications/` and its SVG in `~/.local/share/icons/hicolor/scalable/apps/`. The binary uses system OpenGL, PipeWire, X11/Wayland, and desktop portal libraries; it is not a fully static Linux executable.
-
-## Checks and architecture
+## Verification and limits
 
 ```sh
 cargo fmt --all --check
@@ -78,14 +61,14 @@ cargo test --release --locked --all-targets
 cargo build --release --locked
 ```
 
-The test suite is deliberately small: geometry and pixel bounds, current workflow/review/one-shot delivery, no-submit input, exact IDs, replaced-clipboard write blocking, and local endpoint identity. There is one additional real X11 desktop smoke script, which exercises cancel, frozen crop review, and external PNG clipboard reads. It uses a synthetic Xvfb display, not private desktop content.
+One CI workflow builds and packages Windows x86-64, macOS Apple Silicon, and Linux x86-64. A small Rust suite checks the failure-prone logic. One Linux/Xvfb smoke test exercises the real capture, selection, review, cancellation, and external PNG clipboard path.
 
-CI is one workflow with three native build jobs. It packages all three operating systems and records Linux/Xvfb startup-to-visible-window, idle CPU, RSS, and thread count. These software-rendered CI measurements are not claims about cold startup or GPU memory on real hardware.
+These checks do **not** establish real-agent attachment, mixed-DPI behavior, permissions, or performance on physical desktops. Build records and scoped measurements are evidence, not a promise of a particular startup time or RAM footprint.
 
-`src/app.rs` owns the workflow and UI. `model.rs` and `frame.rs` hold pure safety logic. `capture/` contains small platform capture modules. Clipboard/tray/shortcuts use native APIs. WezTerm commands are short-lived children with a bounded private socket relay; there is no persistent relay service or network listener. Linux async code is limited to desktop portals.
+Stage currently targets **local WezTerm panes with the same OS clipboard**, not arbitrary terminals, browser chats, SSH hosts, or WSL agents. Screenshot pixels and notes are not saved by ScreenFling. Explicit clipboard delivery, clipboard managers, OS swap, and the destination application's storage are separate concerns.
 
-Screenshots and notes remain in memory until explicit Copy or Stage. Settings store only shortcut/connection preferences in the user's application configuration directory. Stage uses the clipboard as an explicit delivery mechanism. No screenshot/notes are written to temporary files. OS swap, clipboard managers, and the destination application's own storage are outside ScreenFling's control.
+## Contributing and license
 
-Before a public release, test physical Windows/macOS/Wayland desktops: mixed-DPI monitors, display disconnects, screen-recording permission allow/deny, tray/global-shortcut behavior, clipboard replacement during Stage, exact WezTerm pane selection, and real agent image attachment. Automated builds do not establish those hardware results.
+Small, focused fixes are welcome. Include the platform, the observed failure, and a targeted regression check; avoid sharing private screenshots or full local socket paths. See the [development guide](docs/DEVELOPMENT.md#contributing).
 
-MIT licensed. The previous Electron implementation remains in Git history, not in the application tree.
+ScreenFling's code is [MIT licensed](LICENSE). Native packages include third-party notices. The previous Electron implementation is preserved in Git history, not maintained as a second runtime.

@@ -209,8 +209,11 @@ impl App {
             }
             Message::Shortcut(_) => {}
             Message::Open => {
-                window.show();
-                window.raise();
+                // Do not expose our window while the pending frame is captured.
+                if self.flow.phase() != Phase::Capturing {
+                    window.show();
+                    window.raise();
+                }
             }
             Message::Quit => self.action(Action::Quit, ctx, window),
             Message::Captured(id, result) if self.flow.is_current(id, Phase::Capturing) => {
@@ -241,28 +244,8 @@ impl App {
                     }
                 }
             }
-            Message::Destinations(id, connection, result)
-                if self.flow.is_current(id, Phase::Review)
-                    && connection == self.settings.connection =>
-            {
-                self.discovering = false;
-                match result {
-                    Ok(routes) => {
-                        self.routes = routes;
-                        self.selected = None;
-                        self.status = if self.routes.is_empty() {
-                            "No panes were found in the selected WezTerm instance.".into()
-                        } else {
-                            "Select the exact coding-session pane. Nothing has been delivered."
-                                .into()
-                        };
-                    }
-                    Err(error) => {
-                        self.routes.clear();
-                        self.selected = None;
-                        self.status = error;
-                    }
-                }
+            Message::Destinations(id, connection, result) => {
+                self.finish_discovery(id, connection, result);
             }
             Message::VerifyClipboard(id, reply) => {
                 let matches = self.flow.is_current(id, Phase::Delivering)
@@ -291,6 +274,36 @@ impl App {
         }
         ctx.request_repaint();
     }
+    fn finish_discovery(
+        &mut self,
+        id: u64,
+        connection: wezterm::ConnectionSettings,
+        result: Result<Vec<Destination>>,
+    ) {
+        if !self.flow.is_current(id, Phase::Review) {
+            return;
+        }
+        // A settings change invalidates the result, but must release the busy UI.
+        // A result from an older capture must not release a newer request.
+        self.discovering = false;
+        self.routes.clear();
+        self.selected = None;
+        if connection != self.settings.connection {
+            self.status = "Connection settings changed. Refresh panes to select a current destination.".into();
+            return;
+        }
+        match result {
+            Ok(routes) => {
+                self.routes = routes;
+                self.status = if self.routes.is_empty() {
+                    "No panes were found in the selected WezTerm instance.".into()
+                } else {
+                    "Select the exact coding-session pane. Nothing has been delivered.".into()
+                };
+            }
+            Err(error) => self.status = error,
+        }
+    }
     pub fn action(&mut self, action: Action, ctx: &egui::Context, window: &mut Window) {
         if matches!(action, Action::None) {
             return;
@@ -311,8 +324,10 @@ impl App {
             Action::None => {}
             Action::Capture => {
                 if !matches!(self.flow.phase(), Phase::Idle | Phase::Result) {
-                    window.show();
-                    window.raise();
+                    if self.flow.phase() != Phase::Capturing {
+                        window.show();
+                        window.raise();
+                    }
                     return Ok(());
                 }
                 if !self.reap() {
@@ -711,4 +726,49 @@ fn fit_size(source: Vec2, available: Vec2) -> Vec2 {
             .min(available.y / source.y)
             .min(1.0)
             .max(0.001)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discovery_recovers_after_settings_change_and_ignores_old_capture() {
+        let mut app = App::new(
+            Settings::default(),
+            String::new(),
+            desktop::Shortcut::default(),
+            String::new(),
+        );
+        let begin_review = |app: &mut App| {
+            let id = app.flow.start().unwrap();
+            app.flow
+                .advance(id, Phase::Capturing, Phase::Selecting)
+                .unwrap();
+            app.flow
+                .advance(id, Phase::Selecting, Phase::Review)
+                .unwrap();
+            app.discovering = true;
+            id
+        };
+        let old = begin_review(&mut app);
+        let settings = app.settings.connection.clone();
+        app.settings.connection.socket.push_str("changed");
+        app.finish_discovery(old, settings.clone(), Err("obsolete response".into()));
+        assert!(!app.discovering);
+        assert!(app.status.contains("settings changed"));
+        assert!(app.routes.is_empty() && app.selected.is_none());
+
+        assert!(app.flow.cancel(old));
+        let current = begin_review(&mut app);
+        app.finish_discovery(old, settings, Err("old capture".into()));
+        assert!(app.discovering);
+        app.finish_discovery(
+            current,
+            app.settings.connection.clone(),
+            Err("unavailable".into()),
+        );
+        assert!(!app.discovering);
+        assert_eq!(app.status, "unavailable");
+    }
 }

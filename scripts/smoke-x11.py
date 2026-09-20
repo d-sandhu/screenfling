@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One real desktop smoke check, using a synthetic Xvfb screen. No test framework.
-Run: xvfb-run -a -s '-screen 0 1280x800x24' python3 scripts/smoke-x11.py
+Run: xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
 """
 import json
 import os

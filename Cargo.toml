@@ -5,6 +5,8 @@ edition = "2024"
 license = "MIT"
 description = "Capture, review, and stage a screenshot in an exact coding session."
 repository = "https://github.com/d-sandhu/screenfling"
+readme = "README.md"
+publish = false
 
 [dependencies]
 egui-sdl3 = { version = "=0.4.0", default-features = false, features = ["glow-backend"] }

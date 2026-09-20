@@ -2,11 +2,14 @@ use crate::{trusted, wezterm::ConnectionSettings};
 use screenfling::model::Result;
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::{self, OpenOptions},
-    io::Write,
+    fs::{self, File, OpenOptions},
+    io::{Read, Write},
+    path::Path,
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+const MAX_SETTINGS_BYTES: usize = 16384;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub version: u32,
@@ -28,34 +31,48 @@ impl Default for Settings {
     }
 }
 impl Settings {
-    pub fn load() -> (Self, String) {
-        let result = (|| -> Result<Option<Self>> {
-            let path = trusted::data_dir()?.join("settings.json");
-            match fs::symlink_metadata(&path) {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(_) => return Err("Could not read settings; defaults are in use.".into()),
-                Ok(metadata)
-                    if metadata.len() > 16384
-                        || !metadata.is_file()
-                        || metadata.file_type().is_symlink() =>
-                {
-                    return Err("Settings are invalid; defaults are in use.".into());
-                }
-                Ok(_) => {}
-            }
-            let data =
-                fs::read(path).map_err(|_| "Could not read settings; defaults are in use.")?;
-            let settings: Self = serde_json::from_slice(&data)
-                .map_err(|_| "Settings are invalid; defaults are in use.")?;
-            if settings.version != 1
-                || settings.shortcut.len() > 80
-                || settings.connection.executable.len() > 4096
-                || settings.connection.socket.len() > 4096
+    fn validate(&self) -> Result<()> {
+        if self.version != 1
+            || self.shortcut.len() > 80
+            || self.connection.executable.len() > 4096
+            || self.connection.socket.len() > 4096
+        {
+            return Err(
+                "Settings have an unsupported version or an excessive field length.".into(),
+            );
+        }
+        Ok(())
+    }
+    fn read(path: &Path) -> Result<Option<Self>> {
+        match fs::symlink_metadata(path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err("Could not read settings.".into()),
+            Ok(metadata)
+                if metadata.len() > MAX_SETTINGS_BYTES as u64
+                    || !metadata.is_file()
+                    || metadata.file_type().is_symlink() =>
             {
-                return Err("Settings are not supported; defaults are in use.".into());
+                return Err("Settings are invalid or too large.".into());
             }
-            Ok(Some(settings))
-        })();
+            Ok(_) => {}
+        }
+        // Bound the actual read as well as the metadata check.
+        let mut data = Vec::new();
+        File::open(path)
+            .and_then(|file| {
+                file.take((MAX_SETTINGS_BYTES + 1) as u64)
+                    .read_to_end(&mut data)
+            })
+            .map_err(|_| "Could not read settings.")?;
+        if data.len() > MAX_SETTINGS_BYTES {
+            return Err("Settings are too large.".into());
+        }
+        let settings: Self = serde_json::from_slice(&data).map_err(|_| "Settings are invalid.")?;
+        settings.validate()?;
+        Ok(Some(settings))
+    }
+    pub fn load() -> (Self, String) {
+        let result = trusted::data_dir().and_then(|dir| Self::read(&dir.join("settings.json")));
         match result {
             Ok(Some(settings)) => (settings, String::new()),
             Ok(None) => (
@@ -63,11 +80,19 @@ impl Settings {
                 "Capture a region, review it, then choose Copy or Stage. Nothing is uploaded."
                     .into(),
             ),
-            Err(error) => (Self::default(), error),
+            Err(error) => (Self::default(), format!("{error} Defaults are in use.")),
         }
     }
     pub fn save(&self) -> Result<()> {
-        let dir = trusted::data_dir()?;
+        self.save_to(&trusted::data_dir()?)
+    }
+    fn save_to(&self, dir: &Path) -> Result<()> {
+        self.validate()?;
+        trusted::private_dir(dir)?;
+        let data = serde_json::to_vec_pretty(self).map_err(|_| "Could not encode settings.")?;
+        if data.len() > MAX_SETTINGS_BYTES {
+            return Err("Settings are too large.".into());
+        }
         let temp = dir.join(format!("settings-{}.tmp", trusted::nonce()?));
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
@@ -77,10 +102,6 @@ impl Settings {
             options.mode(0o600);
         }
         let result = (|| -> Result<()> {
-            let data = serde_json::to_vec_pretty(self).map_err(|_| "Could not encode settings.")?;
-            if data.len() > 16384 {
-                return Err("Settings are too large.".into());
-            }
             let mut file = options
                 .open(&temp)
                 .map_err(|_| "Could not create the settings file.")?;
@@ -92,7 +113,7 @@ impl Settings {
                 .map_err(|_| "Could not replace settings safely.")?;
             #[cfg(unix)]
             {
-                if let Ok(parent) = fs::File::open(&dir) {
+                if let Ok(parent) = File::open(dir) {
                     let _ = parent.sync_all();
                 }
             }
@@ -102,5 +123,34 @@ impl Settings {
             let _ = fs::remove_file(temp);
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_round_trip_and_rejected_save_preserve_previous_value() {
+        let directory = trusted::TemporaryDirectory::new().unwrap();
+        let path = directory.0.join("settings.json");
+        assert!(Settings::read(&path).unwrap().is_none());
+        let mut settings = Settings::default();
+        settings.save_to(&directory.0).unwrap();
+        assert_eq!(Settings::read(&path).unwrap().unwrap(), settings);
+        settings.shortcut = "Control+Shift+KeyF".into();
+        settings.save_to(&directory.0).unwrap();
+        assert_eq!(Settings::read(&path).unwrap().unwrap(), settings);
+        let mut invalid = settings.clone();
+        invalid.connection.socket = "x".repeat(4097);
+        assert!(invalid.save_to(&directory.0).is_err());
+        invalid = settings.clone();
+        invalid.version = 2;
+        assert!(invalid.save_to(&directory.0).is_err());
+        assert_eq!(Settings::read(&path).unwrap().unwrap(), settings);
+        fs::write(&path, vec![b' '; MAX_SETTINGS_BYTES + 1]).unwrap();
+        assert!(Settings::read(&path).is_err());
+        fs::remove_file(path).unwrap();
+        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 0);
     }
 }

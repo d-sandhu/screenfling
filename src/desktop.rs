@@ -103,6 +103,7 @@ pub fn restore(window: &mut Window, [x, y, width, height]: [i32; 4]) {
     }
 }
 
+#[derive(Default)]
 pub struct Shortcut {
     manager: Option<GlobalHotKeyManager>,
     key: Option<HotKey>,
@@ -112,13 +113,7 @@ pub struct Shortcut {
 }
 impl Shortcut {
     pub fn new(value: &str) -> (Self, String) {
-        let mut shortcut = Self {
-            manager: None,
-            key: None,
-            current: String::new(),
-            #[cfg(target_os = "linux")]
-            portal: None,
-        };
+        let mut shortcut = Self::default();
         if capture::is_wayland() {
             #[cfg(target_os = "linux")]
             {
