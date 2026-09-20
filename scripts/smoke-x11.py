@@ -4,7 +4,6 @@ Run: xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.p
 """
 import json
 import os
-import re
 from pathlib import Path
 import struct
 import subprocess as sp
@@ -104,9 +103,10 @@ def main():
 
             def window(title, focus=False):
                 deadline = time.monotonic() + 12
+                search = ('xdotool', 'search', '--onlyvisible', '--pid', str(app.pid), '--name', title)
                 while time.monotonic() < deadline:
                     assert app.poll() is None, 'Application exited unexpectedly'
-                    found = command('xdotool', 'search', '--onlyvisible', '--pid', str(app.pid), '--name', title, check=False)
+                    found = command(*search, check=False)
                     if found.returncode == 0 and found.stdout.strip():
                         handle = found.stdout.splitlines()[0].decode()
                         if not focus:
@@ -114,8 +114,10 @@ def main():
                         # SDL can unmap/remap a window while changing its border.
                         # Wait for readiness; never repeat the key or delivery action.
                         focused = command('xdotool', 'windowfocus', '--sync', handle, check=False)
-                        name = command('xdotool', 'getwindowname', handle, check=False)
-                        if focused.returncode == 0 and name.returncode == 0 and re.search(title, name.stdout.decode()):
+                        # Search and getwindowname can use different X11 title
+                        # properties without a window manager. Reuse the same query.
+                        confirmed = command(*search, check=False)
+                        if focused.returncode == 0 and handle.encode() in confirmed.stdout.splitlines():
                             return handle
                     time.sleep(0.05)
                 raise AssertionError(f'Window did not reach {title}')
