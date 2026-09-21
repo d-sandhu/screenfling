@@ -44,8 +44,9 @@ def install_pattern(directory):
 
 def check_png(data):
     assert data[:8] == b'\x89PNG\r\n\x1a\n', 'Copy did not provide a PNG image'
-    width, height, depth, color, compression, filtering, interlace = struct.unpack('>IIBBBBB', data[16:29])
-    assert (width, height, depth, color, compression, filtering, interlace) == (200, 150, 8, 6, 0, 0, 0)
+    header = struct.unpack('>IIBBBBB', data[16:29])
+    assert header == (200, 150, 8, 6, 0, 0, 0), f'Unexpected crop PNG header: {header}'
+    width, height = header[:2]
     offset, compressed = 8, bytearray()
     while offset + 12 <= len(data):
         length = struct.unpack('>I', data[offset:offset + 4])[0]
@@ -68,7 +69,7 @@ def check_png(data):
             if kind == 4:
                 prediction = left + above - upper_left
                 pa, pb, pc = abs(prediction - left), abs(prediction - above), abs(prediction - upper_left)
-                predictor = left if pa <= pb and pa <= pc else above if pb <= pc else upper_left
+                predictor = left if pa <= pb and pa <= pc else upper_left
             else:
                 predictor = (0, left, above, (left + above) // 2)[kind]
             current[i] = (current[i] + predictor) & 255
@@ -114,7 +115,9 @@ def main():
 
             def window(title, focus=False):
                 deadline = time.monotonic() + 12
-                search = ('xdotool', 'search', '--onlyvisible', '--pid', str(app.pid), '--name', title)
+                # xdotool defaults to OR matching: PID alone would otherwise let
+                # an earlier phase satisfy a wait for a later review/result title.
+                search = ('xdotool', 'search', '--all', '--onlyvisible', '--pid', str(app.pid), '--name', title)
                 while time.monotonic() < deadline:
                     assert app.poll() is None, 'Application exited unexpectedly'
                     found = command(*search, check=False)
