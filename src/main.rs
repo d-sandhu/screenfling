@@ -57,6 +57,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
         return Err("Could not allow the desktop's normal screensaver behavior.".into());
     }
     let wayland = video.current_video_driver() == "wayland";
+    screenfling::capture::initialize_session(video.current_video_driver());
     let receiver = desktop::install(&sdl)?;
     video
         .gl_attr()
