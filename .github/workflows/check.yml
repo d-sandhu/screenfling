@@ -75,7 +75,7 @@ jobs:
           (cd "$RUNNER_TEMP" && sha256sum --check "$package.sha256")
           sudo apt-get install -y "$RUNNER_TEMP/$package"
           cargo build --release --locked --example check-wezterm --quiet
-          python3 scripts/check-wezterm.py
+          python3 scripts/check-wezterm.py 2>&1 | tee dist/wezterm-check.log
       - name: Package and record build evidence
         shell: bash
         run: |
