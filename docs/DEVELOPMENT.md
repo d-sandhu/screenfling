@@ -1,6 +1,6 @@
 # Developing ScreenFling
 
-This guide describes the native Rust application. The previous Electron implementation remains in Git history, not as a second runtime. The root README explains which branch to use before and after PR #64 is merged.
+This guide describes the native Rust application on `main`.
 
 ## Build prerequisites
 
@@ -32,7 +32,7 @@ cargo build --release --locked
 python3 scripts/check-cli.py
 ```
 
-The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation. Ordinary `cargo test` does not capture your screen or write your clipboard.
+The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, fractional-scale edge selections, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, private-directory ancestry, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation. Ordinary `cargo test` does not capture your screen or write your clipboard.
 
 Keep regression tests focused on behavior that could corrupt a crop, route to the wrong destination, submit input, or prevent recovery. Extend the existing native test runner; do not add a test framework just to add assertions.
 
@@ -45,7 +45,7 @@ sudo apt-get install xvfb xdotool xclip x11-xserver-utils libgl1-mesa-dri
 xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
 ```
 
-This checks the global shortcut, selection/review cancellation, and an external client's PNG clipboard read. Every pixel of an asymmetric crop is compared with the frozen desktop after the live desktop changes. A wrong crop origin, row flip, changed channel, or accidental live-frame copy fails the check.
+This checks the global shortcut, selection/review cancellation, and an external client's PNG clipboard read. Every pixel of an asymmetric crop is compared with the frozen desktop after the live desktop changes. A wrong crop origin, row flip, changed channel, or accidental live-frame copy fails the check. The fixture clears inherited Wayland display/socket hints; CI deliberately supplies both to exercise that isolation.
 
 The Wayland smoke uses a private headless Sway session with real ScreenCast/PipeWire services. It rejects and accepts the display chooser, checks cancellation and recovery, and compares the copied crop with the frozen frame. CI runs it in Ubuntu 26.04 because that fixture's portal supports headless shared-memory capture; the release executable is built on Ubuntu 24.04. The container command and prerequisites are in `.github/workflows/check.yml`. It does not use your normal desktop, D-Bus, PipeWire, settings, or clipboard.
 
@@ -66,9 +66,16 @@ python3 scripts/check-wezterm.py
 
 The script creates a private home, configuration, socket, and two synthetic raw-input panes. It never selects an existing session or reads the clipboard. It tests duplicate pane labels, exact Stage bytes, a wrong focus hint, rejected clipboard verification, separate Reveal, and a closed destination. Receiver bytes must contain only Ctrl+V and the intended note, never Enter, and the other pane must stay untouched. This checks terminal transport, **not coding-agent image attachment**.
 
-CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard, with Windows capture as described above. Linux runs the isolated desktop and WezTerm checks. There are no publishing steps, ignored failures, or new runtime dependencies for these checks.
+CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard, with Windows capture as described above. Linux runs the isolated desktop and WezTerm checks and audits the complete lockfile. Python assertions remain enabled. There are no publishing steps, ignored failures, or new runtime dependencies for these checks.
 
-For a dependency review, run RustSec's `cargo audit` against `Cargo.lock`. Do not silence an advisory or weaken routing checks to manufacture a pass. Build success and synthetic desktops are not physical acceptance results.
+To repeat the dependency check:
+
+```sh
+cargo install cargo-audit --version 0.22.2 --locked --no-default-features
+cargo audit --deny warnings
+```
+
+CI records the RustSec report in `dist/audit.json`. Do not silence an advisory or weaken routing checks to manufacture a pass. Build success and synthetic desktops are not physical acceptance results.
 
 ## Code map and boundaries
 
@@ -88,6 +95,8 @@ Only the current capture generation can advance through Capture → Select → R
 The main thread handles the UI. A bounded worker handles capture and terminal operations and posts results through SDL. Late work must not change a new capture or leave a stale discovery request active. The event loop waits when idle. ScreenFling explicitly permits normal screensaver behavior instead of using SDL's default inhibition.
 
 Stage checks the selected socket and pane/window/tab IDs. A short-lived AF_UNIX relay connects upstream before spawning the CLI and checks endpoint identity and the reviewed clipboard before upstream writes. There is no TCP listener, persistent relay service, focused-window fallback, or automatic delivery retry. The CLI neither loads user configuration nor starts an absent mux. Titles are labels, not addresses.
+
+Settings and transient relay directories validate their ancestry as well as the private leaf: another user must not be able to replace a parent directory. Legitimate platform aliases are resolved before checking; an untrusted chain fails closed. A failed creation removes only the newly created empty directory, never an existing settings directory.
 
 This is not a sandbox against code running as the same user or an administrator. A pane ID does not prove which foreground program is running inside it. The user's Ctrl+V binding confirmation and inspection of the result remain necessary.
 
@@ -110,7 +119,7 @@ Packaging verifies archive members and executable bytes, then writes `build.json
 
 ## Remaining release acceptance
 
-Merging the rewrite can adopt Rust as the official development baseline without publishing a release. It does not establish the following physical acceptance results. Record the OS, hardware/compositor, exact commit/package, and observations:
+The native application is the official development baseline, not a physically accepted release. Record the OS, hardware/compositor, exact commit/package, and observations for these remaining checks:
 
 - Permissions, denial and recovery, tray/global-shortcut behavior, close/reopen, normal idle screen locking, and clean-machine installation on Windows, macOS, and Wayland.
 - Mixed-DPI/multiple monitors, negative origins, rotation, disconnection, captured color/orientation, and hardware startup/idle CPU/RAM.

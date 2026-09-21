@@ -77,7 +77,9 @@ Use Apply shortcut to change a native global shortcut. If registration fails bec
 
 If settings cannot be read, the app reports the error and uses defaults. To reset preferences, quit and rename only ScreenFling's `settings.json`; do not remove a whole shared configuration directory. No images or notes are stored in this file.
 
-If a connection changes, a pane closes or moves, or clipboard verification fails, no fallback destination is used. Check the result, inspect any potentially affected pane, then refresh the connection. Copy remains available without WezTerm. Do not weaken directory permissions to bypass a connection check.
+ScreenFling's settings directory must be private, and its parent directories must not let another ordinary user replace it. A permission failure leaves defaults in use rather than trusting an unsafe path. The same ancestry protection applies to temporary WezTerm relay directories. Do not broaden directory permissions to bypass these checks.
+
+If a connection changes, a pane closes or moves, or clipboard verification fails, no fallback destination is used. Check the result, inspect any potentially affected pane, then refresh the connection. Copy remains available without WezTerm.
 
 ## Verify a development package
 

@@ -22,18 +22,13 @@ Copy works without WezTerm. Stage writes **Ctrl+V and the note, never Enter**. A
 
 ## Build and run
 
-**Pre-release.** The native rewrite is introduced in [PR #64](https://github.com/d-sandhu/screenfling/pull/64). Adopting it on `main` makes Rust the development baseline; it does not publish a release. Physical desktop acceptance and public signing are still pending.
+**Pre-release.** `main` is the native Rust application. Physical desktop acceptance and public signing are still pending; adopting the native baseline did not publish a release.
 
 Install Rust, CMake, and your platform's native compiler first. Linux also needs the development libraries listed in the [build guide](docs/DEVELOPMENT.md#build-prerequisites).
 
 ```sh
 git clone https://github.com/d-sandhu/screenfling.git
 cd screenfling
-```
-
-While PR #64 is open, select the native implementation with `git switch rust-egui-rewrite-2026-09-20`. After it is merged, stay on `main`. Then run:
-
-```sh
 cargo run --release --locked
 ```
 
@@ -65,7 +60,7 @@ cargo test --release --locked --all-targets
 cargo build --release --locked
 ```
 
-[One CI workflow](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml) builds and packages Windows x86-64, macOS Apple Silicon, and Linux x86-64. A small Rust suite checks the failure-prone logic. Windows additionally captures and crops a synthetic window. Native clipboard checks compare every pixel across processes on Windows/macOS. Linux checks exercise X11, headless Wayland with real portal/PipeWire services, and exact Stage/Reveal routing in a disposable WezTerm instance.
+[One CI workflow](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml) builds and packages Windows x86-64, macOS Apple Silicon, and Linux x86-64. A small Rust suite checks the failure-prone logic. Windows additionally captures and crops a synthetic window. Native clipboard checks compare every pixel across processes on Windows/macOS. Linux checks exercise X11, headless Wayland with real portal/PipeWire services, exact Stage/Reveal routing in a disposable WezTerm instance, and RustSec advisories against the lockfile.
 
 These checks do **not** establish real-agent attachment, mixed-DPI behavior, permissions on physical desktops, or hardware performance. Build records and scoped measurements are evidence, not a promise of a particular startup time or RAM footprint.
 
@@ -75,4 +70,4 @@ Stage currently targets **local WezTerm panes with the same OS clipboard**, not 
 
 Small, focused fixes are welcome. Include the platform, the observed failure, and a targeted regression check; avoid sharing private screenshots or full local socket paths. See the [development guide](docs/DEVELOPMENT.md#contributing).
 
-ScreenFling's code is [MIT licensed](LICENSE). Native packages include third-party notices. The previous Electron implementation is preserved in Git history, not maintained as a second runtime.
+ScreenFling's code is [MIT licensed](LICENSE). Native packages include third-party notices.
