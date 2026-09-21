@@ -82,7 +82,9 @@ def check_png(data):
 
 def main():
     os.environ.update(SDL_VIDEO_DRIVER='x11', XDG_SESSION_TYPE='x11', LIBGL_ALWAYS_SOFTWARE='1')
+    # Either Wayland hint selects the portal path; neither belongs to this Xvfb fixture.
     os.environ.pop('WAYLAND_DISPLAY', None)
+    os.environ.pop('WAYLAND_SOCKET', None)
     output = Path('dist')
     output.mkdir(exist_ok=True)
     sentinel = b'screenfling-cancel-must-not-change-clipboard'
