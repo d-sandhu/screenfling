@@ -228,8 +228,8 @@ mod tests {
         ]
         .concat();
         let mut source = Vec::new();
-        for row in expected.chunks_exact(8) {
-            for p in row.chunks_exact(4) {
+        for row in expected.as_chunks::<8>().0 {
+            for p in row.as_chunks::<4>().0 {
                 source.extend_from_slice(&[p[2], p[1], p[0], 0]);
             }
             source.extend_from_slice(&[99; 4]);

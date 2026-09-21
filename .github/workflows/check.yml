@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
     env:
@@ -31,7 +31,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils sway swaybg pipewire wireplumber xdg-desktop-portal xdg-desktop-portal-wlr wtype wl-clipboard dbus-daemon
+          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils
       - name: Test and build
         shell: bash
         run: |
@@ -45,7 +45,19 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
-          python3 scripts/smoke-wayland.py
+          # Modern portals support headless shared-memory capture. Keep the build
+          # on 24.04; do not raise the release binary's libc requirement for a test.
+          docker run --rm -v "$PWD:/workspace:ro" -v "$PWD/dist:/workspace/dist" \
+            -w /workspace -e HOST_UID="$(id -u)" ubuntu:26.04 bash -eu -c '
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                python3 sway swaybg pipewire wireplumber xdg-desktop-portal \
+                xdg-desktop-portal-wlr wtype wl-clipboard dbus-daemon libglib2.0-bin \
+                libgl1 libegl1 libgl1-mesa-dri libx11-6 libxrandr2 libxfixes3 libxi6 libxss1 libxtst6
+              useradd --no-create-home --uid "$HOST_UID" sf-check
+              dpkg-query -W sway xdg-desktop-portal-wlr pipewire
+              runuser -u sf-check -- python3 scripts/smoke-wayland.py
+            '
       - name: Package and record build evidence
         shell: bash
         run: |
@@ -54,7 +66,7 @@ jobs:
           cargo tree --locked --edges normal --color never > dist/dependencies.txt
           ls -lh dist
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && hashFiles('dist/**') != '' }}
         with:
           name: screenfling-${{ runner.os }}-${{ runner.arch }}
           path: dist/
