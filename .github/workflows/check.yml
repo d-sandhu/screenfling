@@ -33,7 +33,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils
+          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils x11-utils openbox wmctrl
       - name: Dependency advisories
         if: runner.os == 'Linux'
         shell: bash
