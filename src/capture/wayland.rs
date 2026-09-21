@@ -293,7 +293,9 @@ fn read_plane(data: &spa::sys::spa_data, chunk: &spa::sys::spa_chunk) -> Result<
     if data.type_ != spa::sys::SPA_DATA_MemFd
         || length == 0
         || length > MAX_IMAGE_BYTES
-        || offset.checked_add(size).is_none_or(|end| end > data.maxsize)
+        || offset
+            .checked_add(size)
+            .is_none_or(|end| end > data.maxsize)
     {
         return Err("The desktop did not provide a valid shared-memory image plane.".into());
     }
