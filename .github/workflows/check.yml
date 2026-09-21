@@ -53,7 +53,8 @@ jobs:
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
                 python3 sway swaybg pipewire wireplumber xdg-desktop-portal \
                 xdg-desktop-portal-wlr wtype wl-clipboard dbus-daemon libglib2.0-bin \
-                libgl1 libegl1 libgl1-mesa-dri libx11-6 libxrandr2 libxfixes3 libxi6 libxss1 libxtst6
+                libgl1 libegl1 libgl1-mesa-dri libwayland-egl1 libwayland-cursor0 libdecor-0-0 \
+                libx11-6 libxrandr2 libxfixes3 libxi6 libxss1 libxtst6
               useradd --no-create-home --uid "$HOST_UID" sf-check
               dpkg-query -W sway xdg-desktop-portal-wlr pipewire
               runuser -u sf-check -- python3 scripts/smoke-wayland.py
