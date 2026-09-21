@@ -279,17 +279,21 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
 /// PipeWire's optional mapped data pointer. pread also bounds truncated buffers
 /// without turning an invalid mapping into a process-wide memory fault.
 fn read_plane(data: &spa::sys::spa_data, chunk: &spa::sys::spa_chunk) -> Result<Vec<u8>> {
+    // SPA chunk offsets are modulo maxsize and sizes are clamped to it. A valid
+    // producer may advance its offset beyond maxsize without moving the pixels.
+    let offset = chunk
+        .offset
+        .checked_rem(data.maxsize)
+        .ok_or("The desktop returned empty screen memory.")?;
+    let size = chunk.size.min(data.maxsize);
+    let length = size as usize;
     // Some portal versions omit SPA_DATA_FLAG_READABLE even for a readable
     // MemFd. The granted descriptor and pread enforce read access; do not infer
     // memory protection from that optional producer flag or map with PROT_NONE.
-    let length = chunk.size as usize;
     if data.type_ != spa::sys::SPA_DATA_MemFd
         || length == 0
         || length > MAX_IMAGE_BYTES
-        || chunk
-            .offset
-            .checked_add(chunk.size)
-            .is_none_or(|end| end > data.maxsize)
+        || offset.checked_add(size).is_none_or(|end| end > data.maxsize)
     {
         return Err("The desktop did not provide a valid shared-memory image plane.".into());
     }
@@ -303,7 +307,7 @@ fn read_plane(data: &spa::sys::spa_data, chunk: &spa::sys::spa_chunk) -> Result<
         .try_clone_to_owned()
         .map_err(|_| "Could not retain the screen-memory descriptor.")?;
     let file = File::from(owned);
-    let start = u64::from(data.mapoffset) + u64::from(chunk.offset);
+    let start = u64::from(data.mapoffset) + u64::from(offset);
     let mut bytes = vec![0; length];
     file.read_exact_at(&mut bytes, start)
         .map_err(|_| "The desktop returned incomplete screen memory.")?;
@@ -328,7 +332,7 @@ mod tests {
         file.write_all(&[0; 4096]).unwrap();
         file.write_all(&[99, 3, 2, 1, 0, 88, 77, 6, 5, 4, 0])
             .unwrap();
-        let data = spa::sys::spa_data {
+        let mut data = spa::sys::spa_data {
             type_: spa::sys::SPA_DATA_MemFd,
             flags: 1 << 3, // MAPPABLE only, as supplied by the wlroots portal.
             fd: i64::from(file.as_raw_fd()),
@@ -348,10 +352,21 @@ mod tests {
             packed_rgba(&bytes, 1, 2, 0, 6, true).unwrap().rgba,
             [1, 2, 3, 255, 4, 5, 6, 255]
         );
+        chunk.offset = 12;
+        assert_eq!(read_plane(&data, &chunk).unwrap(), bytes);
+        chunk.offset = 0;
+        chunk.size = u32::MAX;
+        assert_eq!(
+            read_plane(&data, &chunk).unwrap(),
+            [99, 3, 2, 1, 0, 88, 77, 6, 5, 4, 0]
+        );
+        chunk.size = 10;
         chunk.offset = 2;
         assert!(read_plane(&data, &chunk).is_err());
         chunk.offset = 1;
         file.set_len(4098).unwrap();
+        assert!(read_plane(&data, &chunk).is_err());
+        data.maxsize = 0;
         assert!(read_plane(&data, &chunk).is_err());
     }
 }

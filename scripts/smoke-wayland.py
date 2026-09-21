@@ -53,8 +53,8 @@ def session():
                           chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
     config = home / 'sway.conf'
     config.write_text(f'xwayland disable\noutput HEADLESS-1 mode 1280x800\n'
-                      f'output HEADLESS-1 bg {wallpaper} fill\nseat seat0 fallback true\n'
-                      'default_border none\nfocus_follows_mouse no\n')
+                      f'output HEADLESS-1 scale 1.25\noutput HEADLESS-1 bg {wallpaper} fill\n'
+                      'seat seat0 fallback true\ndefault_border none\nfocus_follows_mouse no\n')
     portal_config = home / 'config' / 'xdg-desktop-portal'
     portal_config.mkdir()
     (portal_config / 'portals.conf').write_text('[preferred]\ndefault=wlr\n')
@@ -91,6 +91,9 @@ def session():
         os.environ['SWAYSOCK'] = str(wait_for(socket, 'private Sway socket'))
         os.environ['WAYLAND_DISPLAY'] = wait_for(
             lambda: next((p.name for p in (home / 'run').glob('wayland-*') if p.is_socket()), None), 'Wayland socket')
+        outputs = json.loads(command('swaymsg', '-t', 'get_outputs', '-r').stdout)
+        assert len(outputs) == 1 and outputs[0]['scale'] == 1.25, outputs
+        assert outputs[0]['rect']['width'] == 1024 and outputs[0]['rect']['height'] == 640, outputs
         # A virtual keyboard alone does not give SDL a wl_pointer. Retain a
         # pointer device for the entire session before the application starts.
         pointer_exe = home / 'pointer'
@@ -153,10 +156,12 @@ def session():
         key('ScreenFling', 'F8')
         window('Select region')
         sway('output HEADLESS-1 bg #112233 solid_color')
-        sway('seat seat0 cursor set 100 100')
+        # Logical points map through 125% display scaling to the same physical
+        # (100, 100)..(300, 250) crop checked by the existing pixel fixture.
+        sway('seat seat0 cursor set 80 80')
         sway('seat seat0 cursor press button1')
         time.sleep(0.15)
-        sway('seat seat0 cursor set 300 250')
+        sway('seat seat0 cursor set 240 200')
         time.sleep(0.15)
         sway('seat seat0 cursor release button1')
         window('Review crop')
@@ -167,9 +172,11 @@ def session():
         dimensions = fixture['check_png'](copied)
         assert not list((home / 'config' / 'screenfling').glob('*.png')), 'Unexpected stored screenshot'
         result = {'environment': 'Isolated headless Sway, real ScreenCast portal/PipeWire, software rendering',
+                  'output_scale': 1.25,
                   'checks': ['portal chooser rejection preserves clipboard', 'capture recovers after rejection',
                              'selection and whole-display review cancellation preserve clipboard',
-                             'native Wayland region selection', 'every copied pixel matches the frozen frame'],
+                             'native Wayland fractional-scale region selection',
+                             'every copied pixel matches the frozen frame'],
                   'copied_dimensions': dimensions}
         (ROOT / 'dist' / 'smoke-wayland.json').write_text(json.dumps(result, indent=2) + '\n')
         print(json.dumps(result, indent=2))
