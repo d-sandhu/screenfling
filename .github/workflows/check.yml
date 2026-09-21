@@ -41,17 +41,20 @@ jobs:
           cargo test --release --locked --all-targets --quiet
           cargo build --release --locked --quiet
           python3 scripts/check-cli.py
+          if [ "$RUNNER_OS" = Linux ]; then
+            CARGO_PROFILE_RELEASE_DEBUG=1 CARGO_PROFILE_RELEASE_STRIP=none cargo build --release --locked --quiet
+          fi
       - name: Native desktop smoke
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
           # Modern portals support headless shared-memory capture. Keep the build
           # on 24.04; do not raise the release binary's libc requirement for a test.
-          docker run --rm -v "$PWD:/workspace:ro" -v "$PWD/dist:/workspace/dist" \
+          docker run --rm --cap-add=SYS_PTRACE -v "$PWD:/workspace:ro" -v "$PWD/dist:/workspace/dist" \
             -w /workspace -e HOST_UID="$(id -u)" ubuntu:26.04 bash -eu -c '
               apt-get update -qq
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                python3 sway swaybg pipewire wireplumber xdg-desktop-portal \
+                python3 sway swaybg pipewire wireplumber xdg-desktop-portal gdb \
                 xdg-desktop-portal-wlr wtype wl-clipboard dbus-daemon libglib2.0-bin \
                 libgl1 libegl1 libgl1-mesa-dri libwayland-egl1 libwayland-cursor0 libdecor-0-0 \
                 libx11-6 libxrandr2 libxfixes3 libxi6 libxss1 libxtst6

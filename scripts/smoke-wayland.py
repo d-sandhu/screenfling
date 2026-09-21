@@ -108,12 +108,15 @@ def session():
             assert command('wl-paste', '--no-newline', '--type', 'text/plain').stdout == sentinel
         time.sleep(0.3)
         unchanged()
-        app = start('screenfling', str(ROOT / 'target' / 'release' / 'screenfling'))
+        app = start('screenfling', 'gdb', '--batch', '--return-child-result',
+                    '-ex', 'set debuginfod enabled off', '-ex', 'run',
+                    '-ex', 'thread apply all bt', '--args',
+                    str(ROOT / 'target' / 'release' / 'screenfling'))
         def window(title):
             def ready():
-                assert app.poll() is None, 'ScreenFling exited unexpectedly'
+                assert app.poll() is None, f'ScreenFling exited unexpectedly: {app.returncode}'
                 tree = json.loads(command('swaymsg', '-t', 'get_tree', '-r').stdout)
-                return next((n for n in nodes(tree) if n.get('pid') == app.pid and
+                return next((n for n in nodes(tree) if n.get('app_id') == 'dev.screenfling.ScreenFling' and
                              (n.get('name') or '').endswith(title) and n.get('visible', True)), None)
             found = wait_for(ready, title)
             sway(f'[con_id={found["id"]}] focus')
