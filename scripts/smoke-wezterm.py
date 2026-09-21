@@ -41,7 +41,7 @@ fn main() {
     cli(&["activate-pane", "--pane-id", &other_id.to_string()]);
     let note = "Inspect this crop. Café.";
     let result = wezterm::stage(selected, note, || true).expect("stage through pinned relay");
-    assert!(result.contains("unverified"));
+    assert!(result.contains("UNVERIFIED"));
     let expected = screenfling::model::stage_input(note).unwrap();
     let deadline = Instant::now() + Duration::from_secs(3);
     while fs::read(root.join("one")).unwrap() != expected {
@@ -63,8 +63,13 @@ fn main() {
     drop(decoy);
     fs::remove_file(&settings.socket).unwrap();
     fs::rename(&original, &settings.socket).unwrap();
+    // Renaming changes endpoint metadata. Select fresh evidence before checking
+    // closure, so this assertion cannot pass merely because the socket changed.
+    let refreshed = wezterm::discover(&settings).unwrap();
+    let selected = refreshed.iter().find(|d| d.pane_id == target_id).unwrap();
     cli(&["kill-pane", "--pane-id", &target_id.to_string()]);
-    assert!(wezterm::stage(selected, "closed pane", || true).is_err());
+    let error = wezterm::stage(selected, "closed pane", || true).unwrap_err();
+    assert!(error.contains("closed or moved"), "{error}");
     assert!(fs::read(root.join("two")).unwrap().is_empty());
     println!("Exact pane, no-submit bytes, rejected gate, separate Reveal, replaced socket, and closed pane passed.");
 }
