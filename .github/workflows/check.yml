@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 35
     env:
       CARGO_TERM_COLOR: never
+      PYTHONOPTIMIZE: "0"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -43,6 +44,12 @@ jobs:
           cargo test --release --locked --all-targets --quiet
           cargo build --release --locked --quiet
           python3 scripts/check-cli.py
+      - name: Dependency advisories
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked --no-default-features
+          cargo audit --deny warnings --json | tee dist/audit.json
       - name: Native image clipboard
         if: runner.os != 'Linux'
         timeout-minutes: 3
@@ -50,7 +57,9 @@ jobs:
       - name: Native desktop smoke
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
+          # The Xvfb fixture must discard both inherited Wayland session hints.
+          WAYLAND_DISPLAY=screenfling-fixture WAYLAND_SOCKET=999999 \
+            xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
           docker run --rm -v "$PWD:/workspace:ro" -v "$PWD/dist:/workspace/dist" \
             -w /workspace -e HOST_UID="$(id -u)" ubuntu:26.04 bash -eu -c '
               apt-get update -qq
