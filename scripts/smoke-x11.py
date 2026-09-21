@@ -69,7 +69,7 @@ def check_png(data):
             if kind == 4:
                 prediction = left + above - upper_left
                 pa, pb, pc = abs(prediction - left), abs(prediction - above), abs(prediction - upper_left)
-                predictor = left if pa <= pb and pa <= pc else upper_left
+                predictor = left if pa <= pb and pa <= pc else above if pb <= pc else upper_left
             else:
                 predictor = (0, left, above, (left + above) // 2)[kind]
             current[i] = (current[i] + predictor) & 255
