@@ -153,7 +153,9 @@ fn capture_fixture(
             [frame.pixels.width, frame.pixels.height],
         )?)?;
         if &crop == expected {
-            println!("Windows capture: production monitor capture and crop preserve every synthetic pixel.");
+            println!(
+                "Windows capture: production monitor capture and crop preserve every synthetic pixel."
+            );
             return Ok(crop);
         }
         if Instant::now() >= deadline {

@@ -86,7 +86,12 @@ mod tests {
     #[test]
     fn wayland_detection_does_not_require_a_named_display() {
         assert!(needs_portal("wayland", None, None, None));
-        assert!(needs_portal("x11", Some(OsStr::new("wayland-1")), None, None));
+        assert!(needs_portal(
+            "x11",
+            Some(OsStr::new("wayland-1")),
+            None,
+            None
+        ));
         assert!(needs_portal("", None, Some(OsStr::new("3")), None));
         assert!(needs_portal("x11", None, None, Some(OsStr::new("wayland"))));
         assert!(!needs_portal("x11", None, None, Some(OsStr::new("x11"))));
