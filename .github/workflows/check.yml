@@ -31,7 +31,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils
+          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils sway swaybg pipewire wireplumber xdg-desktop-portal xdg-desktop-portal-wlr wtype wl-clipboard dbus-daemon
       - name: Test and build
         shell: bash
         run: |
@@ -43,7 +43,9 @@ jobs:
           python3 scripts/check-cli.py
       - name: Native desktop smoke
         if: runner.os == 'Linux'
-        run: xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
+        run: |
+          xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
+          python3 scripts/smoke-wayland.py
       - name: Package and record build evidence
         shell: bash
         run: |
@@ -52,6 +54,7 @@ jobs:
           cargo tree --locked --edges normal --color never > dist/dependencies.txt
           ls -lh dist
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: screenfling-${{ runner.os }}-${{ runner.arch }}
           path: dist/
