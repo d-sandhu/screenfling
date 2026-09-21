@@ -108,10 +108,7 @@ def session():
             assert command('wl-paste', '--no-newline', '--type', 'text/plain').stdout == sentinel
         time.sleep(0.3)
         unchanged()
-        app = start('screenfling', 'gdb', '--batch', '--return-child-result',
-                    '-ex', 'set debuginfod enabled off', '-ex', 'run',
-                    '-ex', 'thread apply all bt', '--args',
-                    str(ROOT / 'target' / 'release' / 'screenfling'))
+        app = start('screenfling', str(ROOT / 'target' / 'release' / 'screenfling'))
         def window(title):
             def ready():
                 assert app.poll() is None, f'ScreenFling exited unexpectedly: {app.returncode}'

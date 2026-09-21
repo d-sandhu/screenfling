@@ -6,7 +6,7 @@ ScreenFling captures one display, lets you select and review a crop, then copies
 
 On Windows, extract the portable ZIP and run `screenfling.exe`. On macOS, extract the archive and move `ScreenFling.app` to Applications. On Linux, extract the archive and run `./screenfling`; the system must provide the graphics and desktop libraries described below.
 
-Launch one copy of the application. Use its tray or global shortcut for later captures. `screenfling --capture` starts a new application with Capture; it does not send an activation message to an existing process. `screenfling --version` reports the version and `screenfling --help` shows launch options. Both work without opening the desktop. Unknown or conflicting options exit with an error before any capture starts.
+Launch one copy of the application. Use its tray or global shortcut for later captures. `screenfling --capture` starts a new application with Capture; it does not send an activation message to an existing process. `screenfling --version` reports the version, and `screenfling --help` lists the launch options. Both exit without opening a desktop window. Unknown or conflicting options return an error before capture begins.
 
 | Action | Control |
 | --- | --- |
@@ -20,8 +20,6 @@ Launch one copy of the application. Use its tray or global shortcut for later ca
 Windows, macOS, and X11 capture the display under the pointer. Wayland asks you to choose one display in the system sharing dialog. ScreenFling obtains a frame through the granted PipeWire connection, then closes the sharing session. It does not save a portal screenshot or silently switch to X11 capture.
 
 Review shows only the crop that can be delivered. Copy includes the image, not the optional note. Nothing is copied just because you selected a region. Cancellation leaves the existing clipboard unchanged.
-
-ScreenFling allows the desktop's normal screensaver behavior; leaving it open is not a request to keep the screen awake.
 
 Close hides the application when a tray is available. Use Quit in the tray or application to exit. Without a tray, closing the idle window exits. On Linux, keep ScreenFling running until you paste: another application may need it to serve the clipboard image. Closing the selection window cancels selection first.
 
@@ -51,7 +49,7 @@ Select **Stage — do not submit** once. Stage explicitly replaces the clipboard
 
 **Reveal destination** is a separate action after Stage. It activates the exact pane and tab. Desktop focus policy may still require switching to the WezTerm window. Stage itself does not activate a different window.
 
-During Stage, wait for the result. Quit and cancellation are blocked while delivery is pending. If the result is uncertain, inspect the selected pane before any new attempt. The application does not retry, choose another pane, or restore a replaced clipboard image.
+During Stage, wait for the result. Quit, cancellation, and settings changes are blocked while delivery is pending. If the result is uncertain, inspect the selected pane before any new attempt. The application does not retry, choose another pane, or restore a replaced clipboard image.
 
 ## Platform requirements and permissions
 
@@ -61,13 +59,11 @@ During Stage, wait for the result. Quit and cancellation are blocked while deliv
 
 The `.app` is ad-hoc signed and verified during packaging, but is not notarized. Verify and trust the source of the archive before using the system's Open Anyway control. Do not disable Gatekeeper globally. Move the app to its intended location before granting permissions.
 
-**Linux.** The binary uses system OpenGL, PipeWire, X11/Wayland, and desktop portal services. It is not a fully static binary or a universal Linux package. CI builds on Ubuntu 24.04. On Wayland, the desktop's matching `xdg-desktop-portal` backend and PipeWire must be installed and running. ScreenCast and GlobalShortcuts availability depends on the compositor and portal backend. Missing global shortcuts or a tray do not disable the Capture button; missing screen-sharing support prevents capture and produces an error.
+**Linux.** The binary uses system OpenGL, PipeWire, X11/Wayland, and desktop portal services. It is not a fully static binary or a universal Linux package. CI builds on Ubuntu 24.04. On Wayland, the desktop's matching `xdg-desktop-portal` backend and PipeWire must be installed and running. ScreenCast and GlobalShortcuts availability depends on the compositor and portal backend. Capture needs a CPU-readable shared-memory stream; GPU-only DMA buffers are not imported. Missing global shortcuts or a tray do not disable the Capture button; missing screen-sharing support prevents capture and produces an error.
 
 For a Linux application-menu entry, install the binary on the PATH used by your desktop session. Put `dev.screenfling.ScreenFling.desktop` in `~/.local/share/applications/` and `dev.screenfling.ScreenFling.svg` in `~/.local/share/icons/hicolor/scalable/apps/`. If that session cannot find the executable, set the launcher's Exec entries to its absolute installed path. Do not add multiple autostart entries.
 
 ## Settings and recovery
-
-Saving connection settings does not save an unfinished shortcut edit. Applying a shortcut does not save unfinished connection edits. Settings controls are disabled while Stage is pending. If saving a shortcut fails, ScreenFling attempts to restore the previous binding and reports a rollback failure rather than hiding it.
 
 Only shortcut and connection preferences are saved, in `settings.json`:
 
@@ -77,7 +73,7 @@ Only shortcut and connection preferences are saved, in `settings.json`:
 | macOS | `~/Library/Application Support/screenfling/` |
 | Linux | `$XDG_CONFIG_HOME/screenfling/`, or `~/.config/screenfling/` when unset |
 
-Use Apply shortcut to change a native global shortcut. If registration fails because it is already in use, use the Capture button and choose another shortcut. Wayland shortcut changes belong to the desktop portal.
+Use Apply shortcut to change a native global shortcut. If registration fails because it is already in use, use the Capture button and choose another shortcut. Wayland shortcut changes belong to the desktop portal. Saving the connection does not save an unfinished shortcut edit, and applying a shortcut does not save unfinished connection edits. If a shortcut cannot be saved, ScreenFling attempts to restore the previous active binding and reports any restore failure.
 
 If settings cannot be read, the app reports the error and uses defaults. To reset preferences, quit and rename only ScreenFling's `settings.json`; do not remove a whole shared configuration directory. No images or notes are stored in this file.
 

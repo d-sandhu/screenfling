@@ -57,13 +57,14 @@ Start with [`app.rs`](src/app.rs) for the workflow, [`model.rs`](src/model.rs) f
 
 ```sh
 cargo fmt --all --check
+cargo clippy --release --locked --all-targets -- -D warnings
 cargo test --release --locked --all-targets
 cargo build --release --locked
 ```
 
-One CI workflow builds and packages Windows x86-64, macOS Apple Silicon, and Linux x86-64. A small Rust suite checks the failure-prone logic. One Linux/Xvfb smoke test exercises the real capture, selection, review, cancellation, and external PNG clipboard path.
+One CI workflow builds and packages Windows x86-64, macOS Apple Silicon, and Linux x86-64. A small Rust suite checks the failure-prone logic. Linux smoke tests exercise X11 and a headless Wayland session with real portal/PipeWire services. They check frozen-image selection, cancellation, and external PNG clipboard reads.
 
-These checks do **not** establish real-agent attachment, mixed-DPI behavior, permissions, or performance on physical desktops. Build records and scoped measurements are evidence, not a promise of a particular startup time or RAM footprint.
+These checks do **not** establish real-agent attachment, mixed-DPI behavior, permissions on physical desktops, or hardware performance. Build records and scoped measurements are evidence, not a promise of a particular startup time or RAM footprint.
 
 Stage currently targets **local WezTerm panes with the same OS clipboard**, not arbitrary terminals, browser chats, SSH hosts, or WSL agents. Screenshot pixels and notes are not saved by ScreenFling. Explicit clipboard delivery, clipboard managers, OS swap, and the destination application's storage are separate concerns.
 

@@ -36,7 +36,7 @@ Install the `rustfmt` and `clippy` components with rustup if they are not presen
 
 Keep tests focused on behavior that could corrupt a crop, select the wrong destination, submit input, or leave the application unable to recover. The small Rust suite covers crop/buffer bounds, stale generations, review-gated one-shot delivery, no-submit input, exact IDs, settings persistence and draft isolation, clipboard write gating, and local endpoint replacement. The relay regression also passes the exact Stage bytes through native local sockets and checks that a rejected write sends no bytes. It does not simulate an agent's image-attachment acknowledgment. New regression checks should reuse the native test runner, not add another test framework.
 
-The one desktop smoke test runs against a synthetic X11 display:
+The X11 desktop smoke test runs against a synthetic display:
 
 ```sh
 sudo apt-get install xvfb xdotool xclip x11-xserver-utils libgl1-mesa-dri
@@ -45,7 +45,7 @@ xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
 
 It launches the release binary and tests the native global shortcut, selection/review cancellation, frozen selection, and an external client's PNG clipboard read. An asymmetric desktop pattern checks every copied RGBA pixel and the crop origin. The desktop changes after capture, so the check also detects an accidental live-frame copy. No private desktop or live coding-agent session is involved. Run it from the repository root after the release build. It writes its diagnostic record to `dist/`.
 
-CI stays in `.github/workflows/check.yml`: one workflow, three native jobs. Each runs formatting, Clippy with warnings treated as errors, the small test suite, release CLI checks, and packaging for Windows x86-64, macOS arm64, and Linux x86-64. Only Linux runs the Xvfb smoke. Build success on a hosted OS is not a physical acceptance result.
+CI stays in `.github/workflows/check.yml`: one workflow, three native jobs. Each runs formatting, Clippy with warnings treated as errors, the small test suite, release CLI checks, and packaging for Windows x86-64, macOS arm64, and Linux x86-64. Linux additionally runs the X11 smoke and a headless Wayland smoke in an isolated Sway session with real ScreenCast/PipeWire services. The Wayland check rejects and then accepts a display chooser, tests cancellation and recovery, changes the live desktop, and compares every copied pixel with the frozen capture. It runs in an Ubuntu 26.04 test container because its portal supports headless shared-memory capture; the release executable is still built on Ubuntu 24.04. The fixture never connects to your normal desktop, D-Bus, PipeWire, settings, or clipboard. Build success and virtual desktop tests are not physical acceptance results.
 
 For a focused dependency review, use RustSec's `cargo audit` against `Cargo.lock`. This is a development check, not an extra application dependency. Do not silence an advisory or change routing protections just to obtain a green check.
 
@@ -75,7 +75,7 @@ Stage validates the selected local socket and pane/window/tab IDs. A short-lived
 
 This is not a sandbox against code running as the same user or an administrator. A correct pane ID also does not prove that the foreground program inside that pane is the intended coding agent. The user's local Ctrl+V binding confirmation and post-Stage inspection remain necessary.
 
-Wayland uses consent-based ScreenCast/PipeWire, not the file-returning Screenshot portal. Windows and X11 choose the monitor under the pointer; macOS uses ScreenCaptureKit. Crop mapping uses captured image dimensions and separate horizontal/vertical ratios. Desktop scale, image pixels, and GUI coordinates are not assumed to be interchangeable.
+Wayland uses consent-based ScreenCast/PipeWire, not the file-returning Screenshot portal. It negotiates CPU-readable shared memory and copies a held buffer through its granted file descriptor with bounded reads. No GPU-only buffer pointer is dereferenced. The window is shown and its OpenGL context rebound before Wayland drawing; hidden Wayland windows are not rendered. Windows and X11 choose the monitor under the pointer; macOS uses ScreenCaptureKit. Crop mapping uses captured image dimensions and separate horizontal/vertical ratios. Desktop scale, image pixels, and GUI coordinates are not assumed to be interchangeable.
 
 ## Build native packages without publishing
 
@@ -92,7 +92,7 @@ The script verifies the archive contents and executable bytes, then writes `buil
 
 ## Remaining release acceptance
 
-These are **not run** by hosted build checks. Record the OS, hardware/compositor, exact commit/package, and observed result when performing them:
+These physical checks are **not established** by hosted builds or the isolated desktop checks. Record the OS, hardware/compositor, exact commit/package, and observed result when performing them:
 
 - Windows, macOS, and Wayland: permission allow/deny and recovery, tray and global-shortcut behavior, closing/reopening, normal idle screen locking, and a clean-machine installation.
 - Multiple monitors: mixed scale factors, negative origins, rotation, disconnection during capture, and captured color/orientation.

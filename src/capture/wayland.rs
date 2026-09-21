@@ -249,7 +249,12 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
     let mut params =
         [Pod::from_bytes(&values).ok_or("Could not negotiate the screen image format.")?];
     stream
-        .connect(Direction::Input, Some(node), StreamFlags::AUTOCONNECT, &mut params)
+        .connect(
+            Direction::Input,
+            Some(node),
+            StreamFlags::AUTOCONNECT,
+            &mut params,
+        )
         .map_err(portal_error)?;
     let deadline = Instant::now() + Duration::from_secs(8);
     let value = loop {
@@ -274,9 +279,11 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
 /// PipeWire's optional mapped data pointer. pread also bounds truncated buffers
 /// without turning an invalid mapping into a process-wide memory fault.
 fn read_plane(data: &spa::sys::spa_data, chunk: &spa::sys::spa_chunk) -> Result<Vec<u8>> {
+    // Some portal versions omit SPA_DATA_FLAG_READABLE even for a readable
+    // MemFd. The granted descriptor and pread enforce read access; do not infer
+    // memory protection from that optional producer flag or map with PROT_NONE.
     let length = chunk.size as usize;
     if data.type_ != spa::sys::SPA_DATA_MemFd
-        || data.flags & spa::sys::SPA_DATA_FLAG_READABLE == 0
         || length == 0
         || length > MAX_IMAGE_BYTES
         || chunk
@@ -323,7 +330,7 @@ mod tests {
             .unwrap();
         let data = spa::sys::spa_data {
             type_: spa::sys::SPA_DATA_MemFd,
-            flags: spa::sys::SPA_DATA_FLAG_READABLE,
+            flags: 1 << 3, // MAPPABLE only, as supplied by the wlroots portal.
             fd: i64::from(file.as_raw_fd()),
             mapoffset: 4096,
             maxsize: 11,
