@@ -27,7 +27,9 @@ fn check() -> Result<(), String> {
     use std::{fs, path::PathBuf, process::Command, thread, time::Duration};
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() != 3 || args[0] != "--isolated-fixture" {
-        return Err("Use scripts/check-wezterm.py; never point this check at a real session.".into());
+        return Err(
+            "Use scripts/check-wezterm.py; never point this check at a real session.".into(),
+        );
     }
     let root = PathBuf::from(&args[1]);
     trusted::private_dir(&root)?;
