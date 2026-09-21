@@ -708,15 +708,7 @@ impl App {
                 egui::StrokeKind::Inside,
             );
             if response.drag_stopped() && selection.width() > 0.0 && selection.height() > 0.0 {
-                return Action::Crop(
-                    [
-                        (selection.min.x - image_rect.min.x) as f64,
-                        (selection.min.y - image_rect.min.y) as f64,
-                        selection.width() as f64,
-                        selection.height() as f64,
-                    ],
-                    [image_rect.width() as f64, image_rect.height() as f64],
-                );
+                return crop_action(selection, image_rect);
             }
         }
         let label_rect = Rect::from_center_size(
@@ -753,9 +745,44 @@ fn fit_size(source: Vec2, available: Vec2) -> Vec2 {
             .clamp(0.001, 1.0)
 }
 
+fn crop_action(selection: Rect, image: Rect) -> Action {
+    // Widen coordinates before subtracting: rounded f32 widths can put a valid
+    // edge selection outside the image when map_crop adds its f64 x and width.
+    Action::Crop(
+        [
+            selection.min.x as f64 - image.min.x as f64,
+            selection.min.y as f64 - image.min.y as f64,
+            selection.max.x as f64 - selection.min.x as f64,
+            selection.max.y as f64 - selection.min.y as f64,
+        ],
+        [
+            image.max.x as f64 - image.min.x as f64,
+            image.max.y as f64 - image.min.y as f64,
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fractional_scale_edge_selection_stays_in_bounds() {
+        let image = Rect::from_min_max(Pos2::ZERO, Pos2::new(640.0, 400.0));
+        let selection = Rect::from_min_max(Pos2::new(4.0 / 3.0, 2.0 / 3.0), image.max);
+        let Action::Crop(rect, size) = crop_action(selection, image) else {
+            panic!("Expected a crop action");
+        };
+        assert_eq!(
+            model::map_crop(rect, size, [960, 600]).unwrap(),
+            model::Crop {
+                x: 2,
+                y: 1,
+                width: 958,
+                height: 599,
+            }
+        );
+    }
 
     #[test]
     fn discovery_recovers_after_settings_change_and_ignores_old_capture() {

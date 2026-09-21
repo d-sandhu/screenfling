@@ -90,9 +90,9 @@ pub fn private_dir(path: &Path) -> Result<()> {
     // A private leaf is not private if another user can rename an ancestor and replace it.
     // Reuse the endpoint policy, including the safe root-owned sticky /tmp exception.
     for parent in path.ancestors().skip(1) {
-        stamp(parent, Kind::Parent).map_err(|_| {
-            "A private directory's parent is writable by another user or cannot be verified."
-        })?;
+        stamp(parent, Kind::Parent).map_err(
+            |_| "A private directory's parent is writable by another user or cannot be verified.",
+        )?;
     }
     Ok(())
 }
@@ -313,7 +313,10 @@ mod tests {
             create_private_dir(&parent, false).unwrap();
             fs::set_permissions(&parent, fs::Permissions::from_mode(0o777)).unwrap();
             assert!(create_private_dir(&child, false).is_err());
-            assert!(!child.exists(), "Failed creation must not leave a private directory");
+            assert!(
+                !child.exists(),
+                "Failed creation must not leave a private directory"
+            );
             fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
             create_private_dir(&child, false).unwrap();
             fs::set_permissions(&parent, fs::Permissions::from_mode(0o777)).unwrap();
