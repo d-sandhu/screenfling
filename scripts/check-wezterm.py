@@ -67,7 +67,8 @@ with path.open('wb', buffering=0) as output:
                             str(receiver), str(root / 'first.bytes')], env=env,
                            stdout=log, stderr=log, start_new_session=True)
             try:
-                deadline = time.monotonic() + 15
+                # Only wait for startup; capture, Stage, and Reveal are never retried.
+                deadline = time.monotonic() + 30
                 while not ((root / 'mux.sock').exists() and (root / 'first.ready').exists()):
                     if mux.poll() is not None or time.monotonic() >= deadline:
                         raise RuntimeError(f'Isolated mux did not become ready: exit={mux.poll()}, '
@@ -99,19 +100,13 @@ with path.open('wb', buffering=0) as output:
             except BaseException:
                 print('Fixture entries:', sorted(str(p.relative_to(root)) for p in root.rglob('*')))
                 if (root / 'mux.sock').exists():
-                    for arguments in [('list', '--format', 'json'), ('get-text', '--pane-id', '0')]:
-                        try:
-                            print(arguments, cli(*arguments).decode(errors='replace')[-4000:])
-                        except Exception as error:
-                            print('Fixture diagnostic:', error)
-                # Temporary diagnostics for reproducing the fixture outside CI.
-                diagnostic = ROOT / 'dist/fixture-tools'
-                diagnostic.mkdir(parents=True, exist_ok=True)
-                for executable in (wezterm, server):
-                    shutil.copy2(executable, diagnostic)
+                    try:
+                        print('Fixture panes:', cli('list', '--format', 'json').decode()[-4000:])
+                    except Exception as error:
+                        print('Fixture diagnostic:', error)
                 log.flush()
                 log.seek(0)
-                print(log.read().decode(errors='replace'))
+                print(log.read().decode(errors='replace')[-8000:])
                 raise
             finally:
                 if mux.poll() is None:
