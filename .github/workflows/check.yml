@@ -1,7 +1,7 @@
 name: Check
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
 concurrency:
   group: rust-${{ github.ref }}
@@ -10,8 +10,6 @@ permissions:
   contents: read
 jobs:
   check:
-    # Same-repository branches are checked on push; fork contributions on PR.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     name: Check on ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -22,7 +20,9 @@ jobs:
     env:
       CARGO_TERM_COLOR: never
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -43,6 +43,10 @@ jobs:
           cargo test --release --locked --all-targets --quiet
           cargo build --release --locked --quiet
           python3 scripts/check-cli.py
+      - name: Native image clipboard
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        run: cargo run --release --locked --example check-native-clipboard -- --allow-clipboard-write
       - name: Native desktop smoke
         if: runner.os == 'Linux'
         run: |
