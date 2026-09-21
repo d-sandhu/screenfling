@@ -42,11 +42,12 @@ def install_pattern(directory):
     command('xsetroot', '-bitmap', str(bitmap), '-fg', '#c43a71', '-bg', '#345678')
 
 
-def check_png(data):
+def check_png(data, reference=None):
     assert data[:8] == b'\x89PNG\r\n\x1a\n', 'Copy did not provide a PNG image'
     header = struct.unpack('>IIBBBBB', data[16:29])
     assert header == (200, 150, 8, 6, 0, 0, 0), f'Unexpected crop PNG header: {header}'
     width, height = header[:2]
+    assert reference is None or len(reference) == width * height * 4
     offset, compressed = 8, bytearray()
     while offset + 12 <= len(data):
         length = struct.unpack('>I', data[offset:offset + 4])[0]
@@ -73,10 +74,14 @@ def check_png(data):
             else:
                 predictor = (0, left, above, (left + above) // 2)[kind]
             current[i] = (current[i] + predictor) & 255
-        expected = bytes(channel for x in range(width)
-                         for channel in ((196, 58, 113, 255) if marked(x + 100, y + 100)
-                                         else (52, 86, 120, 255)))
-        assert current == expected, f'Crop pixels differ from the frozen fixture on row {y}'
+        expected = (reference[y * stride:(y + 1) * stride] if reference is not None else
+                    bytes(channel for x in range(width)
+                          for channel in ((196, 58, 113, 255) if marked(x + 100, y + 100)
+                                          else (52, 86, 120, 255))))
+        if current != expected:
+            x = next(i for i in range(0, stride, 4) if current[i:i + 4] != expected[i:i + 4])
+            raise AssertionError(f'Crop pixel ({x // 4}, {y}) is {list(current[x:x + 4])}, '
+                                 f'expected {list(expected[x:x + 4])}')
         previous = current
     return [width, height]
 

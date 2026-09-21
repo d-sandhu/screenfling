@@ -63,7 +63,7 @@ jobs:
               apt-get update -qq
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
                 gcc libc6-dev libwayland-dev python3 sway swaybg pipewire wireplumber xdg-desktop-portal \
-                xdg-desktop-portal-wlr wtype wl-clipboard dbus-daemon libglib2.0-bin \
+                xdg-desktop-portal-wlr wtype wl-clipboard grim dbus-daemon libglib2.0-bin \
                 libgl1 libegl1 libgl1-mesa-dri libwayland-egl1 libwayland-cursor0 libdecor-0-0 \
                 libx11-6 libxrandr2 libxfixes3 libxi6 libxss1 libxtst6
               useradd --no-create-home --uid "$HOST_UID" sf-check

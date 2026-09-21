@@ -2,7 +2,7 @@
 """Exercise the real portal/PipeWire/Wayland path on an isolated synthetic desktop.
 Never connects to the user's compositor, D-Bus, PipeWire, settings, or clipboard.
 Needs: sway, swaybg, pipewire, wireplumber, xdg-desktop-portal{,-wlr}, wtype,
-wl-clipboard, dbus-daemon, a C compiler, and libwayland-dev. Run from the repository root after the release build.
+wl-clipboard, grim, dbus-daemon, a C compiler, and libwayland-dev. Run from the repository root after the release build.
 """
 import json
 import os
@@ -122,6 +122,21 @@ def session():
             assert command('wl-paste', '--no-newline', '--type', 'text/plain').stdout == sentinel
         time.sleep(0.3)
         unchanged()
+        # Compare with what the compositor actually rendered, not the source PNG:
+        # wallpaper clients may resample at fractional scale. This independent
+        # screencopy stays in memory and runs before ScreenFling is on the desktop.
+        ppm = command('grim', '-s', '1.25', '-o', 'HEADLESS-1', '-t', 'ppm', '-').stdout
+        magic, dimensions, maximum, rgb = ppm.split(b'\n', 3)
+        assert (magic, dimensions, maximum) == (b'P6', b'1280 800', b'255')
+        assert len(rgb) == 1280 * 800 * 3
+        reference = bytearray()
+        for y in range(100, 250):
+            for x in range(100, 300):
+                i = (y * 1280 + x) * 3
+                reference.extend(rgb[i:i + 3])
+                reference.append(255)
+        colors = {bytes(reference[i:i + 3]) for i in range(0, len(reference), 4)}
+        assert {bytes([196, 58, 113]), bytes([52, 86, 120])} <= colors, 'Wallpaper fixture is missing'
         app = start('screenfling', str(ROOT / 'target' / 'release' / 'screenfling'))
         def window(title):
             def ready():
@@ -156,8 +171,8 @@ def session():
         key('ScreenFling', 'F8')
         window('Select region')
         sway('output HEADLESS-1 bg #112233 solid_color')
-        # Logical points map through 125% display scaling to the same physical
-        # (100, 100)..(300, 250) crop checked by the existing pixel fixture.
+        # Logical points map through 125% display scaling to the physical
+        # (100, 100)..(300, 250) reference crop. Never loosen pixel equality.
         sway('seat seat0 cursor set 80 80')
         sway('seat seat0 cursor press button1')
         time.sleep(0.15)
@@ -169,14 +184,14 @@ def session():
         key('Review crop', 'F6')
         window('Result')
         copied = command('wl-paste', '--type', 'image/png').stdout
-        dimensions = fixture['check_png'](copied)
+        dimensions = fixture['check_png'](copied, reference)
         assert not list((home / 'config' / 'screenfling').glob('*.png')), 'Unexpected stored screenshot'
         result = {'environment': 'Isolated headless Sway, real ScreenCast portal/PipeWire, software rendering',
                   'output_scale': 1.25,
                   'checks': ['portal chooser rejection preserves clipboard', 'capture recovers after rejection',
                              'selection and whole-display review cancellation preserve clipboard',
                              'native Wayland fractional-scale region selection',
-                             'every copied pixel matches the frozen frame'],
+                             'every copied pixel matches an independent frozen desktop reference'],
                   'copied_dimensions': dimensions}
         (ROOT / 'dist' / 'smoke-wayland.json').write_text(json.dumps(result, indent=2) + '\n')
         print(json.dumps(result, indent=2))
