@@ -2,7 +2,7 @@
 """Exercise the real portal/PipeWire/Wayland path on an isolated synthetic desktop.
 Never connects to the user's compositor, D-Bus, PipeWire, settings, or clipboard.
 Needs: sway, swaybg, pipewire, wireplumber, xdg-desktop-portal{,-wlr}, wtype,
-wl-clipboard, dbus-daemon. Run from the repository root after the release build.
+wl-clipboard, dbus-daemon, a C compiler, and libwayland-dev. Run from the repository root after the release build.
 """
 import json
 import os
@@ -91,6 +91,17 @@ def session():
         os.environ['SWAYSOCK'] = str(wait_for(socket, 'private Sway socket'))
         os.environ['WAYLAND_DISPLAY'] = wait_for(
             lambda: next((p.name for p in (home / 'run').glob('wayland-*') if p.is_socket()), None), 'Wayland socket')
+        # A virtual keyboard alone does not give SDL a wl_pointer. Retain a
+        # pointer device for the entire session before the application starts.
+        pointer_exe = home / 'pointer'
+        command('cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                str(ROOT / 'scripts' / 'wayland-pointer.c'), '-lwayland-client', '-o', str(pointer_exe))
+        pointer = start('pointer', str(pointer_exe), stdin=sp.PIPE)
+        def pointer_ready():
+            assert pointer.poll() is None, 'Private virtual pointer stopped'
+            seats = json.loads(command('swaymsg', '-t', 'get_seats', '-r').stdout)
+            return any(seat['name'] == 'seat0' and seat['capabilities'] & 1 for seat in seats)
+        wait_for(pointer_ready, 'private pointer capability')
         command('dbus-update-activation-environment', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'XDG_CURRENT_DESKTOP')
         start('pipewire', 'pipewire')
         wait_for(lambda: (home / 'run' / 'pipewire-0').exists(), 'private PipeWire socket')
