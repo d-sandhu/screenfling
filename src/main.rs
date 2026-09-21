@@ -164,8 +164,28 @@ fn run(capture_on_start: bool) -> Result<(), String> {
             title_phase = Some(app.flow.phase());
         }
         gui.state.sync_window_size(&window);
+        let mut input = gui.state.take_egui_input();
+        // egui-sdl3 0.4 lays out in drawable pixels / pixels-per-point, but
+        // divides window-coordinate mouse/touch positions by that same factor
+        // without first applying pixel density. Correct only its position events;
+        // screen_rect and wheel deltas are already in their intended units.
+        // Keep this boundary covered by the fractional-scale desktop fixture
+        // when updating the backend; do not apply the conversion twice upstream.
+        let (w, h) = gui.state.get_window_size();
+        let (pw, ph) = gui.state.get_drawable_size();
+        for event in &mut input.events {
+            match event {
+                egui::Event::PointerMoved(pos)
+                | egui::Event::PointerButton { pos, .. }
+                | egui::Event::Touch { pos, .. } => {
+                    pos.x *= pw as f32 / w.max(1) as f32;
+                    pos.y *= ph as f32 / h.max(1) as f32;
+                }
+                _ => {}
+            }
+        }
         let mut action = app::Action::None;
-        let output = gui.ctx.run_ui(gui.state.take_egui_input(), |ui| {
+        let output = gui.ctx.run_ui(input, |ui| {
             action = app.ui(ui);
         });
         let repaint = output
