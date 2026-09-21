@@ -45,10 +45,16 @@ jobs:
           python3 scripts/check-cli.py
           if [ "$RUNNER_OS" = Linux ]; then
             tar -czf dist/source.tar.gz --exclude=dist --exclude=target --exclude=.git .
+            sed -i '/let stride = chunk.stride;/a\            eprintln!("Plane type={} flags={} fd={} map={} max={} off={} size={} stride={}", data.as_raw().type_, data.as_raw().flags, data.as_raw().fd, data.as_raw().mapoffset, data.as_raw().maxsize, chunk.offset, chunk.size, chunk.stride);' src/capture/wayland.rs
+            sed -i '/let _ = stream.disconnect();/i\    eprintln!("Capture error: {:?}", value.as_ref().err());' src/capture/wayland.rs
             CARGO_PROFILE_RELEASE_DEBUG=1 CARGO_PROFILE_RELEASE_STRIP=none cargo build --release --locked --quiet
             cp target/release/screenfling dist/diagnostic-linux
             sed -i 's/thread apply all bt/bt full/; s/\[-6000:\]/[-32000:]/' scripts/smoke-wayland.py
           fi
+      - name: One-off native clipboard check
+        if: runner.os != 'Linux'
+        shell: bash
+        run: python3 scripts/check-native-clipboard.py
       - name: One-off native routing check
         if: runner.os == 'Linux'
         shell: bash
