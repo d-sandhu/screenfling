@@ -63,6 +63,19 @@ jobs:
               dpkg-query -W sway xdg-desktop-portal-wlr pipewire
               runuser -u sf-check -- python3 scripts/smoke-wayland.py
             '
+      - name: Isolated WezTerm routing
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          package=wezterm-20240203-110809-5046fc22.Ubuntu22.04.deb
+          base=https://github.com/wezterm/wezterm/releases/download/20240203-110809-5046fc22
+          curl --fail --silent --show-error --location "$base/$package" -o "$RUNNER_TEMP/$package"
+          curl --fail --silent --show-error --location "$base/$package.sha256" -o "$RUNNER_TEMP/$package.sha256"
+          (cd "$RUNNER_TEMP" && sha256sum --check "$package.sha256")
+          sudo apt-get install -y "$RUNNER_TEMP/$package"
+          cargo build --release --locked --example check-wezterm --quiet
+          python3 scripts/check-wezterm.py
       - name: Package and record build evidence
         shell: bash
         run: |
