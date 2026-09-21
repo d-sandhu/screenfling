@@ -87,4 +87,4 @@ A matching checksum checks file integrity, not publisher identity. Unsigned/ad-h
 
 ScreenFling does not upload captures or save screenshot/notes to temporary files. Explicit Copy/Stage makes the image available to the OS clipboard and other applications. Clipboard history, OS swap, and agent storage are outside its control.
 
-Source, build instructions, and issue reporting are in the [ScreenFling repository](https://github.com/d-sandhu/screenfling/tree/rust-egui-rewrite-2026-09-20). Report the platform and error text without posting private screenshots or full local paths.
+Source, build instructions, and issue reporting are in the [ScreenFling repository](https://github.com/d-sandhu/screenfling). Report the platform and error text without posting private screenshots or full local paths.

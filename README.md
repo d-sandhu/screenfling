@@ -4,8 +4,6 @@
 
 A native desktop tool that turns a screen region into a reviewed image you can copy or stage in an exact local WezTerm pane. No screenshot file to manage. No switching to a guessed terminal window. No automatic prompt submission.
 
-[![Native checks](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml/badge.svg?branch=rust-egui-rewrite-2026-09-20&event=pull_request)](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml)
-
 ![ScreenFling's native crop review window showing a clipped button in a synthetic example UI](docs/preview.webp)
 
 *Actual Linux application, reviewing a synthetic UI example. Stage stays disabled until a destination is selected.*
@@ -22,15 +20,20 @@ ScreenFling keeps the workflow small:
 
 Copy works without WezTerm. Stage writes **Ctrl+V and the note, never Enter**. A successful write is not proof that the agent attached the image; the result says so.
 
-## Try the native rewrite
+## Build and run
 
-**Pre-release.** This rewrite is being prepared in [PR #64](https://github.com/d-sandhu/screenfling/pull/64). Native builds and automated checks are available; physical desktop acceptance and public signing are still pending. The commands deliberately select the rewrite branch, not the previous implementation on `main`.
+**Pre-release.** The native rewrite is introduced in [PR #64](https://github.com/d-sandhu/screenfling/pull/64). Adopting it on `main` makes Rust the development baseline; it does not publish a release. Physical desktop acceptance and public signing are still pending.
 
 Install Rust, CMake, and your platform's native compiler first. Linux also needs the development libraries listed in the [build guide](docs/DEVELOPMENT.md#build-prerequisites).
 
 ```sh
-git clone --branch rust-egui-rewrite-2026-09-20 https://github.com/d-sandhu/screenfling.git
+git clone https://github.com/d-sandhu/screenfling.git
 cd screenfling
+```
+
+While PR #64 is open, select the native implementation with `git switch rust-egui-rewrite-2026-09-20`. After it is merged, stay on `main`. Then run:
+
+```sh
 cargo run --release --locked
 ```
 
@@ -62,7 +65,7 @@ cargo test --release --locked --all-targets
 cargo build --release --locked
 ```
 
-One CI workflow builds and packages Windows x86-64, macOS Apple Silicon, and Linux x86-64. A small Rust suite checks the failure-prone logic. Native clipboard checks verify exact pixels across processes on Windows/macOS. Linux checks exercise X11, headless Wayland with real portal/PipeWire services, and exact Stage/Reveal routing in a disposable WezTerm instance.
+[One CI workflow](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml) builds and packages Windows x86-64, macOS Apple Silicon, and Linux x86-64. A small Rust suite checks the failure-prone logic. Windows additionally captures and crops a synthetic window. Native clipboard checks compare every pixel across processes on Windows/macOS. Linux checks exercise X11, headless Wayland with real portal/PipeWire services, and exact Stage/Reveal routing in a disposable WezTerm instance.
 
 These checks do **not** establish real-agent attachment, mixed-DPI behavior, permissions on physical desktops, or hardware performance. Build records and scoped measurements are evidence, not a promise of a particular startup time or RAM footprint.
 

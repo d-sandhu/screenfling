@@ -1,6 +1,6 @@
 # Developing ScreenFling
 
-This guide describes the native Rust application. The previous Electron implementation remains in Git history, not as a second runtime. Use the branch selected in the root README until PR #64 is merged.
+This guide describes the native Rust application. The previous Electron implementation remains in Git history, not as a second runtime. The root README explains which branch to use before and after PR #64 is merged.
 
 ## Build prerequisites
 
@@ -32,7 +32,7 @@ cargo build --release --locked
 python3 scripts/check-cli.py
 ```
 
-The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, and endpoint replacement. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation. Ordinary `cargo test` does not capture your screen or write your clipboard.
+The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation. Ordinary `cargo test` does not capture your screen or write your clipboard.
 
 Keep regression tests focused on behavior that could corrupt a crop, route to the wrong destination, submit input, or prevent recovery. Extend the existing native test runner; do not add a test framework just to add assertions.
 
@@ -49,13 +49,13 @@ This checks the global shortcut, selection/review cancellation, and an external 
 
 The Wayland smoke uses a private headless Sway session with real ScreenCast/PipeWire services. It rejects and accepts the display chooser, checks cancellation and recovery, and compares the copied crop with the frozen frame. CI runs it in Ubuntu 26.04 because that fixture's portal supports headless shared-memory capture; the release executable is built on Ubuntu 24.04. The container command and prerequisites are in `.github/workflows/check.yml`. It does not use your normal desktop, D-Bus, PipeWire, settings, or clipboard.
 
-The Windows/macOS clipboard check uses the production clipboard module. **It replaces the system clipboard with synthetic images. Run it only on a disposable desktop:**
+The Windows/macOS clipboard check uses the production clipboard module. On Windows, it also draws a synthetic window, captures its monitor through the production capture adapter, and verifies the crop before copying it. **It accesses the Windows desktop and replaces the system clipboard with synthetic images. Run it only on a disposable desktop:**
 
 ```sh
 cargo run --release --locked --example check-native-clipboard -- --allow-clipboard-write
 ```
 
-A separate process reads the exact image, then another replaces one pixel and exits. The original image must be rejected and the replacement must remain readable. Without the explicit flag it refuses to access the clipboard. It is not executed by `cargo test` or included in native packages.
+A separate process compares all 200 × 150 image pixels, then another replaces the last pixel and exits. The original image must be rejected and the replacement must remain readable. Without the explicit flag the check refuses to access the desktop or clipboard. It is not executed by `cargo test` or included in native packages. This does not test macOS screen-recording consent or the Windows review UI.
 
 For the real WezTerm transport check on Linux, install a matching WezTerm CLI and mux server on PATH, then run:
 
@@ -66,7 +66,7 @@ python3 scripts/check-wezterm.py
 
 The script creates a private home, configuration, socket, and two synthetic raw-input panes. It never selects an existing session or reads the clipboard. It tests duplicate pane labels, exact Stage bytes, a wrong focus hint, rejected clipboard verification, separate Reveal, and a closed destination. Receiver bytes must contain only Ctrl+V and the intended note, never Enter, and the other pane must stay untouched. This checks terminal transport, **not coding-agent image attachment**.
 
-CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard. Linux runs the isolated desktop and WezTerm checks. There are no publishing steps, ignored failures, or new runtime dependencies for these checks.
+CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard, with Windows capture as described above. Linux runs the isolated desktop and WezTerm checks. There are no publishing steps, ignored failures, or new runtime dependencies for these checks.
 
 For a dependency review, run RustSec's `cargo audit` against `Cargo.lock`. Do not silence an advisory or weaken routing checks to manufacture a pass. Build success and synthetic desktops are not physical acceptance results.
 
@@ -91,7 +91,7 @@ Stage checks the selected socket and pane/window/tab IDs. A short-lived AF_UNIX 
 
 This is not a sandbox against code running as the same user or an administrator. A pane ID does not prove which foreground program is running inside it. The user's Ctrl+V binding confirmation and inspection of the result remain necessary.
 
-Wayland uses ScreenCast/PipeWire, not the file-returning Screenshot portal. It negotiates shared memory and copies a held buffer through its granted file descriptor using bounded reads, without dereferencing GPU-only or optionally mapped pointers. Hidden Wayland windows are not rendered; the window is shown and its OpenGL context rebound before drawing. Other platforms choose the display under the pointer. Crop geometry uses actual captured dimensions and independent horizontal/vertical ratios, not an assumed display scale.
+Wayland uses ScreenCast/PipeWire, not the file-returning Screenshot portal. It negotiates shared memory and copies a held buffer through its granted file descriptor using bounded reads, without dereferencing GPU-only or optionally mapped pointers. Session detection checks the actual video driver and Wayland environment, including inherited sockets; a missing `WAYLAND_DISPLAY` does not force X11 capture. The driver is read on the main thread before workers start. Hidden Wayland windows are not rendered; the window is shown and its OpenGL context rebound before drawing. Other platforms choose the display under the pointer. Crop geometry uses actual captured dimensions and independent horizontal/vertical ratios, not an assumed display scale.
 
 ## Build native packages without publishing
 
