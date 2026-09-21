@@ -47,6 +47,19 @@ jobs:
             cp target/release/screenfling dist/diagnostic-linux
             sed -i 's/thread apply all bt/bt full/; s/\[-6000:\]/[-32000:]/' scripts/smoke-wayland.py
           fi
+      - name: One-off native routing check
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          package=wezterm-20240203-110809-5046fc22.Ubuntu22.04.deb
+          url=https://github.com/wezterm/wezterm/releases/download/20240203-110809-5046fc22
+          curl -fsSL "$url/$package" -o "$package"
+          curl -fsSL "$url/$package.sha256" -o package.sha256
+          printf '%s  %s\n' "$(cut -d ' ' -f 1 package.sha256)" "$package" | sha256sum --check -
+          sudo apt-get install -y "./$package"
+          cd "$GITHUB_WORKSPACE"
+          python3 scripts/smoke-wezterm.py
       - name: Native desktop smoke
         if: runner.os == 'Linux'
         run: |

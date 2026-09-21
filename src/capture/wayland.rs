@@ -3,7 +3,7 @@
 use super::Captured;
 use crate::{
     frame::packed_rgba,
-    model::{Pixels, Result},
+    model::{MAX_IMAGE_BYTES, Pixels, Result},
 };
 use ashpd::desktop::{
     PersistMode,
@@ -14,6 +14,7 @@ use pipewire::{
     main_loop::MainLoopRc,
     properties,
     spa::{
+        self,
         param::{
             ParamType,
             format::{FormatProperties, MediaSubtype, MediaType},
@@ -26,8 +27,12 @@ use pipewire::{
 };
 use std::{
     cell::RefCell,
+    fs::File,
     io::Cursor,
-    os::fd::OwnedFd,
+    os::{
+        fd::{BorrowedFd, OwnedFd},
+        unix::fs::FileExt,
+    },
     rc::Rc,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
@@ -124,13 +129,40 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
     .map_err(portal_error)?;
     let result: Rc<RefCell<Option<Result<Pixels>>>> = Rc::new(RefCell::new(None));
     let output = result.clone();
+    let negotiation = result.clone();
     let _listener = stream
         .add_local_listener_with_user_data(VideoInfoRaw::default())
-        .param_changed(|_, format, id, param| {
-            if id == ParamType::Format.as_raw()
-                && let Some(param) = param
-            {
-                let _ = format.parse(param);
+        .param_changed(move |stream, format, id, param| {
+            if id != ParamType::Format.as_raw() {
+                return;
+            }
+            let Some(param) = param else {
+                return;
+            };
+            let negotiated = (|| -> Result<()> {
+                format.parse(param).map_err(portal_error)?;
+                // This still-image consumer needs CPU-readable shared memory,
+                // not a GPU-only DMA buffer or a borrowed mapped image pointer.
+                let buffers = pod::Object {
+                    type_: spa::sys::SPA_TYPE_OBJECT_ParamBuffers,
+                    id: ParamType::Buffers.as_raw(),
+                    properties: vec![pod::Property {
+                        key: spa::sys::SPA_PARAM_BUFFERS_dataType,
+                        flags: pod::PropertyFlags::empty(),
+                        value: pod::Value::Int(1 << spa::sys::SPA_DATA_MemFd),
+                    }],
+                };
+                let value = pod::Value::Object(buffers);
+                let bytes = PodSerializer::serialize(Cursor::new(Vec::new()), &value)
+                    .map_err(portal_error)?
+                    .0
+                    .into_inner();
+                let param =
+                    Pod::from_bytes(&bytes).ok_or("Could not negotiate shared screen memory.")?;
+                stream.update_params(&mut [param]).map_err(portal_error)
+            })();
+            if let Err(error) = negotiated {
+                *negotiation.borrow_mut() = Some(Err(error));
             }
         })
         .process(move |stream, format| {
@@ -144,15 +176,15 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
             let Some(data) = datas.first_mut() else {
                 return;
             };
-            let offset = data.chunk().offset() as usize;
-            let stride = data.chunk().stride();
-            let chunk_size = data.chunk().size() as usize;
-            if chunk_size == 0 {
+            if data.as_raw().chunk.is_null() {
+                *output.borrow_mut() = Some(Err("PipeWire returned no image plane.".into()));
                 return;
             }
-            let Some(bytes) = data.data() else {
+            let chunk = data.chunk().as_raw();
+            if chunk.size == 0 || chunk.flags & 1 != 0 {
                 return;
-            };
+            }
+            let stride = chunk.stride;
             let size = format.size();
             let order = match format.format() {
                 VideoFormat::BGRA | VideoFormat::BGRx => true,
@@ -164,21 +196,12 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
                     return;
                 }
             };
-            let value = if stride <= 0
-                || offset
-                    .checked_add(chunk_size)
-                    .is_none_or(|end| end > bytes.len())
-            {
-                Err("PipeWire returned an invalid image plane.".into())
+            let value = if stride <= 0 {
+                Err("PipeWire returned an invalid image stride.".into())
             } else {
-                packed_rgba(
-                    &bytes[..offset + chunk_size],
-                    size.width,
-                    size.height,
-                    offset,
-                    stride as usize,
-                    order,
-                )
+                read_plane(data.as_raw(), chunk).and_then(|bytes| {
+                    packed_rgba(&bytes, size.width, size.height, 0, stride as usize, order)
+                })
             };
             *output.borrow_mut() = Some(value);
         })
@@ -226,12 +249,7 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
     let mut params =
         [Pod::from_bytes(&values).ok_or("Could not negotiate the screen image format.")?];
     stream
-        .connect(
-            Direction::Input,
-            Some(node),
-            StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS,
-            &mut params,
-        )
+        .connect(Direction::Input, Some(node), StreamFlags::AUTOCONNECT, &mut params)
         .map_err(portal_error)?;
     let deadline = Instant::now() + Duration::from_secs(8);
     let value = loop {
@@ -250,4 +268,83 @@ fn first_frame(fd: OwnedFd, node: u32, cancelled: &AtomicBool) -> Result<Pixels>
     };
     let _ = stream.disconnect();
     value
+}
+
+/// Copy the held buffer through its shared-memory descriptor. Do not dereference
+/// PipeWire's optional mapped data pointer. pread also bounds truncated buffers
+/// without turning an invalid mapping into a process-wide memory fault.
+fn read_plane(data: &spa::sys::spa_data, chunk: &spa::sys::spa_chunk) -> Result<Vec<u8>> {
+    let length = chunk.size as usize;
+    if data.type_ != spa::sys::SPA_DATA_MemFd
+        || data.flags & spa::sys::SPA_DATA_FLAG_READABLE == 0
+        || length == 0
+        || length > MAX_IMAGE_BYTES
+        || chunk
+            .offset
+            .checked_add(chunk.size)
+            .is_none_or(|end| end > data.maxsize)
+    {
+        return Err("The desktop did not provide a valid shared-memory image plane.".into());
+    }
+    let fd = i32::try_from(data.fd).map_err(|_| "Invalid screen-memory descriptor.")?;
+    if fd < 0 {
+        return Err("The screen-memory descriptor is unavailable.".into());
+    }
+    // SAFETY: PipeWire owns this descriptor for the lifetime of the dequeued
+    // buffer. Duplicate it before reading; this function never closes its owner.
+    let owned = unsafe { BorrowedFd::borrow_raw(fd) }
+        .try_clone_to_owned()
+        .map_err(|_| "Could not retain the screen-memory descriptor.")?;
+    let file = File::from(owned);
+    let start = u64::from(data.mapoffset) + u64::from(chunk.offset);
+    let mut bytes = vec![0; length];
+    file.read_exact_at(&mut bytes, start)
+        .map_err(|_| "The desktop returned incomplete screen memory.")?;
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        io::Write,
+        os::fd::{AsRawFd, FromRawFd},
+    };
+
+    #[test]
+    fn shared_memory_copy_respects_plane_offset_padding_and_truncation() {
+        // An actual anonymous shared-memory descriptor; no screenshot file.
+        let fd =
+            unsafe { libc::memfd_create(c"screenfling-frame-test".as_ptr(), libc::MFD_CLOEXEC) };
+        assert!(fd >= 0);
+        let mut file = unsafe { File::from_raw_fd(fd) };
+        file.write_all(&[0; 4096]).unwrap();
+        file.write_all(&[99, 3, 2, 1, 0, 88, 77, 6, 5, 4, 0])
+            .unwrap();
+        let data = spa::sys::spa_data {
+            type_: spa::sys::SPA_DATA_MemFd,
+            flags: spa::sys::SPA_DATA_FLAG_READABLE,
+            fd: i64::from(file.as_raw_fd()),
+            mapoffset: 4096,
+            maxsize: 11,
+            data: std::ptr::null_mut(),
+            chunk: std::ptr::null_mut(),
+        };
+        let mut chunk = spa::sys::spa_chunk {
+            offset: 1,
+            size: 10,
+            stride: 6,
+            flags: 0,
+        };
+        let bytes = read_plane(&data, &chunk).unwrap();
+        assert_eq!(
+            packed_rgba(&bytes, 1, 2, 0, 6, true).unwrap().rgba,
+            [1, 2, 3, 255, 4, 5, 6, 255]
+        );
+        chunk.offset = 2;
+        assert!(read_plane(&data, &chunk).is_err());
+        chunk.offset = 1;
+        file.set_len(4098).unwrap();
+        assert!(read_plane(&data, &chunk).is_err());
+    }
 }
