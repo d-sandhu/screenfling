@@ -4,7 +4,7 @@
 
 A native desktop tool that turns a screen region into a reviewed image you can copy or stage in an exact local WezTerm pane. No screenshot file to manage. No switching to a guessed terminal window. No automatic prompt submission.
 
-[![Native checks](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml/badge.svg?branch=rust-egui-rewrite-2026-09-20&event=pull_request)](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml)
+[![Native checks](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml/badge.svg?branch=rust-egui-rewrite-2026-09-20&event=push)](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml)
 
 ![ScreenFling's native crop review window showing a clipped button in a synthetic example UI](docs/preview.webp)
 
