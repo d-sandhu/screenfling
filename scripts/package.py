@@ -2,9 +2,11 @@
 """Package and verify a native build. Never sign with a developer identity or publish."""
 import hashlib
 import json
+import os
 import platform
 import plistlib
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -113,6 +115,61 @@ def source_state() -> dict:
         return {'commit': None, 'dirty': None}
 
 
+def verify_runtime(binary: Path, system: str, version: str) -> list[str]:
+    """Check actual link imports and launch the staged binary outside the checkout.
+
+    These are loader checks on the build host, not clean-machine GUI acceptance.
+    SDL's optional dlopen desktop integrations still require platform acceptance.
+    """
+    def read(*args):
+        return subprocess.check_output(args, text=True, errors='replace', timeout=30)
+
+    if system == 'Windows':
+        dumpbin = shutil.which('dumpbin')
+        if not dumpbin:
+            vswhere = Path(os.environ['ProgramFiles(x86)']) / 'Microsoft Visual Studio/Installer/vswhere.exe'
+            install = Path(read(str(vswhere), '-latest', '-products', '*', '-requires',
+                                'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+                                '-property', 'installationPath').strip())
+            toolset = (install / 'VC/Auxiliary/Build/Microsoft.VCToolsVersion.default.txt').read_text().strip()
+            dumpbin = str(install / 'VC/Tools/MSVC' / toolset / 'bin/Hostx64/x64/dumpbin.exe')
+        output = read(dumpbin, '/nologo', '/dependents', str(binary))
+        libraries = sorted(set(re.findall(r'^\s*([^\s]+\.dll)\s*$', output, re.MULTILINE | re.IGNORECASE)))
+        system_dir = Path(os.environ['SystemRoot']) / 'System32'
+        for library in libraries:
+            name = library.lower()
+            if re.match(r'(vcruntime|msvcp\d|msvcr\d|ucrtbase|api-ms-win-crt-)', name):
+                raise RuntimeError(f'Expected a static C/C++ runtime, found {library}')
+            if not name.startswith(('api-ms-win-', 'ext-ms-win-')) and not (system_dir / library).is_file():
+                raise RuntimeError(f'Unbundled non-system DLL: {library}')
+    elif system == 'Darwin':
+        libraries = [line.strip().split(' (', 1)[0]
+                     for line in read('otool', '-L', str(binary)).splitlines()[1:] if line.strip()]
+        for library in libraries:
+            if not library.startswith(('/System/Library/', '/usr/lib/')):
+                raise RuntimeError(f'Unbundled non-system macOS library: {library}')
+    else:
+        output = read('ldd', str(binary))
+        if 'not found' in output:
+            raise RuntimeError(f'Missing Linux runtime library:\n{output}')
+        resolved = re.findall(r'^\s*(\S+)\s+=>\s+(\S+)', output, re.MULTILINE)
+        libraries = [name for name, _ in resolved]
+        for name, path in resolved:
+            if not any(Path(path).resolve().is_relative_to(root)
+                       for root in ('/lib', '/lib64', '/usr/lib', '/usr/lib64')):
+                raise RuntimeError(f'Non-system Linux runtime library: {name}: {path}')
+    if not libraries or any('sdl' in name.lower() for name in libraries):
+        raise RuntimeError('Could not verify the statically linked SDL runtime.')
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(('LD_', 'DYLD_')) and key not in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET')}
+    result = subprocess.run([str(binary), '--version'], cwd=binary.parent, env=env,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, timeout=10, check=True)
+    if result.stdout.strip() != f'ScreenFling {version}' or result.stderr.strip():
+        raise RuntimeError('The staged executable did not report the expected version cleanly.')
+    return libraries
+
+
 def verify_archive(archive: Path, expected: dict[str, str], executable: str) -> None:
     """Check the actual archive, including docs, licenses, and the signed binary."""
     if archive.suffix == '.zip':
@@ -191,6 +248,7 @@ def main() -> None:
             if system == 'Linux':
                 shutil.copy2(ROOT / 'assets' / 'dev.screenfling.ScreenFling.desktop', folder)
                 shutil.copy2(ROOT / 'assets' / 'icon.svg', folder / 'dev.screenfling.ScreenFling.svg')
+        libraries = verify_runtime(packaged_binary, system, version)
         files = {p.relative_to(folder.parent).as_posix(): digest(p.read_bytes())
                  for p in sorted(folder.rglob('*')) if p.is_file()}
         executable = packaged_binary.relative_to(folder.parent).as_posix()
@@ -213,6 +271,7 @@ def main() -> None:
         'executable_bytes': executable_bytes, 'executable_sha256': files[executable],
         'package_bytes': archive.stat().st_size, 'package_sha256': archive_hash,
         'third_party_packages': dependency_count, 'archive_verified': True,
+        'runtime_libraries': libraries, 'packaged_cli_verified': True,
         'signing': 'ad-hoc only; not notarized' if system == 'Darwin' else 'unsigned',
     }
     (dist / 'build.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')

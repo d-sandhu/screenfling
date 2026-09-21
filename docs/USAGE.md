@@ -19,7 +19,7 @@ Launch one copy of the application. Use its tray or global shortcut for later ca
 
 Windows, macOS, and X11 capture the display under the pointer. Wayland asks you to choose one display in the system sharing dialog. ScreenFling obtains a frame through the granted PipeWire connection, then closes the sharing session. It does not save a portal screenshot or silently switch to X11 capture.
 
-Review shows only the crop that can be delivered. Copy includes the image, not the optional note. Nothing is copied just because you selected a region. Cancellation leaves the existing clipboard unchanged.
+Review shows only the crop that can be delivered. Copy includes the image, not the optional note. Nothing is copied just because you selected a region. Cancellation leaves the existing clipboard unchanged. Capture restores a minimized/maximized window for selection; review and errors return to a normal visible window rather than restoring minimization.
 
 Close hides the application when a tray is available. Use Quit in the tray or application to exit. Without a tray, closing the idle window exits. On Linux, keep ScreenFling running until you paste: another application may need it to serve the clipboard image. Closing the selection window cancels selection first.
 
@@ -83,7 +83,7 @@ If a connection changes, a pane closes or moves, or clipboard verification fails
 
 CI artifacts contain the native archive, `build.json`, `SHA256SUMS`, and the locked dependency inventory. Compare the SHA-256 of the **inner native archive**, not the outer GitHub artifact ZIP, with the build record. Use `sha256sum` on Linux, `shasum -a 256` on macOS, or `Get-FileHash -Algorithm SHA256` in PowerShell.
 
-A matching checksum checks file integrity, not publisher identity. Unsigned/ad-hoc-signed packages are still development builds. The record identifies the checked-out source commit and the packaged executable; the macOS executable hash is taken after ad-hoc signing.
+A matching checksum checks file integrity, not publisher identity. Unsigned/ad-hoc-signed packages are still development builds. The record identifies the checked-out source commit and the packaged executable; the macOS executable hash is taken after ad-hoc signing. It also records linked libraries and a packaged CLI launch check, not clean-machine desktop acceptance.
 
 ScreenFling does not upload captures or save screenshot/notes to temporary files. Explicit Copy/Stage makes the image available to the OS clipboard and other applications. Clipboard history, OS swap, and agent storage are outside its control.
 

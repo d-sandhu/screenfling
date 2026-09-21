@@ -28,6 +28,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
+          key: ${{ runner.os == 'Linux' && 'audit-0.22.2' || '' }}
           cache-on-failure: true
       - name: Linux native libraries
         if: runner.os == 'Linux'

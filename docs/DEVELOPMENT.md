@@ -1,6 +1,6 @@
 # Developing ScreenFling
 
-This guide describes the native Rust application. The previous Electron implementation remains in Git history, not as a second runtime. The root README explains which branch to use before and after PR #64 is merged.
+`main` is the official native Rust application. There is no second runtime or compatibility layer for the previous implementation.
 
 ## Build prerequisites
 
@@ -32,7 +32,7 @@ cargo build --release --locked
 python3 scripts/check-cli.py
 ```
 
-The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation. Ordinary `cargo test` does not capture your screen or write your clipboard.
+The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion, Linux shared-memory offsets and truncation, and PNG-to-RGBA expansion bounds before pixel decoding. Ordinary `cargo test` does not capture your screen or write your clipboard.
 
 Keep regression tests focused on behavior that could corrupt a crop, route to the wrong destination, submit input, or prevent recovery. Extend the existing native test runner; do not add a test framework just to add assertions.
 
@@ -41,11 +41,11 @@ Keep regression tests focused on behavior that could corrupt a crop, route to th
 For the synthetic X11 workflow:
 
 ```sh
-sudo apt-get install xvfb xdotool xclip x11-xserver-utils libgl1-mesa-dri
+sudo apt-get install xvfb xdotool xclip x11-xserver-utils x11-utils openbox wmctrl libgl1-mesa-dri
 xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
 ```
 
-This checks the global shortcut, selection/review cancellation, and an external client's PNG clipboard read. Every pixel of an asymmetric crop is compared with the frozen desktop after the live desktop changes. A wrong crop origin, row flip, changed channel, or accidental live-frame copy fails the check.
+The fixture starts Openbox inside Xvfb with disposable settings and no tray service. It checks exact overlay bounds after maximization, the global shortcut from a minimized window, selection/review cancellation, clean no-tray close, and an external client's PNG clipboard read. Every pixel of an asymmetric crop is compared with the frozen desktop after the live desktop changes. A wrong crop origin, row flip, changed channel, or accidental live-frame copy fails the check. Startup, idle CPU/RSS, threads, and child processes are recorded as virtual-desktop diagnostics only.
 
 The Wayland smoke uses a private headless Sway session with real ScreenCast/PipeWire services. It rejects and accepts the display chooser, checks cancellation and recovery, and compares the copied crop with the frozen frame. CI runs it in Ubuntu 26.04 because that fixture's portal supports headless shared-memory capture; the release executable is built on Ubuntu 24.04. The container command and prerequisites are in `.github/workflows/check.yml`. It does not use your normal desktop, D-Bus, PipeWire, settings, or clipboard.
 
@@ -66,9 +66,9 @@ python3 scripts/check-wezterm.py
 
 The script creates a private home, configuration, socket, and two synthetic raw-input panes. It never selects an existing session or reads the clipboard. It tests duplicate pane labels, exact Stage bytes, a wrong focus hint, rejected clipboard verification, separate Reveal, and a closed destination. Receiver bytes must contain only Ctrl+V and the intended note, never Enter, and the other pane must stay untouched. This checks terminal transport, **not coding-agent image attachment**.
 
-CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard, with Windows capture as described above. Linux runs the isolated desktop and WezTerm checks. There are no publishing steps, ignored failures, or new runtime dependencies for these checks.
+CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard, with Windows capture as described above. Linux runs the isolated desktop and WezTerm checks and `cargo audit --deny warnings` against the locked dependencies. There are no publishing steps, ignored failures, or new application dependencies for these checks.
 
-For a dependency review, run RustSec's `cargo audit` against `Cargo.lock`. Do not silence an advisory or weaken routing checks to manufacture a pass. Build success and synthetic desktops are not physical acceptance results.
+For a local dependency review, install the `cargo-audit` version recorded in the workflow and run `cargo audit --deny warnings`. Do not silence an advisory or weaken routing checks to manufacture a pass. Build success and synthetic desktops are not physical acceptance results.
 
 ## Code map and boundaries
 
@@ -106,11 +106,13 @@ Windows gets a portable ZIP. macOS gets an ad-hoc-signed `.app` archive, checked
 
 Some crates omit their upstream license files. `assets/license-overrides.json` records reviewed texts, source blob IDs, and exact package versions; recheck these on dependency updates. The notice inventory includes build-time dependencies and is not a claim that every listed crate is linked into the executable.
 
-Packaging verifies archive members and executable bytes, then writes `build.json` and `SHA256SUMS` with source identity, hashes, sizes, and signing status. On macOS, the executable hash describes the signed copy in the app. Cargo has `publish = false`; no workflow creates a tag or release.
+Packaging inspects native link imports using MSVC `dumpbin`, macOS `otool`, or Linux `ldd`. It rejects a dynamic SDL dependency, non-system libraries, and Windows dynamic C/C++ runtime imports. It also runs the staged executable's `--version` outside the checkout with no display connection. These loader checks do not exercise SDL's optional dynamically loaded desktop integrations or replace clean-machine GUI acceptance.
+
+Packaging verifies archive members and executable bytes, then writes `build.json` and `SHA256SUMS` with source identity, hashes, sizes, linked libraries, CLI verification, and signing status. On macOS, the executable hash describes the signed copy in the app. Cargo has `publish = false`; no workflow creates a tag or release.
 
 ## Remaining release acceptance
 
-Merging the rewrite can adopt Rust as the official development baseline without publishing a release. It does not establish the following physical acceptance results. Record the OS, hardware/compositor, exact commit/package, and observations:
+The native implementation is already the official development baseline on `main`, not a published release. The following still need physical acceptance. Record the OS, hardware/compositor, exact commit/package, and observations:
 
 - Permissions, denial and recovery, tray/global-shortcut behavior, close/reopen, normal idle screen locking, and clean-machine installation on Windows, macOS, and Wayland.
 - Mixed-DPI/multiple monitors, negative origins, rotation, disconnection, captured color/orientation, and hardware startup/idle CPU/RAM.
