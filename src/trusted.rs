@@ -38,6 +38,8 @@ pub fn data_dir() -> Result<PathBuf> {
         return Err("The settings directory must be absolute.".into());
     }
     fs::create_dir_all(&root).map_err(|_| "Could not create the settings directory.")?;
+    // Resolve legitimate platform aliases before checking every ancestor.
+    let root = fs::canonicalize(root).map_err(|_| "The settings directory is unavailable.")?;
     let path = root.join("screenfling");
     create_private_dir(&path, true)?;
     Ok(path)
@@ -52,12 +54,17 @@ pub fn create_private_dir(path: &Path, existing_ok: bool) -> Result<()> {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    match builder.create(path) {
-        Ok(()) => {}
-        Err(error) if existing_ok && error.kind() == std::io::ErrorKind::AlreadyExists => {}
+    let created = match builder.create(path) {
+        Ok(()) => true,
+        Err(error) if existing_ok && error.kind() == std::io::ErrorKind::AlreadyExists => false,
         Err(_) => return Err("Could not create a private local directory.".into()),
+    };
+    let result = private_dir(path);
+    if result.is_err() && created {
+        // Never remove an existing settings directory or recursively follow an unsafe path.
+        let _ = fs::remove_dir(path);
     }
-    private_dir(path)
+    result
 }
 
 pub fn private_dir(path: &Path) -> Result<()> {
@@ -79,6 +86,13 @@ pub fn private_dir(path: &Path) -> Result<()> {
     #[cfg(windows)]
     {
         windows::validate(path, true, false)?;
+    }
+    // A private leaf is not private if another user can rename an ancestor and replace it.
+    // Reuse the endpoint policy, including the safe root-owned sticky /tmp exception.
+    for parent in path.ancestors().skip(1) {
+        stamp(parent, Kind::Parent).map_err(|_| {
+            "A private directory's parent is writable by another user or cannot be verified."
+        })?;
     }
     Ok(())
 }
@@ -291,5 +305,22 @@ mod tests {
         fs::write(&path, b"not a socket").unwrap();
         assert!(connection.unchanged().is_err());
         fs::remove_file(executable).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let parent = directory.0.join("shared");
+            let child = parent.join("private");
+            create_private_dir(&parent, false).unwrap();
+            fs::set_permissions(&parent, fs::Permissions::from_mode(0o777)).unwrap();
+            assert!(create_private_dir(&child, false).is_err());
+            assert!(!child.exists(), "Failed creation must not leave a private directory");
+            fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+            create_private_dir(&child, false).unwrap();
+            fs::set_permissions(&parent, fs::Permissions::from_mode(0o777)).unwrap();
+            assert!(private_dir(&child).is_err());
+            fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+            fs::remove_dir(child).unwrap();
+            fs::remove_dir(parent).unwrap();
+        }
     }
 }
