@@ -56,6 +56,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
     if !unsafe { sdl3_sys::video::SDL_EnableScreenSaver() } {
         return Err("Could not allow the desktop's normal screensaver behavior.".into());
     }
+    let wayland = video.current_video_driver() == "wayland";
     let receiver = desktop::install(&sdl)?;
     video
         .gl_attr()
@@ -73,7 +74,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
     unsafe {
         sdl3_sys::video::SDL_SetWindowMinimumSize(window.raw(), 640, 480);
     }
-    let _gl = window.gl_create_context().map_err(|e| e.to_string())?;
+    let gl_context = window.gl_create_context().map_err(|e| e.to_string())?;
     let glow = Arc::new(unsafe {
         glow::Context::from_loader_function(|name| {
             video
@@ -125,6 +126,28 @@ fn run(capture_on_start: bool) -> Result<(), String> {
         app.tick();
         if app.quit {
             break;
+        }
+        if wayland {
+            // A mapped EGL drawable is required for painting. Flush the pending
+            // show before drawing on Wayland, not afterwards as on X11/macOS.
+            if first_frame && capture_on_start {
+                first_frame = false;
+                app.action(app::Action::Capture, &gui.ctx, &mut window);
+            }
+            if first_frame {
+                window.show();
+            }
+            app.after_paint(&mut window);
+            if window.window_flags().0 & sdl3_sys::video::SDL_WINDOW_HIDDEN.0 != 0 {
+                // Do not consume egui's texture changes until they can be painted.
+                // Capture deadlines and worker events still wake the event loop.
+                deadline = Instant::now() + Duration::from_secs(86400);
+                continue;
+            }
+            // SDL can recreate the EGL surface across hide/show transitions.
+            window
+                .gl_make_current(&gl_context)
+                .map_err(|e| e.to_string())?;
         }
         if title_phase != Some(app.flow.phase()) {
             use screenfling::model::Phase;
