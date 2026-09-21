@@ -40,6 +40,10 @@ fn check() -> Result<(), String> {
     {
         return Err("The isolated fixture is unavailable.".into());
     }
+    // Confirm the normal settings path also stays inside the disposable fixture.
+    let config_root = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
+    assert_eq!(config_root.as_ref(), Some(&root));
+    assert_eq!(trusted::data_dir()?, root.join("screenfling"));
     let records = fs::read(root.join("panes.json")).map_err(|e| e.to_string())?;
     let ids: Vec<u32> = serde_json::from_slice(&records).map_err(|e| e.to_string())?;
     if ids.len() != 2 || ids[0] == ids[1] {

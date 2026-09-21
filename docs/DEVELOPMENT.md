@@ -14,7 +14,7 @@ On Ubuntu 24.04:
 sudo apt-get update
 sudo apt-get install build-essential cmake pkg-config clang libclang-dev \
   libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
-  libxss-dev libxtst-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+  libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
   libegl1-mesa-dev libgl1-mesa-dev libdrm-dev libgbm-dev libdecor-0-dev \
   libpipewire-0.3-dev libdbus-1-dev
 cargo run --release --locked
