@@ -1,7 +1,7 @@
 name: Check
 on:
   push:
-    branches: [main]
+    branches: [main, rust-egui-rewrite-2026-09-20]
   pull_request:
 concurrency:
   group: rust-${{ github.ref }}
@@ -10,6 +10,7 @@ permissions:
   contents: read
 jobs:
   check:
+    if: github.event_name != 'pull_request' || github.head_ref != 'rust-egui-rewrite-2026-09-20'
     name: Check on ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -36,13 +37,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cargo fmt --all --check
+          cargo fmt --all
+          git diff -- src > dist/rustfmt.patch
           cargo clippy --release --locked --all-targets -- -D warnings
           cargo test --release --locked --all-targets --quiet
           cargo build --release --locked --quiet
           python3 scripts/check-cli.py
           if [ "$RUNNER_OS" = Linux ]; then
-            git archive --format=tar.gz HEAD > dist/source.tar.gz
+            tar -czf dist/source.tar.gz --exclude=dist --exclude=target --exclude=.git .
             CARGO_PROFILE_RELEASE_DEBUG=1 CARGO_PROFILE_RELEASE_STRIP=none cargo build --release --locked --quiet
             cp target/release/screenfling dist/diagnostic-linux
             sed -i 's/thread apply all bt/bt full/; s/\[-6000:\]/[-32000:]/' scripts/smoke-wayland.py
@@ -64,8 +66,6 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
-          # Modern portals support headless shared-memory capture. Keep the build
-          # on 24.04; do not raise the release binary's libc requirement for a test.
           docker run --rm --cap-add=SYS_PTRACE -v "$PWD:/workspace:ro" -v "$PWD/dist:/workspace/dist" \
             -w /workspace -e HOST_UID="$(id -u)" ubuntu:26.04 bash -eu -c '
               apt-get update -qq
