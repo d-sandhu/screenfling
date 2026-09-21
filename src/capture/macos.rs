@@ -187,3 +187,85 @@ unsafe fn copy_image(image: &CGImage) -> Result<Pixels> {
     }
     Ok(Pixels::new(width as u32, height as u32, rgba)?.opaque())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ptr;
+
+    unsafe extern "C" {
+        fn CGDataProviderCreateWithData(
+            info: *mut c_void,
+            data: *const c_void,
+            size: usize,
+            release: Option<unsafe extern "C" fn(*mut c_void, *const c_void, usize)>,
+        ) -> *mut c_void;
+        fn CGDataProviderRelease(provider: *mut c_void);
+        fn CGImageCreate(
+            width: usize,
+            height: usize,
+            bits_per_component: usize,
+            bits_per_pixel: usize,
+            bytes_per_row: usize,
+            space: *mut c_void,
+            bitmap_info: u32,
+            provider: *mut c_void,
+            decode: *const f64,
+            interpolate: bool,
+            intent: i32,
+        ) -> *mut CGImage;
+        fn CGImageRelease(image: *mut CGImage);
+    }
+
+    #[test]
+    fn native_bitmap_preserves_rows_channels_and_opaque_pixels() {
+        // A real CGImage with padded BGRx rows, not a mocked screenshot API.
+        // This needs neither a display nor screen-recording permission.
+        let expected: Vec<u8> = [
+            [50, 80, 200, 255, 170, 90, 30, 255],
+            [12, 130, 240, 255, 210, 40, 100, 255],
+            [90, 180, 60, 255, 220, 160, 20, 255],
+        ]
+        .concat();
+        let mut source = Vec::new();
+        for row in expected.chunks_exact(8) {
+            for p in row.chunks_exact(4) {
+                source.extend_from_slice(&[p[2], p[1], p[0], 0]);
+            }
+            source.extend_from_slice(&[99; 4]);
+        }
+        let converted = unsafe {
+            let space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+            assert!(!space.is_null());
+            // The vector outlives both the data provider and image. No callback owns it.
+            let provider = CGDataProviderCreateWithData(
+                ptr::null_mut(),
+                source.as_ptr().cast(),
+                source.len(),
+                None,
+            );
+            assert!(!provider.is_null());
+            let image = CGImageCreate(
+                2,
+                3,
+                8,
+                32,
+                12,
+                space,
+                (2 << 12) | 6, // 32-bit little-endian, skip first alpha: BGRx bytes.
+                provider,
+                ptr::null(),
+                false,
+                0,
+            );
+            CGDataProviderRelease(provider);
+            CGColorSpaceRelease(space);
+            assert!(!image.is_null());
+            let converted = copy_image(&*image);
+            CGImageRelease(image);
+            converted.unwrap()
+        };
+        assert_eq!((converted.width, converted.height), (2, 3));
+        assert_eq!(converted.rgba, expected);
+    }
+}

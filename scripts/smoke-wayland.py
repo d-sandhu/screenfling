@@ -14,6 +14,7 @@ import subprocess as sp
 import sys
 import tempfile
 import time
+import traceback
 import zlib
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -59,7 +60,9 @@ def session():
     (portal_config / 'portals.conf').write_text('[preferred]\ndefault=wlr\n')
     chooser = home / 'choose'
     chooser.write_text(f'#!/bin/sh\n[ -e {shlex.quote(str(home / "deny"))} ] && exit 1\nprintf "HEADLESS-1\\n"\n')
-    xdpw_config = home / 'portal.conf'
+    backend_config = home / 'config' / 'xdg-desktop-portal-wlr'
+    backend_config.mkdir()
+    xdpw_config = backend_config / 'config'
     xdpw_config.write_text(f'[screencast]\nchooser_type=simple\nchooser_cmd=/bin/sh {chooser}\nmax_fps=10\n')
     processes = []
     logs = []
@@ -93,6 +96,8 @@ def session():
         wait_for(lambda: (home / 'run' / 'pipewire-0').exists(), 'private PipeWire socket')
         start('wireplumber', 'wireplumber')
         start('portal-wlr', '/usr/libexec/xdg-desktop-portal-wlr', '--config', str(xdpw_config))
+        # Acquire the backend name first so D-Bus cannot race a second instance.
+        command('gdbus', 'wait', '--session', '--timeout', '15', 'org.freedesktop.impl.portal.desktop.wlr')
         start('portal', '/usr/libexec/xdg-desktop-portal', '--verbose')
         command('gdbus', 'wait', '--session', '--timeout', '15', 'org.freedesktop.portal.Desktop')
         sentinel = b'screenfling-wayland-cancel-preserves-clipboard'
@@ -115,7 +120,9 @@ def session():
             return found
         def key(title, value):
             window(title)
-            command('wtype', '-k', value)
+            print(f'Wayland input: {title} -> {value}', flush=True)
+            # Give the virtual keyboard time to publish its keymap and focus.
+            command('wtype', '-s', '200', '-k', value)
         window('ScreenFling')
         # A declined chooser must return control without replacing the clipboard.
         (home / 'deny').touch()
@@ -155,6 +162,12 @@ def session():
                   'copied_dimensions': dimensions}
         (ROOT / 'dist' / 'smoke-wayland.json').write_text(json.dumps(result, indent=2) + '\n')
         print(json.dumps(result, indent=2))
+    except BaseException:
+        (home / 'failure.log').write_text(traceback.format_exc())
+        if os.environ.get('SWAYSOCK'):
+            result = command('swaymsg', '-t', 'get_tree', '-r', check=False)
+            (home / 'tree.log').write_bytes(result.stdout + result.stderr)
+        raise
     finally:
         for process in reversed(processes):
             if process.poll() is None:
