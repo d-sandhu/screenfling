@@ -70,9 +70,8 @@ jobs:
         run: |
           exec > >(tee dist/wezterm-check.log) 2>&1
           package=wezterm-20240203-110809-5046fc22.Ubuntu22.04.deb
-          base=https://github.com/wezterm/wezterm/releases/download/20240203-110809-5046fc22
-          curl --fail --silent --show-error --location --retry 3 --retry-max-time 45 --connect-timeout 15 --max-time 90 "$base/$package" -o "$RUNNER_TEMP/$package"
-          curl --fail --silent --show-error --location --retry 3 --retry-max-time 45 --connect-timeout 15 --max-time 90 "$base/$package.sha256" -o "$RUNNER_TEMP/$package.sha256"
+          GH_TOKEN="${{ github.token }}" gh release download 20240203-110809-5046fc22 \
+            --repo wezterm/wezterm --pattern "$package" --pattern "$package.sha256" --dir "$RUNNER_TEMP"
           (cd "$RUNNER_TEMP" && sha256sum --check "$package.sha256")
           sudo apt-get install -y "$RUNNER_TEMP/$package"
           cargo build --release --locked --example check-wezterm --quiet
