@@ -17,9 +17,13 @@ fn main() -> Result<(), String> {
         return Err("Unknown clipboard check operation.".into());
     }
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    return check(operation);
+    {
+        check(operation)
+    }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    Err("Use the isolated X11/Wayland smoke scripts on Linux instead.".into())
+    {
+        Err("Use the isolated X11/Wayland smoke scripts on Linux instead.".into())
+    }
 }
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -29,8 +33,8 @@ fn check(operation: &str) -> Result<(), String> {
         3,
         2,
         vec![
-            1, 22, 133, 255, 44, 155, 66, 255, 177, 88, 9, 255, 110, 21, 232, 255, 43,
-            154, 65, 255, 176, 87, 198, 255,
+            1, 22, 133, 255, 44, 155, 66, 255, 177, 88, 9, 255, 110, 21, 232, 255, 43, 154, 65,
+            255, 176, 87, 198, 255,
         ],
     )?;
     let mut replacement = first.clone();
@@ -58,7 +62,9 @@ fn check(operation: &str) -> Result<(), String> {
             if clipboard.matches(&first) || !clipboard.matches(&replacement) {
                 return Err("Clipboard verification missed another process's replacement.".into());
             }
-            println!("Native clipboard: exact pixels read by another process; one changed pixel rejected after its writer exited.");
+            println!(
+                "Native clipboard: exact pixels read by another process; one changed pixel rejected after its writer exited."
+            );
         }
         _ => unreachable!(),
     }
