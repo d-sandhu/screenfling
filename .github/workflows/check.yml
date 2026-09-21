@@ -1,123 +1,91 @@
 name: Check
-
 on:
-  pull_request:
   push:
-    branches:
-      - main
-
+    branches: [main]
+  pull_request:
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: rust-${{ github.ref }}
   cancel-in-progress: true
-
 permissions:
   contents: read
-
 jobs:
   check:
     name: Check on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - macos-latest
-          - windows-latest
-
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      CARGO_TERM_COLOR: never
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version-file: .node-version
-          cache: npm
-
-      - run: npm install --global npm@11.19.0
-      - run: npm ci --no-audit
-      - run: npm audit --audit-level=high
-      - name: Prepare pinned headless WezTerm fixture (no installation or GUI)
-        if: runner.os == 'macOS'
-        run: node tools/acceptance/prepare-wezterm.cjs
-      - run: npm run check
-      - run: npm run build
-      - if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
-        # package:mac fixes identity to '-'. Never provide certificates or secrets here.
-        env:
-          CSC_FOR_PULL_REQUEST: "true"
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npx --no-install electron-builder --publish never --dir --mac --config.mac.identity=- --config.mac.hardenedRuntime=false
-      - name: Verify local ad-hoc macOS signatures (not signing trust or notarization)
-        if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Linux native libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils
+      - name: Test and build
         shell: bash
         run: |
-          APP="release/$(node -p 'process.arch === "arm64" ? "mac-arm64" : "mac"')/ScreenFling.app"
-          /usr/bin/codesign --verify --deep --strict "$APP"
-          /usr/bin/codesign --verify --strict "$APP/Contents/Resources/screenfling-selector-acl"
-          SIGNATURE="$(/usr/bin/codesign --display --verbose=2 "$APP" 2>&1)"
-          grep -qx 'Signature=adhoc' <<< "$SIGNATURE"
-          echo 'Ad-hoc bundle and helper signature verification passed. No Developer ID or notarization claim.'
-      - if: runner.os == 'Windows' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
-        name: Build Windows app and installer (not installed or native-accepted)
-        shell: pwsh
+          mkdir -p dist
+          cargo fmt --all --check
+          cargo clippy --release --locked --all-targets -- -D warnings
+          cargo test --release --locked --all-targets --quiet
+          cargo build --release --locked --quiet
+          python3 scripts/check-cli.py
+      - name: Native image clipboard
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        run: cargo run --release --locked --example check-native-clipboard -- --allow-clipboard-write
+      - name: Native desktop smoke
+        if: runner.os == 'Linux'
         run: |
-          npx --no-install electron-builder --publish never --win --x64
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $metadata = Get-Content package.json -Raw | ConvertFrom-Json
-          $installer = Get-Item -LiteralPath ("release/{0} Setup {1}.exe" -f $metadata.build.productName, $metadata.build.extraMetadata.version)
-          if ($installer.Length -eq 0) { throw "The Windows installer is empty." }
-          $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $($installer.Name)" | Set-Content release/SHA256SUMS -Encoding ascii
-      - run: npx --no-install playwright install chromium --only-shell
-      - name: Built renderer fixture acceptance (not native capture)
-        run: node --test tools/acceptance/ui.test.cjs
-      - name: Packaged macOS functional acceptance and timing observation
-        if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
+          xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
+          docker run --rm -v "$PWD:/workspace:ro" -v "$PWD/dist:/workspace/dist" \
+            -w /workspace -e HOST_UID="$(id -u)" ubuntu:26.04 bash -eu -c '
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                gcc libc6-dev libwayland-dev python3 sway swaybg pipewire wireplumber xdg-desktop-portal \
+                xdg-desktop-portal-wlr wtype wl-clipboard dbus-daemon libglib2.0-bin \
+                libgl1 libegl1 libgl1-mesa-dri libwayland-egl1 libwayland-cursor0 libdecor-0-0 \
+                libx11-6 libxrandr2 libxfixes3 libxi6 libxss1 libxtst6
+              useradd --no-create-home --uid "$HOST_UID" sf-check
+              dpkg-query -W sway xdg-desktop-portal-wlr pipewire
+              runuser -u sf-check -- python3 scripts/smoke-wayland.py
+            '
+      - name: Isolated WezTerm routing
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
         shell: bash
         run: |
-          node tools/acceptance/lifecycle.cjs --capture-workflow | tee release/lifecycle-observation.json
-          node tools/acceptance/codex-attachment.cjs | tee release/agent-observation.json
-          # Shared hosted runners are not the release reference Mac. Keep every
-          # timing result, including misses; only timing is observation-only here.
-          # Explicit bash retains pipefail so tee cannot hide functional failures.
-          node tools/acceptance/capture.cjs --capture-runs=200 --cancel-runs=200 --observe-timing | tee release/capture-observation.json
-          node <<'NODE'
-          const fs = require('node:fs');
-          const report = JSON.parse(fs.readFileSync('release/capture-observation.json', 'utf8'));
-          if (report.functionalStatus !== 'passed') throw new Error('Capture workflows failed.');
-          const gate = report.gateChecks.reviewAndExplicitCopyProcessingP95;
-          const message = `Hosted software p95: ${gate.observedMs} ms; target ${gate.targetMs} ms; observed pass: ${gate.passed}. Reference-Mac performance acceptance remains open.`;
-          console.log(`::${gate.passed === true ? 'notice' : 'warning'}::${message}`);
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n${message}\nRaw results are retained in capture-observation.json.\n`);
-          NODE
-      - name: Archive verified macOS test candidate (not a release)
-        if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
-        env:
-          SCREENFLING_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          exec > >(tee dist/wezterm-check.log) 2>&1
+          package=wezterm-20240203-110809-5046fc22.Ubuntu22.04.deb
+          GH_TOKEN="${{ github.token }}" gh release download 20240203-110809-5046fc22 \
+            --repo wezterm/wezterm --pattern "$package" --pattern "$package.sha256" --dir "$RUNNER_TEMP"
+          (cd "$RUNNER_TEMP" && sha256sum --check "$package.sha256")
+          sudo apt-get install -y "$RUNNER_TEMP/$package"
+          cargo build --release --locked --example check-wezterm --quiet
+          python3 scripts/check-wezterm.py
+      - name: Package and record build evidence
+        shell: bash
         run: |
-          node tools/acceptance/archive-macos.cjs
-          cp release/capture-observation.json release/candidate/capture-observation.json
-          cp release/agent-observation.json release/candidate/agent-observation.json
-          cp release/lifecycle-observation.json release/candidate/lifecycle-observation.json
-          (cd release/candidate && shasum -a 256 capture-observation.json agent-observation.json lifecycle-observation.json >> SHA256SUMS)
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: runner.os == 'macOS' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
+          python3 scripts/package.py
+          cp Cargo.lock dist/
+          cargo tree --locked --edges normal --color never > dist/dependencies.txt
+          ls -lh dist
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && hashFiles('dist/**') != '' }}
         with:
-          name: screenfling-macos-${{ runner.arch }}-${{ github.sha }}
-          path: release/candidate/
-          compression-level: 0
-          retention-days: 14
-          if-no-files-found: error
-      - name: Retain Windows app and installer (not native acceptance)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: runner.os == 'Windows' && (github.event_name == 'push' || startsWith(github.head_ref, 'release/'))
-        with:
-          name: screenfling-windows-x64-build-only-${{ github.sha }}
-          path: |
-            release/win-unpacked/
-            release/* Setup *.exe
-            release/SHA256SUMS
-          retention-days: 14
+          name: screenfling-${{ runner.os }}-${{ runner.arch }}
+          path: dist/
           if-no-files-found: error
