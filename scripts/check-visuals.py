@@ -72,6 +72,14 @@ def main():
         with (OUT / 'application.log').open('w+b') as log:
             try:
                 time.sleep(0.4)
+                # Compare to independently read display pixels, not the pre-display
+                # ImageMagick file (which may be quantized while installing a wallpaper).
+                reference = OUT / 'synthetic-reference.png'
+                command('import', '-window', 'root', str(reference))
+                expected = command('convert', str(reference), '-crop', '600x340+100+100', '+repage', '-depth', '8', 'rgba:-').stdout
+                generated = command('convert', str(fixture), '-crop', '600x340+100+100', '+repage', '-depth', '8', 'rgba:-').stdout
+                assert len(expected) == 600 * 340 * 4
+                assert len(set(expected)) > 32, 'The synthetic desktop did not render'
                 app = sp.Popen([str(ROOT / 'target/release/screenfling')], stdout=log, stderr=log)
 
                 def window(title, focus=True):
@@ -117,8 +125,22 @@ def main():
                     time.sleep(0.25)
 
                 shot('^ScreenFling$', 'idle', (1000, 740))
+                click('^ScreenFling$', 945, 42)
+                shot('^ScreenFling$', 'more-menu', (1000, 740))
+                key('^ScreenFling$', 'Escape')
+                window('^ScreenFling$')
+                unchanged()
                 key('^ScreenFling$', 'F10')
                 shot('^ScreenFling$', 'settings', (1000, 740))
+                # Read back saved preferences to prove native typing reached the field.
+                click('^ScreenFling$', 300, 275)
+                key('^ScreenFling$', 'ctrl+a')
+                typed_path = '/visual-fixture/not-installed-wezterm'
+                command('xdotool', 'type', '--clearmodifiers', '--delay', '5', typed_path)
+                click('^ScreenFling$', 110, 457)
+                settings_path = home / 'config' / 'screenfling' / 'settings.json'
+                assert json.loads(settings_path.read_text())['connection']['executable'] == typed_path, 'Native text input did not reach Settings'
+                unchanged()
                 resize('^ScreenFling$', 640, 480)
                 shot('^ScreenFling$', 'settings-compact', (640, 480))
                 key('^ScreenFling$', 'Escape')
@@ -127,7 +149,6 @@ def main():
                 key('^ScreenFling$', 'F8')
                 window('Select region$')
                 command('xdotool', 'mousemove', '100', '100', 'mousedown', '1', 'sleep', '0.15', 'mousemove', '700', '440')
-                # Do not move the pointer while the selection is held.
                 time.sleep(0.25)
                 command('import', '-window', window('Select region$'), str(OUT / 'selection.png'))
                 command('xdotool', 'mouseup', '1')
@@ -140,12 +161,11 @@ def main():
                 shot('Review crop$', 'review-native-scrolled', (1000, 740))
                 unchanged()
                 click('Review crop$', 120, 232)
-                # Type into the real note field; never replace the sentinel clipboard to paste text.
                 click('Review crop$', 700, 505)
-                command('xdotool', 'type', '--clearmodifiers', '--delay', '1', 'Check why the preview deployment is missing its API URL.')
+                command('xdotool', 'type', '--clearmodifiers', '--delay', '5', 'Check why the preview deployment is missing its API URL.')
+                click('Review crop$', 600, 145)
                 shot('Review crop$', 'review-note', (1000, 740))
                 unchanged()
-                # No configured socket: exercise the real discovery failure without a delivery.
                 click('Review crop$', 730, 232)
                 time.sleep(0.3)
                 shot('Review crop$', 'review-connection-error', (1000, 740))
@@ -156,7 +176,6 @@ def main():
                 unchanged()
                 resize('Review crop$', 640, 480)
                 shot('Review crop$', 'review-compact', (640, 480))
-                # Scroll through the stacked layout; the action area stays visible.
                 handle = window('Review crop$')
                 command('xdotool', 'mousemove', '--window', handle, '450', '280', 'click', '--repeat', '30', '--delay', '30', '5')
                 shot('Review crop$', 'review-compact-scrolled', (640, 480))
@@ -167,14 +186,15 @@ def main():
                 shot('Result$', 'copy-result', (1000, 740))
                 copied = command('xclip', '-selection', 'clipboard', '-out', '-target', 'image/png').stdout
                 assert copied.startswith(b'\x89PNG\r\n\x1a\n')
+                (OUT / 'synthetic-copied.png').write_bytes(copied)
                 decoded = sp.run(['convert', 'png:-', '-depth', '8', 'rgba:-'], input=copied,
                                  stdout=sp.PIPE, stderr=sp.PIPE, check=True, timeout=10).stdout
-                expected = command('convert', str(fixture), '-crop', '600x340+100+100', '+repage', '-depth', '8', 'rgba:-').stdout
-                assert decoded == expected, 'Preview mode, scrolling or note editing changed the copied pixels'
+                assert decoded == expected, f'Copied pixels differ from the rendered reference: lengths {len(decoded)}/{len(expected)}, first mismatch {next((i for i, (a, b) in enumerate(zip(decoded, expected)) if a != b), None)}'
                 command('convert', str(OUT / 'review.png'), '-quality', '88', str(OUT / 'preview.webp'))
                 report = {'source': command('git', 'rev-parse', 'HEAD').stdout.decode().strip(),
                           'scope': 'Actual release executable, isolated Xvfb/software OpenGL, synthetic deployment-error subject. No agent attachment claim.',
-                          'checks': ['settings back preserves review', 'selection/review/settings/resize preserve clipboard', 'preview modes and note editing preserve clipboard', 'copied pixels equal the original fixture crop', 'viewport dimensions and nonblank frames'],
+                          'wallpaper_file_matches_rendered_pixels': generated == expected,
+                          'checks': ['menu Escape dismisses only the menu', 'native text entry persists exact settings', 'settings back preserves review', 'selection/review/settings/resize preserve clipboard', 'preview modes and note editing preserve clipboard', 'copied pixels equal the independently read rendered fixture crop', 'viewport dimensions and nonblank frames'],
                           'screens': records}
                 (OUT / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2))
