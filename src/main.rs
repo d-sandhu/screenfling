@@ -64,7 +64,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
         .set_context_profile(sdl3::video::GLProfile::Core);
     video.gl_attr().set_context_version(3, 2);
     let mut window = video
-        .window("ScreenFling", 820, 680)
+        .window("ScreenFling", 1000, 740)
         .opengl()
         .high_pixel_density()
         .resizable()
@@ -84,6 +84,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
         })
     });
     let mut gui = egui_sdl3::EguiGlow::new(&window, glow, None, false);
+    app::configure(&gui.ctx);
     gui.ctx.set_request_repaint_callback(|info| {
         if info.delay.is_zero() {
             desktop::wake();
@@ -175,7 +176,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
             .unwrap_or(Duration::MAX);
         gui.state.handle_platform_output(output.platform_output);
         let primitives = gui.ctx.tessellate(output.shapes, output.pixels_per_point);
-        gui.clear([0.08, 0.08, 0.09, 1.0]);
+        gui.clear([12.0 / 255.0, 17.0 / 255.0, 27.0 / 255.0, 1.0]);
         gui.painter.paint_and_update_textures(
             gui.state.get_drawable_size().into(),
             output.pixels_per_point,
