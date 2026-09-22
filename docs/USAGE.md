@@ -11,17 +11,25 @@ Launch one copy of the application. Use its tray or global shortcut for later ca
 | Action | Control |
 | --- | --- |
 | Capture from outside the application | Ctrl+Shift+9; Command+Shift+9 on macOS. Wayland uses the portal's chosen binding. |
-| Start a capture from the idle/result window | Capture button or F8 |
-| Select a region | Drag on the frozen image |
+| Start a capture from the idle/result page | Capture region button or F8 |
+| Select a region | Drag on the frozen image; the selection shows its pixel dimensions |
 | Select the entire captured display | Space while selecting |
-| Copy the reviewed image | Copy image button or F6 in Review |
-| Cancel capture, selection, or review | Escape or Cancel |
+| Copy the reviewed image | Copy image button or F6 on the Review page |
+| Open or close Settings | Settings button or F10, outside selection or pending delivery |
+| Return from Settings without discarding the crop | Back to review or Escape |
+| Cancel capture, selection, or review | Escape or Cancel, outside Settings |
 
 Windows, macOS, and X11 capture the display under the pointer. Wayland asks you to choose one display in the system sharing dialog. ScreenFling obtains a frame through the granted PipeWire connection, then closes the sharing session. It does not save a portal screenshot or silently switch to X11 capture.
 
-Review shows only the crop that can be delivered. Copy includes the image, not the optional note. Nothing is copied just because you selected a region. Cancellation leaves the existing clipboard unchanged.
+## Review the image
 
-Close hides the application when a tray is available. Use Quit in the tray or application to exit. Without a tray, closing the idle window exits. On Linux, keep ScreenFling running until you paste: another application may need it to serve the clipboard image. Closing the selection window cancels selection first.
+Review shows only the crop that can be delivered. **Fit** preserves its aspect ratio within the preview. **1:1 pixels** displays the crop at its actual pixel size; scroll within the preview when it is larger than the available space. Neither mode changes the original pixels sent by Copy or Stage.
+
+The normal window puts the preview beside destination and note controls. Narrower windows stack these sections vertically. Scroll the content to reach the destination or note; Copy, Stage and Cancel remain in the bottom action area.
+
+Copy includes the image, not the optional note. Nothing is copied just because you selected a region, changed the preview mode, resized the window or visited Settings. Cancellation leaves the existing clipboard unchanged. Stage explains what is missing when it is disabled; Copy does not require a destination.
+
+Close hides the application when a tray is available. Use **More → Quit ScreenFling**, or Quit in the tray, to exit. Without a tray, closing the idle window exits. On Linux, keep ScreenFling running until you paste: another application may need it to serve the clipboard image. Closing the selection window cancels selection first.
 
 ## Configure Stage in WezTerm
 
@@ -43,9 +51,9 @@ Open ScreenFling Settings. Enter the absolute WezTerm executable path and this s
 
 Starting ScreenFling from the intended pane supplies its socket as an initial default. A saved connection takes precedence. Do not guess a socket or use a title as an address. If the socket variable is empty, check the local WezTerm session rather than substituting another instance.
 
-Confirm the checkbox only after checking that Ctrl+V attaches an image in that coding agent and does not submit. Save the connection. Capture and review an image, select **Refresh panes**, then select the intended pane by its title and explicit identifiers. Refresh again after restarting or reconnecting WezTerm.
+Confirm the checkbox only after checking that Ctrl+V attaches an image in that coding agent and does not submit. Select **Save connection**. Return to Review, select **Refresh panes**, then select the intended pane by its title and explicit identifiers. Refresh again after restarting or reconnecting WezTerm.
 
-Select **Stage — do not submit** once. Stage explicitly replaces the clipboard with the reviewed crop and writes Ctrl+V plus the one-line note to the selected pane. It never sends Enter. The write is not an attachment acknowledgment: **inspect the coding agent before submitting**.
+Select **Stage · no submit** once. Stage explicitly replaces the clipboard with the reviewed crop and writes Ctrl+V plus the one-line note to the selected pane. It never sends Enter. The write is not an attachment acknowledgment: **inspect the coding agent before submitting**.
 
 **Reveal destination** is a separate action after Stage. It activates the exact pane and tab. Desktop focus policy may still require switching to the WezTerm window. Stage itself does not activate a different window.
 
@@ -64,6 +72,8 @@ The `.app` is ad-hoc signed and verified during packaging, but is not notarized.
 For a Linux application-menu entry, install the binary on the PATH used by your desktop session. Put `dev.screenfling.ScreenFling.desktop` in `~/.local/share/applications/` and `dev.screenfling.ScreenFling.svg` in `~/.local/share/icons/hicolor/scalable/apps/`. If that session cannot find the executable, set the launcher's Exec entries to its absolute installed path. Do not add multiple autostart entries.
 
 ## Settings and recovery
+
+Settings is a separate page. Escape or Back returns to the current capture without discarding it. F6 and F8 do not copy or start a capture while this page is open. Each section saves explicitly; navigating back does not save unfinished edits.
 
 Only shortcut and connection preferences are saved, in `settings.json`:
 

@@ -91,6 +91,11 @@ def main():
                     command('xdotool', 'key', '--clearmodifiers', value)
                     time.sleep(0.2)
 
+                def click(title, x, y):
+                    handle = window(title)
+                    command('xdotool', 'mousemove', '--window', handle, str(x), str(y), 'click', '1')
+                    time.sleep(0.25)
+
                 def unchanged():
                     assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
 
@@ -128,6 +133,23 @@ def main():
                 command('xdotool', 'mouseup', '1')
                 shot('Review crop$', 'review', (1000, 740))
                 unchanged()
+                click('Review crop$', 195, 232)
+                shot('Review crop$', 'review-native-pixels', (1000, 740))
+                handle = window('Review crop$')
+                command('xdotool', 'mousemove', '--window', handle, '425', '400', 'click', '--repeat', '12', '--delay', '30', '5')
+                shot('Review crop$', 'review-native-scrolled', (1000, 740))
+                unchanged()
+                click('Review crop$', 120, 232)
+                # Type into the real note field; never replace the sentinel clipboard to paste text.
+                click('Review crop$', 700, 505)
+                command('xdotool', 'type', '--clearmodifiers', '--delay', '1', 'Check why the preview deployment is missing its API URL.')
+                shot('Review crop$', 'review-note', (1000, 740))
+                unchanged()
+                # No configured socket: exercise the real discovery failure without a delivery.
+                click('Review crop$', 730, 232)
+                time.sleep(0.3)
+                shot('Review crop$', 'review-connection-error', (1000, 740))
+                unchanged()
                 key('Review crop$', 'F10')
                 key('Review crop$', 'Escape')
                 window('Review crop$')
@@ -136,7 +158,7 @@ def main():
                 shot('Review crop$', 'review-compact', (640, 480))
                 # Scroll through the stacked layout; the action area stays visible.
                 handle = window('Review crop$')
-                command('xdotool', 'mousemove', '--window', handle, '450', '280', 'click', '--repeat', '6', '--delay', '80', '5')
+                command('xdotool', 'mousemove', '--window', handle, '450', '280', 'click', '--repeat', '30', '--delay', '30', '5')
                 shot('Review crop$', 'review-compact-scrolled', (640, 480))
                 unchanged()
                 resize('Review crop$', 1000, 740)
@@ -145,10 +167,14 @@ def main():
                 shot('Result$', 'copy-result', (1000, 740))
                 copied = command('xclip', '-selection', 'clipboard', '-out', '-target', 'image/png').stdout
                 assert copied.startswith(b'\x89PNG\r\n\x1a\n')
+                decoded = sp.run(['convert', 'png:-', '-depth', '8', 'rgba:-'], input=copied,
+                                 stdout=sp.PIPE, stderr=sp.PIPE, check=True, timeout=10).stdout
+                expected = command('convert', str(fixture), '-crop', '600x340+100+100', '+repage', '-depth', '8', 'rgba:-').stdout
+                assert decoded == expected, 'Preview mode, scrolling or note editing changed the copied pixels'
                 command('convert', str(OUT / 'review.png'), '-quality', '88', str(OUT / 'preview.webp'))
                 report = {'source': command('git', 'rev-parse', 'HEAD').stdout.decode().strip(),
                           'scope': 'Actual release executable, isolated Xvfb/software OpenGL, synthetic deployment-error subject. No agent attachment claim.',
-                          'checks': ['settings back preserves review', 'selection/review/settings/resize preserve clipboard', 'explicit copy returns PNG', 'viewport dimensions and nonblank frames'],
+                          'checks': ['settings back preserves review', 'selection/review/settings/resize preserve clipboard', 'preview modes and note editing preserve clipboard', 'copied pixels equal the original fixture crop', 'viewport dimensions and nonblank frames'],
                           'screens': records}
                 (OUT / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2))

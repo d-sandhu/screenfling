@@ -33,6 +33,7 @@ pub fn configure(ctx: &egui::Context) {
             .text_styles
             .insert(egui::TextStyle::Monospace, FontId::monospace(13.0));
         style.spacing.item_spacing = Vec2::new(10.0, 10.0);
+        style.spacing.scroll = egui::style::ScrollStyle::solid();
         style.spacing.button_padding = Vec2::new(14.0, 9.0);
         style.spacing.interact_size = Vec2::new(36.0, 36.0);
         style.visuals.panel_fill = BACKGROUND;
@@ -248,6 +249,7 @@ fn overview(app: &App, ui: &mut Ui) {
             );
             ui.add_space(16.0);
             card().show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
                 for (title, detail) in [
                     (
                         "01  Capture a region",
@@ -283,6 +285,7 @@ fn overview(app: &App, ui: &mut Ui) {
             heading(ui, "Operation result");
             ui.add_space(8.0);
             card().show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
                 ui.add(Label::new(RichText::new(&app.status).size(16.0)).wrap());
             });
             if let Some(destination) = &app.reveal {
@@ -322,6 +325,7 @@ fn overview(app: &App, ui: &mut Ui) {
             });
             ui.add_space(12.0);
             card().show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
                 muted(ui, &app.status);
             });
             if app.flow.phase() == Phase::Delivering {
@@ -370,6 +374,7 @@ fn preview(app: &mut App, ui: &mut Ui) {
     muted(ui, "Only this image can be delivered.");
     ui.add_space(4.0);
     card().show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("Preview").strong());
             ui.selectable_value(&mut app.preview_native, false, "Fit");
@@ -380,7 +385,7 @@ fn preview(app: &mut App, ui: &mut Ui) {
             let height = if ui.available_width() < 400.0 {
                 196.0
             } else {
-                304.0
+                240.0
             };
             Frame::new()
                 .fill(FIELD)
@@ -444,6 +449,7 @@ fn delivery(app: &mut App, ui: &mut Ui, action: &mut Action) {
     muted(ui, "Optional · local WezTerm only");
     ui.add_space(4.0);
     card().show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("Destination").strong());
             if ui.add_enabled(!app.discovering, Button::new(if app.discovering { "Finding panes…" } else { "Refresh panes" })).clicked() {
@@ -471,10 +477,12 @@ fn delivery(app: &mut App, ui: &mut Ui, action: &mut Action) {
     });
     ui.add_space(12.0);
     card().show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
         ui.label(RichText::new("Note").strong());
         muted(ui, "Optional · one line · included only with Stage");
         ui.add(
             egui::TextEdit::singleline(&mut app.note)
+                .margin(egui::Margin::symmetric(9, 8))
                 .id(egui::Id::new("stage-note"))
                 .desired_width(f32::INFINITY)
                 .char_limit(4096)
@@ -497,12 +505,13 @@ fn settings(app: &mut App, ui: &mut Ui, action: &mut Action) {
     );
     ui.add_space(8.0);
     card().show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
         ui.label(RichText::new("WezTerm connection").size(18.0).strong());
         muted(ui, "Choose a local coding agent using the same OS clipboard. Do not select a shell, SSH session or WSL agent.");
         ui.label("WezTerm executable · absolute path");
-        let executable = ui.add(egui::TextEdit::singleline(&mut app.settings.connection.executable).id(egui::Id::new("wezterm-executable")).desired_width(f32::INFINITY)).changed();
+        let executable = ui.add(egui::TextEdit::singleline(&mut app.settings.connection.executable).margin(egui::Margin::symmetric(9, 8)).id(egui::Id::new("wezterm-executable")).desired_width(f32::INFINITY)).changed();
         ui.label("Instance socket · exact WEZTERM_UNIX_SOCKET value");
-        let socket = ui.add(egui::TextEdit::singleline(&mut app.settings.connection.socket).id(egui::Id::new("wezterm-socket")).desired_width(f32::INFINITY)).changed();
+        let socket = ui.add(egui::TextEdit::singleline(&mut app.settings.connection.socket).margin(egui::Margin::symmetric(9, 8)).id(egui::Id::new("wezterm-socket")).desired_width(f32::INFINITY)).changed();
         if executable || socket {
             app.routes.clear();
             app.selected = None;
@@ -514,10 +523,11 @@ fn settings(app: &mut App, ui: &mut Ui, action: &mut Action) {
     });
     ui.add_space(12.0);
     card().show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
         ui.label(RichText::new("Capture shortcut").size(18.0).strong());
         ui.add_enabled_ui(!capture::is_wayland(), |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut app.settings.shortcut).desired_width(250.0));
+                ui.add(egui::TextEdit::singleline(&mut app.settings.shortcut).margin(egui::Margin::symmetric(9, 8)).desired_width(250.0));
                 if ui.button("Apply shortcut").clicked() { *action = Action::ApplyShortcut; }
             });
         });
