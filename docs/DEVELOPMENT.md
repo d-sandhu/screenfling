@@ -34,7 +34,9 @@ python3 scripts/check-cli.py
 
 The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, fractional-scale edge selections, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, private-directory ancestry, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation. Ordinary `cargo test` does not capture your screen or write your clipboard.
 
-Keep regression tests focused on behavior that could corrupt a crop, route to the wrong destination, submit input, or prevent recovery. Extend the existing native test runner; do not add a test framework just to add assertions.
+Presentation tests measure palette contrast, reserve non-overlapping action/content regions at normal and compact sizes, and check that returning from Settings preserves Review. They run with an in-memory egui context and do not perform delivery. See [visual design and verification](VISUALS.md) for the researched design decisions and actual-screen capture procedure.
+
+Keep regression tests focused on behavior that could corrupt a crop, route to the wrong destination, submit input, prevent recovery or hide a required action. Extend the existing native test runner; do not add a test framework just to add assertions.
 
 ### Isolated desktop and destination checks
 
@@ -66,7 +68,16 @@ python3 scripts/check-wezterm.py
 
 The script creates a private home, configuration, socket, and two synthetic raw-input panes. It never selects an existing session or reads the clipboard. It tests duplicate pane labels, exact Stage bytes, a wrong focus hint, rejected clipboard verification, separate Reveal, and a closed destination. Receiver bytes must contain only Ctrl+V and the intended note, never Enter, and the other pane must stay untouched. This checks terminal transport, **not coding-agent image attachment**.
 
-CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard, with Windows capture as described above. Linux runs the isolated desktop and WezTerm checks and audits the complete lockfile. Python assertions remain enabled. There are no publishing steps, ignored failures, or new runtime dependencies for these checks.
+For rendered visual evidence, install ImageMagick and DejaVu Sans in addition to the X11 fixture tools, then run:
+
+```sh
+xvfb-run -a -s '-screen 0 1280x800x24 -noreset' \
+  python3 scripts/check-visuals.py --isolated-xvfb
+```
+
+The script checks its disposable display before starting. It records the real release executable's idle, selection, review, settings and result pages, including compact/scrolled layouts, under `dist/visuals/`. Settings navigation and resizing must preserve the clipboard until explicit Copy. Inspect the images: dimension and nonblank checks alone cannot prove that a layout looks correct. No mock application is substituted.
+
+CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard, with Windows capture as described above. Linux runs the isolated desktop, WezTerm and visual checks and audits the complete lockfile. Python assertions remain enabled. There are no publishing steps, ignored failures, or new runtime dependencies for these checks.
 
 To repeat the dependency check:
 
@@ -84,6 +95,7 @@ CI records the RustSec report in `dist/audit.json`. Do not silence an advisory o
 | `src/main.rs`, `src/desktop.rs` | Window, event wakeups, tray, shortcut, and lifecycle |
 | `src/cli.rs` | Launch options checked before desktop initialization |
 | `src/app.rs` | User actions, crop review, and operation results |
+| `src/app_view.rs` | Theme, responsive presentation, preview controls and settings navigation; no delivery side effects |
 | `src/model.rs`, `src/frame.rs` | State, geometry, pixel validation, and no-submit bytes |
 | `src/capture/` | Windows, macOS, X11, and Wayland capture adapters |
 | `src/clipboard.rs` | Explicit image writes and read-only verification |
@@ -93,6 +105,8 @@ CI records the RustSec report in `dist/audit.json`. Do not silence an advisory o
 Only the current capture generation can advance through Capture → Select → Review → Delivering → Result. Selection and review do not deliver anything. The full desktop image is dropped after cropping; crop pixels and notes are dropped after completion or cancellation. An explicitly copied image may remain owned by the OS clipboard.
 
 The main thread handles the UI. A bounded worker handles capture and terminal operations and posts results through SDL. Late work must not change a new capture or leave a stale discovery request active. The event loop waits when idle. ScreenFling explicitly permits normal screensaver behavior instead of using SDL's default inhibition.
+
+The view returns the same explicit application actions. Fit and 1:1 preview modes change only presentation. Settings is a separate page; Back/Escape returns to the current capture, while each preference section still saves explicitly. The bottom action area stays outside the content scroll regions. Do not move clipboard or terminal side effects into drawing code.
 
 Stage checks the selected socket and pane/window/tab IDs. A short-lived AF_UNIX relay connects upstream before spawning the CLI and checks endpoint identity and the reviewed clipboard before upstream writes. There is no TCP listener, persistent relay service, focused-window fallback, or automatic delivery retry. The CLI neither loads user configuration nor starts an absent mux. Titles are labels, not addresses.
 
@@ -127,7 +141,7 @@ The native application is the official development baseline, not a physically ac
 
 Public signing, notarization, release approval, and publication are separate owner decisions. CI software rendering is not a hardware benchmark. Do not present a development package as a fully validated public release.
 
-The README preview is an actual Linux/Xvfb review window with a synthetic UI fixture. Only its surrounding virtual desktop was cropped away. It is not a confirmed agent-attachment demonstration.
+The README preview is an actual Linux/Xvfb review window containing a synthetic deployment-error subject. It is not a mock interface or a confirmed agent-attachment demonstration.
 
 ## Contributing
 
