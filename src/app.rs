@@ -598,13 +598,13 @@ impl App {
             ui.painter().rect_stroke(
                 selection,
                 0.0,
-                egui::Stroke::new(3.0, Color32::BLACK),
+                egui::Stroke::new(3.0_f32, Color32::BLACK),
                 egui::StrokeKind::Outside,
             );
             ui.painter().rect_stroke(
                 selection,
                 0.0,
-                egui::Stroke::new(1.5, Color32::WHITE),
+                egui::Stroke::new(1.5_f32, Color32::WHITE),
                 egui::StrokeKind::Inside,
             );
             view::selection_badge(

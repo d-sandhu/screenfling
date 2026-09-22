@@ -18,7 +18,7 @@ const ERROR: Color32 = Color32::from_rgb(255, 174, 185);
 
 pub fn configure(ctx: &egui::Context) {
     ctx.set_visuals(egui::Visuals::dark());
-    ctx.style_mut(|style| {
+    ctx.global_style_mut(|style| {
         for (kind, size) in [
             (egui::TextStyle::Heading, 22.0),
             (egui::TextStyle::Body, 14.0),
@@ -42,7 +42,7 @@ pub fn configure(ctx: &egui::Context) {
         style.visuals.hyperlink_color = ACCENT;
         style.visuals.error_fg_color = ERROR;
         style.visuals.selection.bg_fill = ACCENT_DARK;
-        style.visuals.selection.stroke = Stroke::new(2.0, ACCENT);
+        style.visuals.selection.stroke = Stroke::new(2.0_f32, ACCENT);
         for widget in [
             &mut style.visuals.widgets.noninteractive,
             &mut style.visuals.widgets.inactive,
@@ -50,17 +50,17 @@ pub fn configure(ctx: &egui::Context) {
             &mut style.visuals.widgets.active,
             &mut style.visuals.widgets.open,
         ] {
-            widget.fg_stroke = Stroke::new(1.0, TEXT);
+            widget.fg_stroke = Stroke::new(1.0_f32, TEXT);
             widget.bg_fill = SURFACE;
             widget.weak_bg_fill = SURFACE;
-            widget.bg_stroke = Stroke::new(1.0, BORDER);
+            widget.bg_stroke = Stroke::new(1.0_f32, BORDER);
             widget.corner_radius = 8.into();
         }
-        style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, LINE);
+        style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, LINE);
         style.visuals.widgets.hovered.bg_fill = ACCENT_DARK;
         style.visuals.widgets.hovered.weak_bg_fill = ACCENT_DARK;
-        style.visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, ACCENT);
-        style.visuals.widgets.active.bg_stroke = Stroke::new(2.0, ACCENT);
+        style.visuals.widgets.hovered.bg_stroke = Stroke::new(2.0_f32, ACCENT);
+        style.visuals.widgets.active.bg_stroke = Stroke::new(2.0_f32, ACCENT);
     });
 }
 
@@ -73,7 +73,7 @@ fn heading(ui: &mut Ui, text: &str) {
 fn card() -> Frame {
     Frame::new()
         .fill(SURFACE)
-        .stroke(Stroke::new(1.0, LINE))
+        .stroke(Stroke::new(1.0_f32, LINE))
         .corner_radius(12)
         .inner_margin(16)
 }
@@ -622,11 +622,11 @@ fn corner_mark(ui: &Ui, rect: Rect, color: Color32) {
     ] {
         ui.painter().line_segment(
             [corner + Vec2::new(dx * length, 0.0), corner],
-            Stroke::new(2.5, color),
+            Stroke::new(2.5_f32, color),
         );
         ui.painter().line_segment(
             [corner, corner + Vec2::new(0.0, dy * length)],
-            Stroke::new(2.5, color),
+            Stroke::new(2.5_f32, color),
         );
     }
 }
@@ -653,7 +653,7 @@ pub(super) fn selection_hint(ui: &Ui, screen: Rect) {
     ui.painter().rect_stroke(
         rect,
         10.0,
-        Stroke::new(1.0, BORDER),
+        Stroke::new(1.0_f32, BORDER),
         egui::StrokeKind::Inside,
     );
     ui.painter()
