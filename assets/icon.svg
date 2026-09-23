@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0d0f10"/>
-  <rect x="24" y="24" width="464" height="464" rx="92" fill="#171a1c" stroke="#63e6e2" stroke-opacity=".38" stroke-width="3"/>
-  <g fill="none" stroke="#63e6e2" stroke-width="32" stroke-linecap="square" stroke-linejoin="round">
-    <path d="M234 167H165Q135 167 135 197V222Q135 252 165 252H205Q235 252 235 282V315Q235 345 205 345H135"/>
-    <path d="M294 345V167H386M294 251H370"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 100 100">
+  <title>ScreenFling</title>
+  <g fill="#4eaaf5">
+    <path d="M17 42V17H42V29H29V42Z"/>
+    <path d="M58 17H83V42H71V29H58Z"/>
+    <path d="M83 58V83H58V71H71V58Z"/>
+    <path d="M42 83H17V58H29V71H42Z"/>
   </g>
 </svg>

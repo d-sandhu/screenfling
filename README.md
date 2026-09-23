@@ -1,78 +1,48 @@
-# ScreenFling
+<div align="center">
+  <h1><img src="assets/icon.svg" width="36" height="36" alt=""> ScreenFling</h1>
+  <p><strong>Show the problem. Keep your context.</strong><br>
+  Capture a screen region, review it, and bring it into your coding session.</p>
+  <p><strong>Rust</strong> · egui · SDL3 / OpenGL · Windows / macOS / Linux</p>
+  <p><a href="#try-it">Build & run</a> · <a href="#engineering">Engineering</a> · <a href="docs/USAGE.md">User guide</a></p>
+</div>
 
-**Capture what you see. Stage it in the right coding session. Keep working.**
+![ScreenFling reviewing a deployment-error screenshot, with a pixel preview, optional note, and Copy and Stage controls](docs/preview.webp)
 
-A native desktop tool that turns a screen region into a reviewed image you can copy or stage in an exact local WezTerm pane. No screenshot file to manage. No switching to a guessed terminal window. No automatic prompt submission.
+*The running native app with a synthetic deployment error. Stage becomes available after connection and destination setup.*
 
-![ScreenFling's native crop review window showing a clipped button in a synthetic example UI](docs/preview.webp)
+A screenshot often explains a bug faster than a paragraph. ScreenFling removes the file-saving and path-copying steps: review a crop, then copy it or stage it in the exact local WezTerm pane you choose. With several coding sessions open, the destination stays explicit.
 
-*Actual Linux application, reviewing a synthetic UI example. Stage stays disabled until a destination is selected.*
+## How it works
 
-## Why it exists
+1. **Capture.** Use the Capture button or global shortcut, then select a region on the frozen display.
+2. **Review.** Inspect the original crop with Fit or 1:1 preview. Add an optional note.
+3. **Copy or stage.** Copy the image for manual pasting, or Stage it in your selected WezTerm pane. Reveal that destination separately.
 
-A screenshot can explain a layout bug faster than a paragraph. Getting that screenshot into the correct coding session should not require saving a file, finding its path, or trusting whichever window has focus.
+Copy works without terminal setup. **Stage sends Ctrl+V and your note, never Enter.** It requires a local coding agent whose Ctrl+V binding attaches an image; inspect the attachment before submitting. See [Stage setup](docs/USAGE.md#configure-stage-in-wezterm).
 
-ScreenFling keeps the workflow small:
+## Engineering
 
-1. **Capture and select.** Use a global shortcut or the Capture button, then drag a region on the frozen image.
-2. **Review.** Check the exact crop and optionally add a one-line note.
-3. **Copy or Stage.** Copy the image for manual use, or request an image paste in one selected WezTerm pane. Reveal that pane separately and inspect the attachment before submitting.
+- **Native platform integration.** Rust, egui and SDL3 connect Windows capture, macOS ScreenCaptureKit, X11 and Wayland ScreenCast/PipeWire to one image model. The UI waits when idle; a bounded worker handles desktop operations. [Platform adapters](src/capture/) · [architecture](docs/DEVELOPMENT.md#code-map-and-boundaries)
+- **Original pixels throughout.** Selection maps to actual captured dimensions, including fractional display scaling. Resizing the preview never resizes the delivered crop. [Geometry and crop tests](src/model.rs)
+- **Explicit state transitions.** Capture generations prevent late background results from advancing an abandoned capture. Delivery requires the current reviewed image. [State machine](src/model.rs) · [application flow](src/app.rs)
+- **An exact destination.** Stage validates the connection and pane/window/tab IDs, then checks the clipboard against the reviewed image. Changed destinations and uncertain results never trigger a fallback or automatic retry. [Routing](src/wezterm.rs) · [relay](src/relay.rs)
 
-Copy works without WezTerm. Stage writes **Ctrl+V and the note, never Enter**. A successful write is not proof that the agent attached the image; the result says so.
+[CI](.github/workflows/check.yml) builds, lints, tests and packages all three platforms. Integration checks compare every crop pixel on X11 and on Wayland at 125% scale, verify native image clipboards, and use a real disposable WezTerm session to check routing and no-submit behavior. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
 
-## Build and run
+## Try it
 
-**Pre-release.** The native rewrite is introduced in [PR #64](https://github.com/d-sandhu/screenfling/pull/64). Adopting it on `main` makes Rust the development baseline; it does not publish a release. Physical desktop acceptance and public signing are still pending.
-
-Install Rust, CMake, and your platform's native compiler first. Linux also needs the development libraries listed in the [build guide](docs/DEVELOPMENT.md#build-prerequisites).
+Install **Rust, CMake and a native C/C++ toolchain**. Follow the [platform prerequisites](docs/DEVELOPMENT.md#build-prerequisites), including Linux development libraries and macOS 14+.
 
 ```sh
 git clone https://github.com/d-sandhu/screenfling.git
 cd screenfling
-```
-
-While PR #64 is open, select the native implementation with `git switch rust-egui-rewrite-2026-09-20`. After it is merged, stay on `main`. Then run:
-
-```sh
 cargo run --release --locked
 ```
 
-The default capture shortcut is **Ctrl+Shift+9**, or **Command+Shift+9** on macOS. Wayland's desktop portal controls its own binding. In the application, **F8** captures, **Space** selects the whole frozen image, **F6** copies a reviewed crop, and **Escape** cancels a capture.
+Start with **Capture region** or **F8**. The [user guide](docs/USAGE.md) covers shortcuts, permissions and WezTerm setup.
 
-For Stage, configure the local WezTerm executable and socket, confirm the agent's Ctrl+V image binding, and select a pane. The [usage guide](docs/USAGE.md) covers setup, packages, permissions, shortcuts, and recovery.
+## Status
 
-## Engineering choices
+**Pre-release.** Automated checks cover Windows x86-64, macOS Apple Silicon and Linux x86-64. Physical desktop testing, real coding-agent attachment, and public signing/notarization remain on the [release checklist](docs/DEVELOPMENT.md#remaining-release-acceptance).
 
-**Rust + egui + SDL3/OpenGL.** One desktop application process, with short-lived WezTerm command processes only when needed. No Electron, Chromium, WebView, JavaScript runtime, account, or cloud service.
-
-| Concern | Implementation and tradeoff |
-| --- | --- |
-| Native capture | Windows capture, macOS ScreenCaptureKit, X11, and Wayland ScreenCast/PipeWire. Wayland uses an explicit display-sharing chooser. |
-| Correct crops | Map the displayed selection to the actual captured pixel dimensions, not an assumed screen scale. |
-| Explicit delivery | Review is required. Copy and Stage are separate user actions. Cancel does not replace the clipboard. |
-| Exact routing | Pin the local socket and check pane/window/tab IDs. Titles are labels, never routing identities. |
-| Failure handling | Reject stale work and changed clipboard contents. Never fall back to focus or automatically retry uncertain delivery. |
-| Small runtime | Event-driven UI and a statically linked SDL video/tray subset. System graphics and desktop services remain dependencies. |
-
-Start with [`app.rs`](src/app.rs) for the workflow, [`model.rs`](src/model.rs) for its invariants, [`capture/`](src/capture) for platform code, and [`wezterm.rs`](src/wezterm.rs) / [`relay.rs`](src/relay.rs) for delivery. The [development guide](docs/DEVELOPMENT.md) explains the boundaries and checks.
-
-## Verification and limits
-
-```sh
-cargo fmt --all --check
-cargo clippy --release --locked --all-targets -- -D warnings
-cargo test --release --locked --all-targets
-cargo build --release --locked
-```
-
-[One CI workflow](https://github.com/d-sandhu/screenfling/actions/workflows/check.yml) builds and packages Windows x86-64, macOS Apple Silicon, and Linux x86-64. A small Rust suite checks the failure-prone logic. Windows additionally captures and crops a synthetic window. Native clipboard checks compare every pixel across processes on Windows/macOS. Linux checks exercise X11, headless Wayland with real portal/PipeWire services, and exact Stage/Reveal routing in a disposable WezTerm instance.
-
-These checks do **not** establish real-agent attachment, mixed-DPI behavior, permissions on physical desktops, or hardware performance. Build records and scoped measurements are evidence, not a promise of a particular startup time or RAM footprint.
-
-Stage currently targets **local WezTerm panes with the same OS clipboard**, not arbitrary terminals, browser chats, SSH hosts, or WSL agents. Screenshot pixels and notes are not saved by ScreenFling. Explicit clipboard delivery, clipboard managers, OS swap, and the destination application's storage are separate concerns.
-
-## Contributing and license
-
-Small, focused fixes are welcome. Include the platform, the observed failure, and a targeted regression check; avoid sharing private screenshots or full local socket paths. See the [development guide](docs/DEVELOPMENT.md#contributing).
-
-ScreenFling's code is [MIT licensed](LICENSE). Native packages include third-party notices. The previous Electron implementation is preserved in Git history, not maintained as a second runtime.
+[Development & contributing](docs/DEVELOPMENT.md) · [Visual design](docs/VISUALS.md) · [Report an issue](https://github.com/d-sandhu/screenfling/issues) · [MIT](LICENSE)

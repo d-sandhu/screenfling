@@ -111,24 +111,65 @@ mod linux {
             Err("The clipboard image is too large or empty.".into())
         } else {
             let bytes = unsafe { std::slice::from_raw_parts(pointer.cast::<u8>(), len) };
-            let mut reader =
-                image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Png);
-            let mut limits = image::Limits::default();
-            limits.max_alloc = Some(MAX_IMAGE_BYTES as u64);
-            limits.max_image_width = Some(16384);
-            limits.max_image_height = Some(16384);
-            reader.limits(limits);
-            reader
-                .decode()
-                .map_err(|_| "Could not verify the clipboard image.".into())
-                .and_then(|image| {
-                    let rgba = image.into_rgba8();
-                    Pixels::new(rgba.width(), rgba.height(), rgba.into_raw())
-                })
+            decode_png(bytes)
         };
         unsafe {
             SDL_free(pointer);
         }
         result
+    }
+    fn decode_png(bytes: &[u8]) -> Result<Pixels> {
+        let mut limits = image::Limits::default();
+        limits.max_alloc = Some(MAX_IMAGE_BYTES as u64);
+        limits.max_image_width = Some(16384);
+        limits.max_image_height = Some(16384);
+        let mut header =
+            image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Png);
+        header.limits(limits.clone());
+        let (width, height) = header
+            .into_dimensions()
+            .map_err(|_| "Could not verify the clipboard image.")?;
+        // Decoder limits apply to its source color type, not the later RGBA
+        // conversion. A grayscale image can otherwise expand fourfold before
+        // Pixels::new gets a chance to reject it. Inspect only the header first.
+        if (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|n| n.checked_mul(4))
+            .is_none_or(|n| n > MAX_IMAGE_BYTES)
+        {
+            return Err("The clipboard image exceeds the RGBA size limit.".into());
+        }
+        let mut reader =
+            image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Png);
+        reader.limits(limits);
+        let rgba = reader
+            .decode()
+            .map_err(|_| "Could not verify the clipboard image.")?
+            .into_rgba8();
+        Pixels::new(rgba.width(), rgba.height(), rgba.into_raw())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn png_expansion_is_rejected_before_pixel_decoding() {
+            // Valid 10000 x 10000 grayscale header, deliberately incomplete pixel
+            // data. Header inspection must reject 400 MB RGBA before decoding,
+            // not allocate a 100 MB grayscale buffer or merely fail on the payload.
+            let oversized = [
+                137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 39, 16, 0, 0,
+                39, 16, 8, 0, 0, 0, 0, 159, 37, 61, 251, 0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99,
+                96, 4, 0, 0, 3, 0, 2, 75, 245, 221, 234, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96,
+                130,
+            ];
+            assert_eq!(
+                decode_png(&oversized).unwrap_err(),
+                "The clipboard image exceeds the RGBA size limit."
+            );
+            let small = Pixels::new(1, 1, vec![12, 34, 56, 255]).unwrap();
+            assert_eq!(decode_png(&small.png().unwrap()).unwrap(), small);
+        }
     }
 }

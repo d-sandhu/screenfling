@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 35
     env:
       CARGO_TERM_COLOR: never
+      PYTHONOPTIMIZE: "0"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -28,12 +29,13 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
+          key: ${{ runner.os == 'Linux' && 'audit-0.22.2' || '' }}
           cache-on-failure: true
       - name: Linux native libraries
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils
+          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils x11-utils openbox wmctrl imagemagick fonts-dejavu-core
       - name: Test and build
         shell: bash
         run: |
@@ -43,6 +45,12 @@ jobs:
           cargo test --release --locked --all-targets --quiet
           cargo build --release --locked --quiet
           python3 scripts/check-cli.py
+      - name: Dependency advisories
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked --no-default-features
+          cargo audit --deny warnings --json | tee dist/audit.json
       - name: Native image clipboard
         if: runner.os != 'Linux'
         timeout-minutes: 3
@@ -50,13 +58,15 @@ jobs:
       - name: Native desktop smoke
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
+          # The Xvfb fixture must discard both inherited Wayland session hints.
+          WAYLAND_DISPLAY=screenfling-fixture WAYLAND_SOCKET=999999 \
+            xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
           docker run --rm -v "$PWD:/workspace:ro" -v "$PWD/dist:/workspace/dist" \
             -w /workspace -e HOST_UID="$(id -u)" ubuntu:26.04 bash -eu -c '
               apt-get update -qq
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
                 gcc libc6-dev libwayland-dev python3 sway swaybg pipewire wireplumber xdg-desktop-portal \
-                xdg-desktop-portal-wlr wtype wl-clipboard dbus-daemon libglib2.0-bin \
+                xdg-desktop-portal-wlr wtype wl-clipboard grim dbus-daemon libglib2.0-bin \
                 libgl1 libegl1 libgl1-mesa-dri libwayland-egl1 libwayland-cursor0 libdecor-0-0 \
                 libx11-6 libxrandr2 libxfixes3 libxi6 libxss1 libxtst6
               useradd --no-create-home --uid "$HOST_UID" sf-check
@@ -76,6 +86,10 @@ jobs:
           sudo apt-get install -y "$RUNNER_TEMP/$package"
           cargo build --release --locked --example check-wezterm --quiet
           python3 scripts/check-wezterm.py
+      - name: Native visual evidence
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-visuals.py --isolated-xvfb
       - name: Package and record build evidence
         shell: bash
         run: |
@@ -83,7 +97,7 @@ jobs:
           cp Cargo.lock dist/
           cargo tree --locked --edges normal --color never > dist/dependencies.txt
           ls -lh dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() && hashFiles('dist/**') != '' }}
         with:
           name: screenfling-${{ runner.os }}-${{ runner.arch }}

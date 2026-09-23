@@ -19,6 +19,9 @@ use std::{
     thread::JoinHandle,
     time::{Duration, Instant},
 };
+#[path = "app_view.rs"]
+mod view;
+pub use view::configure;
 
 pub enum Message {
     Capture,
@@ -59,6 +62,7 @@ pub struct App {
     full: Option<Captured>,
     crop: Option<Pixels>,
     texture: Option<TextureHandle>,
+    preview_native: bool,
     note: String,
     anchor: Option<Pos2>,
     selection: Option<Rect>,
@@ -94,6 +98,7 @@ impl App {
             full: None,
             crop: None,
             texture: None,
+            preview_native: false,
             note: String::new(),
             anchor: None,
             selection: None,
@@ -104,7 +109,7 @@ impl App {
             worker: None,
             cancelled: Arc::new(AtomicBool::new(false)),
             capture_due: None,
-            restore: [100, 100, 820, 680],
+            restore: [100, 100, 1000, 740],
             settings_open: false,
             discovering: false,
             revealing: false,
@@ -139,6 +144,7 @@ impl App {
         self.full = None;
         self.crop = None;
         self.texture = None;
+        self.preview_native = false;
         self.note.clear();
         self.anchor = None;
         self.selection = None;
@@ -349,6 +355,7 @@ impl App {
                 }
                 self.flow.start()?;
                 self.clear_images();
+                self.settings_open = false;
                 self.routes.clear();
                 self.selected = None;
                 self.reveal = None;
@@ -534,123 +541,7 @@ impl App {
         Ok(())
     }
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Action {
-        let mut action = Action::None;
-        let phase = self.flow.phase();
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            return if matches!(phase, Phase::Capturing | Phase::Selecting | Phase::Review) {
-                Action::Cancel
-            } else {
-                Action::Hide
-            };
-        }
-        if phase == Phase::Selecting {
-            return self.selection_ui(ui);
-        }
-        if matches!(phase, Phase::Idle | Phase::Result)
-            && ui.input(|i| i.key_pressed(egui::Key::F8))
-        {
-            return Action::Capture;
-        }
-        if phase == Phase::Review && ui.input(|i| i.key_pressed(egui::Key::F6)) {
-            return Action::Copy;
-        }
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-        egui::Frame::new().inner_margin(20.0).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("ScreenFling");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Quit").clicked() { action = Action::Quit; }
-                    if self.tray_available && ui.button("Hide").clicked() { action = Action::Hide; }
-                    if ui.selectable_label(self.settings_open, "Settings").clicked() { self.settings_open = !self.settings_open; }
-                });
-            });
-            ui.label("Capture what you see. Stage it in the right coding session."); ui.add_space(10.0);
-            if self.settings_open {
-                ui.add_enabled_ui(phase != Phase::Delivering, |ui| self.settings_ui(ui, &mut action));
-                ui.separator();
-            }
-            match phase {
-                Phase::Idle | Phase::Result => {
-                    if ui.add_sized([180.0, 42.0], egui::Button::new("Capture (F8)")).clicked() { action = Action::Capture; }
-                    ui.add_space(8.0); ui.label(&self.shortcut_status);
-                    if capture::is_wayland() { ui.label("Wayland: the desktop asks which display to share. Select your display, then drag a region on its frozen image."); }
-                    ui.add_space(16.0); ui.label(&self.status);
-                    if phase == Phase::Result && self.reveal.is_some() {
-                        ui.add_space(12.0);
-                        if ui.add_enabled(!self.revealing, egui::Button::new("Reveal destination")).clicked() { action = Action::Reveal; }
-                        ui.small("Reveal is separate from Stage. Inspect the coding agent to confirm that it attached the image.");
-                    }
-                }
-                Phase::Capturing | Phase::Delivering => {
-                    ui.spinner(); ui.label(&self.status);
-                    if phase == Phase::Capturing && ui.button("Cancel").clicked() { action = Action::Cancel; }
-                }
-                Phase::Review => {
-                    ui.heading("Review crop");
-                    if let (Some(texture), Some(crop)) = (&self.texture, &self.crop) {
-                        let available = Vec2::new(ui.available_width(), 240.0);
-                        ui.image((texture.id(), fit_size(texture.size_vec2(), available)));
-                        ui.small(format!("{} × {} pixels · only this crop can be delivered", crop.width, crop.height));
-                    }
-                    ui.add_space(8.0); ui.label("Optional note for Stage (one line)");
-                    ui.add(egui::TextEdit::singleline(&mut self.note).desired_width(f32::INFINITY).char_limit(4096).hint_text("What should the coding agent look at?"));
-                    if let Err(error) = model::stage_input(&self.note) { ui.colored_label(Color32::LIGHT_RED, error); }
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.add_sized([160.0, 36.0], egui::Button::new("Copy image (F6)")).clicked() { action = Action::Copy; }
-                        if ui.button("Cancel").clicked() { action = Action::Cancel; }
-                        ui.small("Copy does not include the note.");
-                    });
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        ui.label("Exact WezTerm destination");
-                        if ui.add_enabled(!self.discovering, egui::Button::new("Refresh panes")).clicked() { action = Action::Discover; }
-                    });
-                    egui::ScrollArea::vertical().max_height(110.0).show(ui, |ui| {
-                        for (index, destination) in self.routes.iter().enumerate() {
-                            let label = format!("{}  ·  pane {}  ·  window {}  ·  {}", destination.title, destination.pane_id, destination.window_id, destination.workspace);
-                            if ui.selectable_label(self.selected == Some(index), label).clicked() { self.selected = Some(index); }
-                        }
-                    });
-                    let can_stage = self.selected.is_some() && self.settings.connection.paste_confirmed && model::stage_input(&self.note).is_ok();
-                    if ui.add_enabled(can_stage, egui::Button::new("Stage — do not submit")).clicked() { action = Action::Stage; }
-                    ui.small("Stage copies this image, then requests an image paste in only the selected pane. It never presses Enter. Attachment remains unverified.");
-                    ui.add_space(6.0); ui.label(&self.status);
-                }
-                Phase::Selecting => {}
-            }
-        });
-        });
-        action
-    }
-    fn settings_ui(&mut self, ui: &mut egui::Ui, action: &mut Action) {
-        egui::CollapsingHeader::new("WezTerm connection").default_open(true).show(ui, |ui| {
-            ui.label("Absolute WezTerm executable path");
-            let changed_executable = ui.text_edit_singleline(&mut self.settings.connection.executable).changed();
-            ui.label("Exact WEZTERM_UNIX_SOCKET path from the intended WezTerm instance");
-            let changed_socket = ui.text_edit_singleline(&mut self.settings.connection.socket).changed();
-            if changed_executable || changed_socket { self.routes.clear(); self.selected = None; self.settings.connection.paste_confirmed = false; }
-            ui.checkbox(&mut self.settings.connection.paste_confirmed, "My coding agent uses Ctrl+V to attach a clipboard image (not to submit).");
-            ui.small("Only select a pane running that coding agent. A pane title is a label, not routing evidence. Copy works without this connection.");
-            if ui.button("Save connection settings").clicked() { *action = Action::SaveSettings; }
-        });
-        ui.horizontal(|ui| {
-            ui.label("Capture shortcut");
-            ui.add_enabled(
-                !capture::is_wayland(),
-                egui::TextEdit::singleline(&mut self.settings.shortcut).desired_width(210.0),
-            );
-            if ui
-                .add_enabled(!capture::is_wayland(), egui::Button::new("Apply shortcut"))
-                .clicked()
-            {
-                *action = Action::ApplyShortcut;
-            }
-        });
-        ui.small(&self.shortcut_status);
-        if capture::is_wayland() {
-            ui.small("Wayland global shortcuts are managed by the desktop portal. The Capture button is always available.");
-        }
+        view::show(self, ui)
     }
     fn selection_ui(&mut self, ui: &mut egui::Ui) -> Action {
         let (Some(texture), Some(full)) = (&self.texture, &self.full) else {
@@ -668,11 +559,13 @@ impl App {
             Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
             Color32::WHITE,
         );
-        let response = ui.interact(
-            image_rect,
-            ui.id().with(("frozen-region", self.flow.generation())),
-            Sense::drag(),
-        );
+        let response = ui
+            .interact(
+                image_rect,
+                ui.id().with(("frozen-region", self.flow.generation())),
+                Sense::drag(),
+            )
+            .on_hover_cursor(egui::CursorIcon::Crosshair);
         if response.drag_started() {
             self.anchor = ui
                 .input(|i| i.pointer.press_origin())
@@ -701,37 +594,30 @@ impl App {
             ] {
                 ui.painter().rect_filled(rect, 0.0, dim);
             }
+            // The two-tone edge remains visible on both light and dark captures.
             ui.painter().rect_stroke(
                 selection,
                 0.0,
-                egui::Stroke::new(2.0_f32, Color32::WHITE),
+                egui::Stroke::new(3.0_f32, Color32::BLACK),
+                egui::StrokeKind::Outside,
+            );
+            ui.painter().rect_stroke(
+                selection,
+                0.0,
+                egui::Stroke::new(1.5_f32, Color32::WHITE),
                 egui::StrokeKind::Inside,
             );
+            view::selection_badge(
+                ui,
+                selection,
+                image_rect,
+                [full.pixels.width, full.pixels.height],
+            );
             if response.drag_stopped() && selection.width() > 0.0 && selection.height() > 0.0 {
-                return Action::Crop(
-                    [
-                        (selection.min.x - image_rect.min.x) as f64,
-                        (selection.min.y - image_rect.min.y) as f64,
-                        selection.width() as f64,
-                        selection.height() as f64,
-                    ],
-                    [image_rect.width() as f64, image_rect.height() as f64],
-                );
+                return crop_action(selection, image_rect);
             }
         }
-        let label_rect = Rect::from_center_size(
-            Pos2::new(screen.center().x, screen.min.y + 32.0),
-            Vec2::new(440.0, 38.0),
-        );
-        ui.painter()
-            .rect_filled(label_rect, 8.0, Color32::from_black_alpha(220));
-        ui.painter().text(
-            label_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "Drag a region  ·  Space: whole display  ·  Esc: cancel",
-            egui::FontId::proportional(15.0),
-            Color32::WHITE,
-        );
+        view::selection_hint(ui, screen);
         if ui.input(|i| i.key_pressed(egui::Key::Space)) {
             return Action::Crop(
                 [
@@ -753,9 +639,44 @@ fn fit_size(source: Vec2, available: Vec2) -> Vec2 {
             .clamp(0.001, 1.0)
 }
 
+fn crop_action(selection: Rect, image: Rect) -> Action {
+    // Widen coordinates before subtracting: rounded f32 widths can put a valid
+    // edge selection outside the image when map_crop adds its f64 x and width.
+    Action::Crop(
+        [
+            selection.min.x as f64 - image.min.x as f64,
+            selection.min.y as f64 - image.min.y as f64,
+            selection.max.x as f64 - selection.min.x as f64,
+            selection.max.y as f64 - selection.min.y as f64,
+        ],
+        [
+            image.max.x as f64 - image.min.x as f64,
+            image.max.y as f64 - image.min.y as f64,
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fractional_scale_edge_selection_stays_in_bounds() {
+        let image = Rect::from_min_max(Pos2::ZERO, Pos2::new(640.0, 400.0));
+        let selection = Rect::from_min_max(Pos2::new(4.0 / 3.0, 2.0 / 3.0), image.max);
+        let Action::Crop(rect, size) = crop_action(selection, image) else {
+            panic!("Expected a crop action");
+        };
+        assert_eq!(
+            model::map_crop(rect, size, [960, 600]).unwrap(),
+            model::Crop {
+                x: 2,
+                y: 1,
+                width: 958,
+                height: 599,
+            }
+        );
+    }
 
     #[test]
     fn discovery_recovers_after_settings_change_and_ignores_old_capture() {
