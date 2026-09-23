@@ -67,6 +67,12 @@ pub fn geometry(window: &Window) -> [i32; 4] {
 pub fn overlay(window: &mut Window, bounds: Option<[i32; 4]>) -> Result<()> {
     use sdl3_sys::video::*;
     unsafe {
+        // Hide preserves pending maximized/minimized/fullscreen flags. Clear them
+        // before placement: a maximized window ignores explicit size/position,
+        // and a minimized window must not hide the frozen selection on show.
+        if !SDL_SetWindowFullscreen(window.raw(), false) || !SDL_RestoreWindow(window.raw()) {
+            return Err("Could not restore the capture window. Nothing was copied.".into());
+        }
         SDL_SetWindowMinimumSize(window.raw(), 1, 1);
         SDL_SetWindowResizable(window.raw(), false);
         SDL_SetWindowBordered(window.raw(), false);
@@ -76,6 +82,7 @@ pub fn overlay(window: &mut Window, bounds: Option<[i32; 4]>) -> Result<()> {
                 || height <= 0
                 || !SDL_SetWindowPosition(window.raw(), x, y)
                 || !SDL_SetWindowSize(window.raw(), width, height)
+                || !SDL_SyncWindow(window.raw())
             {
                 return Err(
                     "Could not place the frozen capture on its display. Nothing was copied.".into(),
@@ -93,6 +100,9 @@ pub fn restore(window: &mut Window, [x, y, width, height]: [i32; 4]) {
     use sdl3_sys::video::*;
     unsafe {
         SDL_SetWindowFullscreen(window.raw(), false);
+        // Review and capture errors return to a visible, normally sized window,
+        // even when a global shortcut started capture from a minimized window.
+        SDL_RestoreWindow(window.raw());
         SDL_SetWindowAlwaysOnTop(window.raw(), false);
         SDL_SetWindowBordered(window.raw(), true);
         SDL_SetWindowResizable(window.raw(), true);

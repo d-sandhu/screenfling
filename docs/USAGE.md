@@ -23,6 +23,8 @@ Windows, macOS, and X11 capture the display under the pointer. Wayland asks you 
 
 ## Review the image
 
+Capture restores a minimized or maximized window for selection. Review and errors return to a normal visible window.
+
 Review shows only the crop that can be delivered. **Fit** preserves its aspect ratio within the preview. **1:1 pixels** displays the crop at its actual pixel size; scroll within the preview when it is larger than the available space. Neither mode changes the original pixels sent by Copy or Stage.
 
 The normal window puts the preview beside destination and note controls. Narrower windows stack these sections vertically. Scroll the content to reach the destination or note; Copy, Stage and Cancel remain in the bottom action area.
@@ -95,7 +97,7 @@ If a connection changes, a pane closes or moves, or clipboard verification fails
 
 CI artifacts contain the native archive, `build.json`, `SHA256SUMS`, and the locked dependency inventory. Compare the SHA-256 of the **inner native archive**, not the outer GitHub artifact ZIP, with the build record. Use `sha256sum` on Linux, `shasum -a 256` on macOS, or `Get-FileHash -Algorithm SHA256` in PowerShell.
 
-A matching checksum checks file integrity, not publisher identity. Unsigned/ad-hoc-signed packages are still development builds. The record identifies the checked-out source commit and the packaged executable; the macOS executable hash is taken after ad-hoc signing.
+A matching checksum checks file integrity, not publisher identity. Unsigned/ad-hoc-signed packages are still development builds. The record identifies the checked-out source commit and the packaged executable; the macOS executable hash is taken after ad-hoc signing. It also records linked libraries and a packaged CLI launch check, not clean-machine desktop acceptance.
 
 ScreenFling does not upload captures or save screenshot/notes to temporary files. Explicit Copy/Stage makes the image available to the OS clipboard and other applications. Clipboard history, OS swap, and agent storage are outside its control.
 

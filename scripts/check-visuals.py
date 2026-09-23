@@ -86,7 +86,7 @@ def main():
                     deadline = time.monotonic() + 15
                     while time.monotonic() < deadline:
                         assert app.poll() is None, 'Application exited during visual check'
-                        result = command('xdotool', 'search', '--onlyvisible', '--pid', str(app.pid), '--name', title, check=False)
+                        result = command('xdotool', 'search', '--all', '--onlyvisible', '--pid', str(app.pid), '--name', title, check=False)
                         if result.returncode == 0 and result.stdout.strip():
                             handle = result.stdout.splitlines()[0].decode()
                             if not focus or command('xdotool', 'windowfocus', '--sync', handle, check=False).returncode == 0:

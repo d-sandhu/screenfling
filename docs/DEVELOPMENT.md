@@ -32,7 +32,7 @@ cargo build --release --locked
 python3 scripts/check-cli.py
 ```
 
-The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, fractional-scale edge selections, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, private-directory ancestry, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation. Ordinary `cargo test` does not capture your screen or write your clipboard.
+The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, fractional-scale edge selections, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, private-directory ancestry, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation, and PNG-to-RGBA expansion bounds before pixel decoding. Ordinary `cargo test` does not capture your screen or write your clipboard.
 
 Presentation tests measure palette contrast, reserve non-overlapping action/content regions at normal and compact sizes, and check that returning from Settings preserves Review. They run with an in-memory egui context and do not perform delivery. See [visual design and verification](VISUALS.md) for the researched design decisions and actual-screen capture procedure.
 
@@ -43,13 +43,13 @@ Keep regression tests focused on behavior that could corrupt a crop, route to th
 For the synthetic X11 workflow:
 
 ```sh
-sudo apt-get install xvfb xdotool xclip x11-xserver-utils libgl1-mesa-dri
+sudo apt-get install xvfb xdotool xclip x11-xserver-utils x11-utils openbox wmctrl libgl1-mesa-dri
 xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
 ```
 
-This checks the global shortcut, selection/review cancellation, and an external client's PNG clipboard read. Every pixel of an asymmetric crop is compared with the frozen desktop after the live desktop changes. A wrong crop origin, row flip, changed channel, or accidental live-frame copy fails the check. The fixture clears inherited Wayland display/socket hints; CI deliberately supplies both to exercise that isolation.
+The fixture starts Openbox inside Xvfb with disposable settings and no tray service. It checks overlay bounds after maximization, the global shortcut from a minimized window, selection/review cancellation, clean no-tray close, and an external client's PNG clipboard read. Every pixel of an asymmetric crop is compared with the frozen desktop after the live desktop changes. A wrong crop origin, row flip, changed channel, or accidental live-frame copy fails the check. The fixture clears inherited Wayland display/socket hints; CI deliberately supplies both to exercise that isolation.
 
-The Wayland smoke uses a private headless Sway session with real ScreenCast/PipeWire services. It rejects and accepts the display chooser, checks cancellation and recovery, and compares the copied crop with the frozen frame. CI runs it in Ubuntu 26.04 because that fixture's portal supports headless shared-memory capture; the release executable is built on Ubuntu 24.04. The container command and prerequisites are in `.github/workflows/check.yml`. It does not use your normal desktop, D-Bus, PipeWire, settings, or clipboard.
+The Wayland smoke uses a private headless Sway session at 125% scale with real ScreenCast/PipeWire services. It waits for known wallpaper anchors, then reads an independent reference through grim before ScreenFling starts; the copied crop must match every rendered pixel even after the live wallpaper changes. It rejects and accepts the display chooser, checks cancellation and recovery, and compares the copied crop with the frozen frame. CI runs it in Ubuntu 26.04 because that fixture's portal supports headless shared-memory capture; the release executable is built on Ubuntu 24.04. The container command and prerequisites are in `.github/workflows/check.yml`. It does not use your normal desktop, D-Bus, PipeWire, settings, or clipboard.
 
 The Windows/macOS clipboard check uses the production clipboard module. On Windows, it also draws a synthetic window, captures its monitor through the production capture adapter, and verifies the crop before copying it. **It accesses the Windows desktop and replaces the system clipboard with synthetic images. Run it only on a disposable desktop:**
 
@@ -129,7 +129,9 @@ Windows gets a portable ZIP. macOS gets an ad-hoc-signed `.app` archive, checked
 
 Some crates omit their upstream license files. `assets/license-overrides.json` records reviewed texts, source blob IDs, and exact package versions; recheck these on dependency updates. The notice inventory includes build-time dependencies and is not a claim that every listed crate is linked into the executable.
 
-Packaging verifies archive members and executable bytes, then writes `build.json` and `SHA256SUMS` with source identity, hashes, sizes, and signing status. On macOS, the executable hash describes the signed copy in the app. Cargo has `publish = false`; no workflow creates a tag or release.
+Packaging inspects native link imports using MSVC `dumpbin`, macOS `otool`, or Linux `ldd`. It rejects a dynamic SDL dependency, non-system libraries, and Windows dynamic C/C++ runtime imports. It also runs the staged executable's `--version` outside the checkout with no display connection. These loader checks do not exercise SDL's optional dynamically loaded desktop integrations or replace clean-machine GUI acceptance.
+
+Packaging verifies archive members and executable bytes, then writes `build.json` and `SHA256SUMS` with source identity, hashes, sizes, linked libraries, CLI verification, and signing status. On macOS, the executable hash describes the signed copy in the app. Cargo has `publish = false`; no workflow creates a tag or release.
 
 ## Remaining release acceptance
 
