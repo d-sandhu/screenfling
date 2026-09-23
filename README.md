@@ -1,8 +1,7 @@
 <div align="center">
-  <img src="assets/icon.svg" width="56" height="56" alt="">
-  <h1>ScreenFling</h1>
-  <p><strong>Show the problem. Keep your context.</strong></p>
-  <p>Capture a screen region, review it, and bring it into your coding session.</p>
+  <h1><img src="assets/icon.svg" width="36" height="36" alt=""> ScreenFling</h1>
+  <p><strong>Show the problem. Keep your context.</strong><br>
+  Capture a screen region, review it, and bring it into your coding session.</p>
   <p><strong>Rust</strong> · egui · SDL3 / OpenGL · Windows / macOS / Linux</p>
   <p><a href="#try-it">Build & run</a> · <a href="#engineering">Engineering</a> · <a href="docs/USAGE.md">User guide</a></p>
 </div>
