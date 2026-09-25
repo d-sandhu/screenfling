@@ -21,7 +21,7 @@ fn main() -> Result<(), String> {
             std::fs::read(entry.path().join("cmdline")).is_ok_and(|bytes| {
                 let args: Vec<_> = bytes.split(|b| *b == 0).collect();
                 args.first().is_some_and(|p| p.ends_with(b"Xvfb"))
-                    && args.iter().any(|p| *p == display.as_bytes())
+                    && args.contains(&display.as_bytes())
             })
         });
     if !private {

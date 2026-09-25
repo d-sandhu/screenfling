@@ -203,6 +203,12 @@ impl App {
                 self.send_text = None;
                 let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
                 self.status = result.unwrap_or_else(|error| error);
+                if let Some(path) = &self.saved_capture {
+                    self.status.push_str(&format!(
+                        "\n\nSaved PNG: {}\nThe file stays on this computer until you delete it.",
+                        path.display()
+                    ));
+                }
                 self.clear_images();
             }
         }
@@ -237,7 +243,7 @@ impl App {
             Phase::Capturing | Phase::Selecting | Phase::Review
         ) {
             self.cancel(window);
-            self.status = "The display layout changed. The capture was cancelled; the clipboard was not changed.".into();
+            self.status = "The display layout changed. The capture was cancelled.".into();
         }
     }
     fn cancel(&mut self, window: &mut Window) {
@@ -248,7 +254,7 @@ impl App {
             self.routes.clear();
             self.selected = None;
             self.discovering = false;
-            self.status = "Capture cancelled. The clipboard was not changed.".into();
+            self.status = "Capture cancelled. No further delivery was requested.".into();
             self.normal_window(window);
         }
     }

@@ -98,13 +98,14 @@ CI records the RustSec report in `dist/audit.json`. Do not silence an advisory o
 | `src/app_view.rs` | Theme, responsive presentation, preview controls and settings navigation; no delivery side effects |
 | `src/model.rs`, `src/frame.rs` | State, geometry, pixel validation, and no-submit bytes |
 | `src/capture/` | Windows, macOS, X11, and Wayland capture adapters |
-| `src/clipboard.rs` | Explicit image writes and read-only verification |
+| `src/clipboard.rs` | Explicit image/text writes and read-only verification |
+| `src/send.rs`, `src/send/`, `src/handoff.rs` | Native window selection/paste and explicitly saved PNG paths |
 | `src/wezterm.rs`, `src/trusted.rs`, `src/relay.rs` | Exact destinations, endpoint identity, and bounded CLI transport |
 | `src/settings.rs`, `src/portal_shortcut.rs` | Local preferences and the Wayland shortcut session |
 
-Only the current capture generation can advance through Capture → Select → Review → Delivering → Result. Selection and review do not deliver anything. The full desktop image is dropped after cropping; crop pixels and notes are dropped after completion or cancellation. An explicitly copied image may remain owned by the OS clipboard.
+Only the current capture generation can advance through Capture → Select → Review → Delivering → Result. Selection and review do not deliver anything. The full desktop image is dropped after cropping; in-memory crop pixels and notes are dropped after completion or cancellation. Explicitly saved PNGs remain until deleted. An explicitly copied image may remain owned by the OS clipboard.
 
-The main thread handles the UI. A bounded worker handles capture and terminal operations and posts results through SDL. Late work must not change a new capture or leave a stale discovery request active. The event loop waits when idle. ScreenFling explicitly permits normal screensaver behavior instead of using SDL's default inhibition.
+The main thread handles the UI. A bounded worker handles capture and advanced WezTerm operations; native window control stays on the main thread and a short deadline governs focus polling. The worker and posts results through SDL. Late work must not change a new capture or leave a stale discovery request active. The event loop waits when idle. ScreenFling explicitly permits normal screensaver behavior instead of using SDL's default inhibition.
 
 The view returns the same explicit application actions. Fit and 1:1 preview modes change only presentation. Settings is a separate page; Back/Escape returns to the current capture, while each preference section still saves explicitly. The bottom action area stays outside the content scroll regions. Do not move clipboard or terminal side effects into drawing code.
 

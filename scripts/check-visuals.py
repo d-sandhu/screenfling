@@ -133,11 +133,11 @@ def main():
                 key('^ScreenFling$', 'F10')
                 shot('^ScreenFling$', 'settings', (1000, 740))
                 # The primary settings page exposes only the capture shortcut.
-                click('^ScreenFling$', 200, 245)
+                click('^ScreenFling$', 200, 220)
                 key('^ScreenFling$', 'ctrl+a')
                 typed_shortcut = 'Ctrl+Shift+8'
                 command('xdotool', 'type', '--clearmodifiers', '--delay', '5', typed_shortcut)
-                click('^ScreenFling$', 370, 245)
+                click('^ScreenFling$', 370, 220)
                 settings_path = home / 'config' / 'screenfling' / 'settings.json'
                 assert json.loads(settings_path.read_text())['shortcut'] == typed_shortcut, 'Native text input did not reach Settings'
                 unchanged()

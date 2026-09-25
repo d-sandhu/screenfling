@@ -374,7 +374,7 @@ fn review(app: &mut App, ui: &mut Ui, action: &mut Action) {
 }
 fn preview(app: &mut App, ui: &mut Ui) {
     heading(ui, "Review crop");
-    muted(ui, "This is the image you will copy.");
+    muted(ui, "Check the image before sending.");
     ui.add_space(4.0);
     card().show(ui, |ui| {
         ui.set_min_width(ui.available_width());
@@ -512,11 +512,16 @@ fn window_picker(app: &mut App, ui: &mut Ui, action: &mut Action) {
     ui.add_space(6.0);
     card().show(ui, |ui| {
         ui.set_min_width(ui.available_width());
-        ui.add(
-            egui::TextEdit::singleline(&mut app.window_filter)
-                .hint_text("Find an app or window…")
-                .desired_width(f32::INFINITY),
-        );
+        if ui
+            .add(
+                egui::TextEdit::singleline(&mut app.window_filter)
+                    .hint_text("Find an app or window…")
+                    .desired_width(f32::INFINITY),
+            )
+            .changed()
+        {
+            app.selected_window = None;
+        }
         let query = app.window_filter.to_lowercase();
         egui::ScrollArea::vertical()
             .id_salt("session-windows")
@@ -530,9 +535,13 @@ fn window_picker(app: &mut App, ui: &mut Ui, action: &mut Action) {
                     if ui
                         .add_sized(
                             [ui.available_width(), 0.0],
-                            Button::new(label)
-                                .wrap()
-                                .selected(app.selected_window == Some(index)),
+                            Button::new(if app.selected_window == Some(index) {
+                                format!("Selected · {label}")
+                            } else {
+                                label
+                            })
+                            .wrap()
+                            .selected(app.selected_window == Some(index)),
                         )
                         .clicked()
                     {

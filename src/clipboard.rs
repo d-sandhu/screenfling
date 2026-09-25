@@ -1,4 +1,4 @@
-//! Image clipboard writes happen only through explicit Copy or Stage actions.
+//! Clipboard writes happen only through explicit Copy, Send or advanced Stage actions.
 use screenfling::model::{Pixels, Result};
 
 #[cfg(not(target_os = "linux"))]
