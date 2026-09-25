@@ -190,6 +190,12 @@ fn header(app: &mut App, ui: &mut Ui, action: &mut Action) {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.add_enabled_ui(app.flow.phase() != Phase::Delivering, |ui| {
                 ui.menu_button("More", |ui| {
+                    if app.flow.phase() == Phase::Review
+                        && ui.button("Save PNG and copy path").clicked()
+                    {
+                        *action = Action::CopyPath;
+                        ui.close();
+                    }
                     if ui
                         .checkbox(&mut app.advanced_open, "WezTerm integration")
                         .changed()
@@ -251,13 +257,13 @@ fn overview(app: &App, ui: &mut Ui) {
             ui.add_space(6.0);
             muted(
                 ui,
-                "Capture a region, choose your coding-session window, and send. Keep the terminal you already use.",
+                "Capture a region and paste the image into your coding agent.",
             );
             ui.add_space(16.0);
             card().show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.label(RichText::new("Capture / review / send").strong());
-                muted(ui, "ScreenFling pastes a local image path into your selected window. You stay in control of submitting. Copy is always available too.");
+                muted(ui, "Send to a detected agent, or copy the image and press Ctrl+V there. You decide when to submit.");
             });
             ui.add_space(12.0);
             muted(ui, &app.shortcut_status);
@@ -502,37 +508,21 @@ fn delivery(app: &mut App, ui: &mut Ui, action: &mut Action) {
     muted(ui, &app.status);
 }
 fn window_picker(app: &mut App, ui: &mut Ui, action: &mut Action) {
-    heading(ui, "Send to your session");
+    heading(ui, "Detected coding agents");
     ui.horizontal_wrapped(|ui| {
-        muted(ui, "Choose its window.");
-        if ui.button("Refresh windows").clicked() {
+        if ui.button("Refresh sessions").clicked() {
             *action = Action::ChooseWindow;
         }
     });
     ui.add_space(6.0);
     card().show(ui, |ui| {
         ui.set_min_width(ui.available_width());
-        if ui
-            .add(
-                egui::TextEdit::singleline(&mut app.window_filter)
-                    .margin(egui::Margin::symmetric(9, 8))
-                    .hint_text("Find an app or window…")
-                    .desired_width(f32::INFINITY),
-            )
-            .changed()
-        {
-            app.selected_window = None;
-        }
-        let query = app.window_filter.to_lowercase();
         egui::ScrollArea::vertical()
             .id_salt("session-windows")
             .max_height(180.0)
             .show(ui, |ui| {
                 for (index, target) in app.windows.iter().enumerate() {
                     let label = format!("{}\n{}", target.application, target.title);
-                    if !label.to_lowercase().contains(&query) {
-                        continue;
-                    }
                     if ui
                         .add_sized(
                             [ui.available_width(), 0.0],
@@ -555,26 +545,9 @@ fn window_picker(app: &mut App, ui: &mut Ui, action: &mut Action) {
         }
     });
     ui.add_space(10.0);
-    ui.label(RichText::new("Note · optional").strong());
-    ui.add(
-        egui::TextEdit::singleline(&mut app.note)
-            .margin(egui::Margin::symmetric(9, 8))
-            .id(egui::Id::new("send-note"))
-            .desired_width(f32::INFINITY)
-            .char_limit(4096)
-            .hint_text("What should the agent look at?"),
-    );
-    if let Err(error) = model::stage_input(&app.note) {
-        muted(ui, error);
-    }
-    ui.add_space(8.0);
     muted(
         ui,
-        "Pastes into the window's active tab or pane. Select that session there first. Enter is never sent.",
-    );
-    muted(
-        ui,
-        "Saves a local PNG for your agent to read. Remote and WSL sessions need access to that file.",
+        "Pastes the image with Ctrl+V into the active pane. Check the attachment before submitting.",
     );
     if !app.windows.is_empty() {
         muted(ui, &app.status);
@@ -651,28 +624,17 @@ fn footer(app: &mut App, ui: &mut Ui, action: &mut Action) {
                 if !app.advanced_open {
                     if app.send_open {
                         if ui
-                            .add_enabled(
-                                app.selected_window.is_some()
-                                    && model::stage_input(&app.note).is_ok(),
-                                primary("Send · no submit"),
-                            )
+                            .add_enabled(app.selected_window.is_some(), primary("Paste image"))
                             .clicked()
                         {
                             *action = Action::Send;
                         }
-                    } else if ui.add(primary("Send to…")).clicked() {
+                    } else if ui.add(primary("Send to agent")).clicked() {
                         *action = Action::ChooseWindow;
                     }
                 }
                 if ui.button("Copy image  F6").clicked() {
                     *action = Action::Copy;
-                }
-                if ui
-                    .button("Copy file path")
-                    .on_hover_text("Save a local PNG and copy its path for your terminal or agent.")
-                    .clicked()
-                {
-                    *action = Action::CopyPath;
                 }
                 if app.advanced_open {
                     let blocked = stage_blocked(app);
@@ -695,7 +657,7 @@ fn footer(app: &mut App, ui: &mut Ui, action: &mut Action) {
             } else {
                 muted(
                     ui,
-                    "Send pastes a saved image path. Copy image keeps the screenshot on the clipboard.",
+                    "Send pastes the image with Ctrl+V. You submit it when ready.",
                 );
             }
         }

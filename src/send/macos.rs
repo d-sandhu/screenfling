@@ -1,7 +1,7 @@
 use super::*;
 use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
 use objc2_core_foundation::{CFArray, CFBoolean, CFDictionary, CFRetained, CFString, CFType};
-use objc2_core_graphics::{CGEvent, CGEventFlags};
+use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID};
 use std::{ffi::c_void, ptr::NonNull, rc::Rc};
 
 #[link(name = "ApplicationServices", kind = "framework")]
@@ -38,14 +38,34 @@ fn attribute(element: &CFType, name: &str) -> Option<CFRetained<CFType>> {
 }
 
 pub fn discover() -> Result<Vec<super::Target>> {
+    let inventory = screenfling::agents::Inventory::read()
+        .ok_or("Could not inspect local agent sessions. Copy image remains available.")?;
+    let applications: Vec<_> = NSWorkspace::sharedWorkspace()
+        .runningApplications()
+        .iter()
+        .filter_map(|app| {
+            inventory
+                .detect(app.processIdentifier() as u32)
+                .map(|guard| (app, guard))
+        })
+        .collect();
+    if applications.is_empty() {
+        return Ok(Vec::new());
+    }
+    static PROMPTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let prompt = CFString::from_str("AXTrustedCheckOptionPrompt");
-    let options = CFDictionary::from_slices(&[&*prompt], &[CFBoolean::new(true)]);
+    let options = CFDictionary::from_slices(
+        &[&*prompt],
+        &[CFBoolean::new(
+            !PROMPTED.swap(true, std::sync::atomic::Ordering::Relaxed),
+        )],
+    );
     if !unsafe { AXIsProcessTrustedWithOptions((&*options as *const CFDictionary<_, _>).cast()) } {
-        return Err("Allow ScreenFling in System Settings > Privacy & Security > Accessibility, then refresh windows. Copy still works without this permission.".into());
+        return Err("Automatic paste needs Accessibility access. Enable this copy of ScreenFling in System Settings > Privacy & Security > Accessibility, then refresh. Or use Copy image and Ctrl+V yourself.".into());
     }
     let mut targets = Vec::new();
     let deadline = Instant::now() + Duration::from_secs(2);
-    for application in NSWorkspace::sharedWorkspace().runningApplications().iter() {
+    for (application, guard) in applications {
         if Instant::now() >= deadline {
             break;
         }
@@ -82,8 +102,9 @@ pub fn discover() -> Result<Vec<super::Target>> {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "Untitled window".into());
             targets.push(super::Target {
-                application: name.clone(),
+                application: format!("{} · {name}", guard.label),
                 title,
+                guard: guard.clone(),
                 native: Target {
                     pid,
                     app: app.clone(),
@@ -120,12 +141,20 @@ pub fn paste(target: &Target) -> Result<()> {
     if !focused(target) {
         return Err("The selected window lost focus. Nothing was pasted.".into());
     }
+    let modifiers = CGEventFlags::MaskShift
+        | CGEventFlags::MaskControl
+        | CGEventFlags::MaskAlternate
+        | CGEventFlags::MaskCommand;
+    if CGEventSource::flags_state(CGEventSourceStateID::CombinedSessionState).intersects(modifiers)
+    {
+        return Err("Release modifier keys before sending. The image is on your clipboard.".into());
+    }
     let down =
         CGEvent::new_keyboard_event(None, 9, true).ok_or("Could not create the paste request.")?;
     let up =
         CGEvent::new_keyboard_event(None, 9, false).ok_or("Could not finish the paste request.")?;
-    CGEvent::set_flags(Some(&down), CGEventFlags::MaskCommand);
-    CGEvent::set_flags(Some(&up), CGEventFlags::MaskCommand);
+    CGEvent::set_flags(Some(&down), CGEventFlags::MaskControl);
+    CGEvent::set_flags(Some(&up), CGEventFlags::MaskControl);
     // Address events to the selected process instead of the global event stream.
     CGEvent::post_to_pid(target.pid, Some(&down));
     CGEvent::post_to_pid(target.pid, Some(&up));

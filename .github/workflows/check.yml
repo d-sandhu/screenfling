@@ -90,7 +90,7 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 3
         run: xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-visuals.py --isolated-xvfb
-      - name: Terminal-independent window paste
+      - name: Detected-agent image paste
         if: runner.os == 'Linux'
         timeout-minutes: 3
         run: |

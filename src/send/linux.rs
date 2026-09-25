@@ -50,6 +50,8 @@ fn label(conn: &RustConnection, window: u32, name: &[u8]) -> String {
 }
 pub fn discover() -> Result<Vec<super::Target>> {
     let (conn, screen) = connection()?;
+    let inventory = screenfling::agents::Inventory::read()
+        .ok_or("Could not inspect local agent sessions. Copy image remains available.")?;
     let root = conn.setup().roots[screen].root;
     let mut targets = Vec::new();
     for window in values(&conn, root, b"_NET_CLIENT_LIST_STACKING")?
@@ -63,6 +65,9 @@ pub fn discover() -> Result<Vec<super::Target>> {
         if pid == 0 || pid == std::process::id() {
             continue;
         }
+        let Some(guard) = inventory.detect(pid) else {
+            continue;
+        };
         let title = label(&conn, window, b"_NET_WM_NAME");
         let title = if title.is_empty() {
             label(&conn, window, b"WM_NAME")
@@ -73,8 +78,9 @@ pub fn discover() -> Result<Vec<super::Target>> {
             continue;
         }
         targets.push(super::Target {
-            application: label(&conn, window, b"WM_CLASS"),
+            application: format!("{} · {}", guard.label, label(&conn, window, b"WM_CLASS")),
             title,
+            guard,
             native: Target { window, pid },
         });
     }
@@ -144,7 +150,6 @@ pub fn paste(target: &Target) -> Result<()> {
             .ok_or_else(|| "The desktop's paste shortcut could not be mapped.".to_string())
     };
     let control = code(0xffe3)?;
-    let shift = code(0xffe1)?;
     let v = code(0x76)?;
     let held = conn
         .query_keymap()
@@ -152,16 +157,9 @@ pub fn paste(target: &Target) -> Result<()> {
         .reply()
         .map_err(|_| "Could not inspect keyboard state.")?;
     if held.keys.iter().any(|byte| *byte != 0) {
-        return Err("Release held keys before sending. The path is on your clipboard.".into());
+        return Err("Release held keys before sending. The image is on your clipboard.".into());
     }
-    for (key, down) in [
-        (control, true),
-        (shift, true),
-        (v, true),
-        (v, false),
-        (shift, false),
-        (control, false),
-    ] {
+    for (key, down) in [(control, true), (v, true), (v, false), (control, false)] {
         let sent = conn
             .xtest_fake_input(
                 if down {
@@ -180,7 +178,7 @@ pub fn paste(target: &Target) -> Result<()> {
             .is_some_and(|cookie| cookie.check().is_ok());
         if !sent {
             // Release only; never repeat a possibly delivered paste chord.
-            for key in [v, shift, control] {
+            for key in [v, control] {
                 if let Ok(cookie) = conn.xtest_fake_input(
                     KEY_RELEASE_EVENT,
                     key,

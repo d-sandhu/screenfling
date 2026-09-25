@@ -10,26 +10,27 @@
 
 *The actual native app, showing a synthetic deployment error.*
 
-A screenshot often explains a bug faster than a paragraph. ScreenFling captures the problem and brings its file path into the coding session you choose, with no terminal-specific setup.
+A screenshot often explains a bug faster than a paragraph. ScreenFling captures the problem and puts the image into your coding agent’s prompt.
 
 ## How it works
 
 1. **Capture.** Click Capture or use the global shortcut, then select a region.
 2. **Review.** Check the crop at Fit or 1:1 size.
-3. **Send to…** Choose your terminal window, add an optional note, and send. You decide when to submit.
+3. **Send to agent.** Choose a detected agent terminal and paste the image. You decide when to submit.
 
-Use your existing terminal and local coding agent. ScreenFling saves a PNG and pastes its path into the selected window’s active tab or pane; **it never presses Enter**. The agent must support reading local image files. **Copy image** and **Copy file path** are available too.
+**Send pastes the actual image with Ctrl+V; it never presses Enter.** Detection recognizes foreground Claude Code, Codex and OpenCode processes on macOS and Linux X11. It lists eligible agent terminals rather than every desktop window. **Copy image** lets you paste manually anywhere your agent supports clipboard images.
 
-Window sending uses standard paste shortcuts on macOS (Accessibility permission), Windows, and Linux X11. Terminals with other bindings need manual paste. On Wayland, copy and paste into your session. Remote/WSL sessions need access to the saved file. [Details and permissions](docs/USAGE.md#send-to-your-session).
+Automatic targeting is still limited: mixed shell/agent tabs, remote sessions, Windows and Wayland use manual Copy. Terminal bindings and agent image support vary. [Compatibility and permissions](docs/USAGE.md#send-to-your-session).
+
 
 ## Engineering
 
 - **Native platform integration.** Rust, egui and SDL3 connect Windows capture, macOS ScreenCaptureKit, X11 and Wayland ScreenCast/PipeWire to one image model. The UI waits when idle; a bounded worker handles desktop operations. [Platform adapters](src/capture/) · [architecture](docs/DEVELOPMENT.md#code-map-and-boundaries)
 - **Original pixels throughout.** Selection maps to actual captured dimensions, including fractional display scaling. Resizing the preview never resizes the delivered crop. [Geometry and crop tests](src/model.rs)
 - **Explicit state transitions.** Capture generations prevent late background results from advancing an abandoned capture. Delivery requires the current reviewed image. [State machine](src/model.rs) · [application flow](src/app.rs)
-- **One handoff, native adapters.** A shared coordinator checks the clipboard and selected window before requesting paste. Changed destinations and uncertain results never trigger a fallback or automatic retry. [Window sending](src/send.rs) · [PNG handoff](src/handoff.rs)
+- **One handoff, native adapters.** A shared coordinator checks the image clipboard, foreground agent processes and selected window before requesting paste. Changed destinations and uncertain results never trigger a fallback or automatic retry. [Window sending](src/send.rs) · [Agent detection](src/agents.rs)
 
-[CI](.github/workflows/check.yml) builds, lints, tests and packages all three platforms. Integration checks compare every crop pixel on X11 and on Wayland at 125% scale, verify native image clipboards, and exercise window targeting in disposable terminals. The optional advanced WezTerm integration has separate routing checks. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
+[CI](.github/workflows/check.yml) builds, lints, tests and packages all three platforms. Integration checks compare every crop pixel on X11 and on Wayland at 125% scale, verify native image clipboards, and exercise agent filtering, window targeting and image paste in disposable terminals. The optional advanced WezTerm integration has separate routing checks. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
 
 ## Try it
 

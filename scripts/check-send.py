@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise native window selection and paste into real terminals on private Xvfb."""
+"""Synthetic agents in real terminals: detect, focus, Ctrl+V, and PNG read on Xvfb."""
 import json
 import os
 from pathlib import Path
@@ -28,37 +28,47 @@ def main():
         home = Path(directory)
         env.update(HOME=directory, XDG_CONFIG_HOME=directory, XDG_SESSION_TYPE='x11', GDK_BACKEND='x11')
         receiver = home / 'receiver.py'
-        receiver.write_text('''import os, select, sys, termios, time, tty
+        receiver.write_text('''import ctypes, os, select, subprocess, sys, time, tty
 from pathlib import Path
 out = Path(sys.argv[1])
+# Synthetic process metadata fixture, deliberately named like an agent.
+# This tests detection/transport, not a real agent's attachment implementation.
+if sys.argv[2] == 'agent':
+    assert ctypes.CDLL(None).prctl(15, b'codex', 0, 0, 0) == 0
 tty.setraw(0)
 out.write_bytes(b'')
 end = time.monotonic() + 30
 while time.monotonic() < end:
     if select.select([0], [], [], 0.2)[0]:
-        with out.open('ab') as f: f.write(os.read(0, 4096))
+        data = os.read(0, 4096)
+        with out.open('ab') as f: f.write(data)
+        if data == bytes([22]):
+            png = subprocess.check_output(['xclip', '-selection', 'clipboard', '-target', 'image/png', '-out'], timeout=3)
+            out.with_suffix('.png').write_bytes(png)
 ''')
         try:
             processes.append(sp.Popen(['openbox'], env=env, stdout=sp.DEVNULL, stderr=sp.DEVNULL))
             time.sleep(0.4)
-            names = ['screenfling-paste-fixture-A', 'screenfling-paste-fixture-B']
-            files = [home / 'a.bin', home / 'b.bin']
+            names = ['screenfling-paste-fixture-A', 'screenfling-paste-fixture-B', 'screenfling-ordinary-shell']
+            files = [home / 'a.bin', home / 'b.bin', home / 'shell.bin']
             for name, path in zip(names, files):
-                processes.append(sp.Popen(['xfce4-terminal', '--disable-server', '--title', name, '--execute', 'python3', str(receiver), str(path)], env=env))
+                processes.append(sp.Popen(['xfce4-terminal', '--disable-server', '--title', name, '--execute', 'python3', str(receiver), str(path), 'shell' if path == files[2] else 'agent'], env=env))
             deadline = time.monotonic() + 10
             while not all(path.exists() for path in files):
                 if time.monotonic() >= deadline: raise RuntimeError('Terminal receiver did not start')
                 time.sleep(0.05)
-            payloads = ['Inspect this image /tmp/synthetic capture-a.png', 'Review /tmp/synthetic-capture-b.png']
-            for index, payload in enumerate(payloads):
+            for index in range(2):
+                expected_png = home / f'expected-{index}.png'
                 # Put the OTHER terminal in front before choosing the intended one.
                 other = sp.check_output(['xdotool', 'search', '--name', names[1-index]], env=env).splitlines()[0]
                 sp.run(['xdotool', 'windowactivate', '--sync', other], env=env, check=True)
-                sp.run([str(ROOT/'target/release/examples/check-send'), '--isolated-xvfb', names[index], payload], env=env, check=True, timeout=10)
-                assert files[index].read_bytes() == payload.encode(), files[index].read_bytes()
-                expected_other = b'' if index == 0 else payloads[0].encode()
+                sp.run([str(ROOT/'target/release/examples/check-send'), '--isolated-xvfb', names[index], str(expected_png)], env=env, check=True, timeout=10)
+                assert files[index].read_bytes() == bytes([22]), files[index].read_bytes()
+                assert files[index].with_suffix('.png').read_bytes() == expected_png.read_bytes()
+                expected_other = b'' if index == 0 else bytes([22])
                 assert files[1-index].read_bytes() == expected_other
-            report = {'scope': 'X11 window paste into two unmodified Xfce Terminal sessions; no agent attachment claim', 'checks': ['selected window overrides misleading focus', 'exact path and note bytes', 'no Enter', 'other receiver untouched']}
+                assert files[2].read_bytes() == b''
+            report = {'scope': 'Synthetic agent processes in two Xfce Terminal sessions; no real agent attachment claim', 'checks': ['selected window overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'ordinary terminal excluded', 'no Enter', 'other receiver untouched']}
             (ROOT/'dist').mkdir(exist_ok=True)
             (ROOT/'dist/smoke-send.json').write_text(json.dumps(report, indent=2)+'\n')
             print(json.dumps(report))

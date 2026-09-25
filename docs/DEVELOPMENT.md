@@ -97,6 +97,7 @@ CI records the RustSec report in `dist/audit.json`. Do not silence an advisory o
 | `src/app.rs` | User actions, crop review, and operation results |
 | `src/app_view.rs` | Theme, responsive presentation, preview controls and settings navigation; no delivery side effects |
 | `src/model.rs`, `src/frame.rs` | State, geometry, pixel validation, and no-submit bytes |
+| `src/agents.rs` | Foreground process/TTY detection and stale-session guards; no title guessing |
 | `src/capture/` | Windows, macOS, X11, and Wayland capture adapters |
 | `src/clipboard.rs` | Explicit image/text writes and read-only verification |
 | `src/send.rs`, `src/send/`, `src/handoff.rs` | Native window selection/paste and explicitly saved PNG paths |
@@ -140,7 +141,7 @@ The native application is the official development baseline, not a physically ac
 
 - Permissions, denial and recovery, tray/global-shortcut behavior, close/reopen, normal idle screen locking, and clean-machine installation on Windows, macOS, and Wayland.
 - Mixed-DPI/multiple monitors, negative origins, rotation, disconnection, captured color/orientation, and hardware startup/idle CPU/RAM.
-- Real coding-agent image loading from a file path, window focus and active-tab selection; advanced image attachment, a different focused pane, clipboard replacement during Stage, closed/moved destinations, and explicit Reveal/focus behavior. Confirm no submission.
+- Real coding-agent clipboard image attachment, window focus and active-tab selection; advanced image attachment, a different focused pane, clipboard replacement during Stage, closed/moved destinations, and explicit Reveal/focus behavior. Confirm no submission.
 
 Public signing, notarization, release approval, and publication are separate owner decisions. CI software rendering is not a hardware benchmark. Do not present a development package as a fully validated public release.
 
@@ -154,16 +155,24 @@ Report the platform, compositor when relevant, commit/package, expected behavior
 
 ## Window handoff
 
-`src/send.rs` coordinates one native window activation and paste request. `src/send/` implements macOS Accessibility/CoreGraphics, Windows window/input APIs, and X11 EWMH/XTEST. Native macOS objects remain on the main thread. `src/handoff.rs` creates private, uniquely named PNGs only for explicit Send or Copy file path. These files persist until deleted; cancelled captures and image-only Copy do not create files.
+`src/send.rs` coordinates one native window activation and paste request. `src/send/` implements macOS Accessibility/CoreGraphics and X11 EWMH/XTEST; Windows reports that verified targeting is unavailable. Native macOS objects remain on the main thread. `src/agents.rs` reads same-user process metadata and requires all interactive TTYs under a recognized terminal host to contain one known foreground agent. It excludes background/headless agents, rejects mixed shell tabs and snapshots with inconsistent foreground groups, and retains process start identities for revalidation. It does not read command arguments or environments. `src/handoff.rs` creates private, uniquely named PNGs only for the optional Save PNG and copy path action. These files persist until deleted; cancelled captures and image-only Copy do not create files.
 
-The coordinator checks clipboard contents and window focus before requesting paste, never sends Enter, and never automatically retries. Focus can still change while the OS delivers events; this is window targeting, not exact terminal-pane routing or an agent attachment acknowledgment. Wayland intentionally reports the missing portable targeting capability and offers Copy.
+The coordinator checks image clipboard contents, agent process identities and window focus before requesting paste, never sends Enter, and never automatically retries. Focus can still change while the OS delivers events; this is window targeting, not exact terminal-pane routing or an agent attachment acknowledgment. Wayland intentionally reports the missing portable targeting capability and offers Copy.
 
-On a disposable Linux desktop, install `xvfb openbox xfce4-terminal xdotool`, build `cargo build --release --locked --example check-send`, and run:
+On a disposable Linux desktop, install `xvfb openbox xfce4-terminal xdotool xclip`, build `cargo build --release --locked --example check-send`, and run:
 
 ```sh
 xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-send.py
 ```
 
-The fixture switches away from each of two unmodified Xfce Terminal windows, sends through the production adapter, and asserts exact received text, no Enter, and no input in the other window. Mac/Windows sending still needs real desktop acceptance, including permission denial, multiple windows, closed targets and custom paste bindings.
+The fixture runs two synthetic foreground processes named `codex` inside unmodified Xfce Terminal windows, plus an ordinary terminal that must be omitted. It switches away from the selected terminal, sends through the production adapter, and verifies exactly Ctrl+V, an independent receiver's read of the exact PNG bytes, no Enter and no input in either other terminal. This exercises detection and transport, not a real agent's image attachment implementation. macOS sending still needs desktop acceptance, including permission denial, multiple windows, closed targets and custom paste bindings.
+
+Read-only detection can be inspected without clipboard or Accessibility access:
+
+```sh
+cargo run --release --locked --example check-agents -- TERMINAL_PID
+```
+
+macOS permission requests are limited to once per launch and explicit actions. Development bundles remain ad-hoc signed; stable signing/notarization is still required to avoid build-specific permission recovery.
 
 Implementation references: [Apple AX attributes](https://developer.apple.com/documentation/applicationservices/1462085-axuielementcopyattributevalue), [Windows SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput), [Windows foreground activation](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow), [XTEST](https://www.x.org/releases/X11R7.5/doc/man/man3/XTestFakeKeyEvent.3.html). Context7 was used to check the Rust binding APIs.

@@ -1,4 +1,4 @@
-//! Send a local image path through the OS clipboard to a user-selected window.
+//! Paste the clipboard image into a detected foreground coding agent.
 //! No terminal plugins, socket configuration, guessed focus, or Enter key.
 use screenfling::model::Result;
 use std::time::{Duration, Instant};
@@ -23,6 +23,7 @@ use windows as native;
 pub struct Target {
     pub application: String,
     pub title: String,
+    guard: screenfling::agents::Guard,
     native: native::Target,
 }
 
@@ -39,6 +40,12 @@ impl Pending {
         if !clipboard_matches {
             return Err("The clipboard changed. Nothing was pasted.".into());
         }
+        if !target.guard.current() {
+            return Err(
+                "The agent session changed. Refresh sessions, or paste the copied image manually."
+                    .into(),
+            );
+        }
         native::activate(&target.native)?;
         Ok(Self {
             target,
@@ -48,14 +55,24 @@ impl Pending {
     pub fn poll(&self, clipboard_matches: impl FnOnce() -> bool) -> Option<Result<String>> {
         if !native::focused(&self.target.native) {
             return if Instant::now() >= self.deadline {
-                Some(Err("Could not focus the selected window. Nothing was pasted; you can paste the copied path manually.".into()))
+                Some(Err("Could not focus the agent terminal. The image is copied; switch to your agent and press Ctrl+V.".into()))
             } else {
                 None
             };
         }
-        Some(checked_paste(clipboard_matches(), || native::focused(&self.target.native), || native::paste(&self.target.native)).map(|()| {
-            format!("Paste requested in {} — {}. Check the prompt before submitting. ScreenFling did not press Enter.", self.target.application, self.target.title)
-        }))
+        Some(
+            checked_paste(
+                clipboard_matches(),
+                || self.target.guard.current() && native::focused(&self.target.native),
+                || native::paste(&self.target.native),
+            )
+            .map(|()| {
+                format!(
+                    "Image paste requested in {} — {}. Check the attachment before submitting.",
+                    self.target.application, self.target.title
+                )
+            }),
+        )
     }
 }
 

@@ -40,8 +40,11 @@ unsafe extern "C" {
 
 pub fn capture(pointer: [i32; 2], cancelled: &AtomicBool) -> Result<Captured> {
     // Called only after an explicit Capture action. Do not prompt at startup.
-    if !unsafe { CGPreflightScreenCaptureAccess() } && !unsafe { CGRequestScreenCaptureAccess() } {
-        return Err("Allow ScreenFling in System Settings > Privacy & Security > Screen & System Audio Recording, then capture again. ScreenFling does not record audio.".into());
+    static PROMPTED: AtomicBool = AtomicBool::new(false);
+    if !unsafe { CGPreflightScreenCaptureAccess() }
+        && (PROMPTED.swap(true, Ordering::Relaxed) || !unsafe { CGRequestScreenCaptureAccess() })
+    {
+        return Err("Screen Recording access is needed to capture. Enable ScreenFling in System Settings > Privacy & Security > Screen & System Audio Recording, then quit and reopen it. If it is already enabled after an update, remove the old entry and add this installed app again. ScreenFling does not record audio.".into());
     }
     let (tx, rx) = mpsc::sync_channel(1);
     let content_block = RcBlock::new(

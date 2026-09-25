@@ -68,11 +68,9 @@ pub struct App {
     preview_native: bool,
     advanced_open: bool,
     send_open: bool,
-    window_filter: String,
     windows: Vec<send::Target>,
     selected_window: Option<usize>,
     pending_send: Option<send::Pending>,
-    send_text: Option<String>,
     copied: bool,
     saved_capture: Option<std::path::PathBuf>,
     note: String,
@@ -113,11 +111,9 @@ impl App {
             preview_native: false,
             advanced_open: false,
             send_open: false,
-            window_filter: String::new(),
             windows: Vec::new(),
             selected_window: None,
             pending_send: None,
-            send_text: None,
             copied: false,
             saved_capture: None,
             note: String::new(),
@@ -191,16 +187,15 @@ impl App {
     pub fn tick(&mut self) {
         if let Some(pending) = &self.pending_send {
             let clipboard = &mut self.clipboard;
-            let text = &self.send_text;
+            let crop = &self.crop;
             if let Some(result) = pending.poll(|| {
                 clipboard
                     .as_mut()
-                    .zip(text.as_ref())
-                    .is_some_and(|(c, t)| c.matches_text(t))
+                    .zip(crop.as_ref())
+                    .is_some_and(|(c, image)| c.matches(image))
             }) {
                 let id = self.flow.generation();
                 self.pending_send = None;
-                self.send_text = None;
                 let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
                 self.status = result.unwrap_or_else(|error| error);
                 if let Some(path) = &self.saved_capture {
@@ -405,7 +400,6 @@ impl App {
                 self.flow.start()?;
                 self.copied = false;
                 self.send_open = false;
-                self.window_filter.clear();
                 self.windows.clear();
                 self.selected_window = None;
                 self.clear_images();
@@ -442,7 +436,7 @@ impl App {
                 self.anchor = None;
                 self.selection = None;
                 self.status =
-                    "Choose Send to… to pick your coding window, or copy the image.".into();
+                    "Send the image to a coding agent, or copy it and press Ctrl+V there.".into();
                 self.normal_window(window);
             }
             Action::Copy | Action::CopyPath if self.flow.phase() == Phase::Review => {
@@ -474,10 +468,11 @@ impl App {
                 self.selected_window = None;
                 self.windows.clear();
                 self.windows = send::discover()?;
+                self.selected_window = (self.windows.len() == 1).then_some(0);
                 self.status = if self.windows.is_empty() {
-                    "No available windows. Open your coding session, then refresh."
+                    "No agent terminal could be verified. Use Copy image, then Ctrl+V in your agent. Terminals with mixed shell and agent tabs are omitted."
                 } else {
-                    "Choose your session's window. The paste goes to its active tab or pane."
+                    "Choose an agent terminal. Ctrl+V pastes the image into its active pane; Enter is never sent."
                 }
                 .into();
             }
@@ -487,30 +482,19 @@ impl App {
                     .and_then(|i| self.windows.get(i))
                     .cloned()
                     .ok_or("Choose a window first.")?;
-                model::stage_input(&self.note)?;
-                if self.saved_capture.is_none() {
-                    self.saved_capture = Some(handoff::save(
-                        self.crop
-                            .as_ref()
-                            .ok_or("The reviewed crop is unavailable.")?,
-                    )?);
-                }
-                let path = handoff::clipboard_path(self.saved_capture.as_ref().unwrap())?;
-                let text = if self.note.is_empty() {
-                    path.to_owned()
-                } else {
-                    format!("{} {}", self.note, path)
-                };
+                let crop = self
+                    .crop
+                    .as_ref()
+                    .ok_or("The reviewed crop is unavailable.")?;
                 if self.clipboard.is_none() {
                     self.clipboard = Some(Clipboard::new()?);
                 }
                 let clipboard = self.clipboard.as_mut().unwrap();
-                clipboard.copy_text(&text)?;
+                clipboard.copy(crop)?;
                 self.flow.advance(id, Phase::Review, Phase::Delivering)?;
-                match send::Pending::start(target, clipboard.matches_text(&text)) {
+                match send::Pending::start(target, clipboard.matches(crop)) {
                     Ok(pending) => {
                         self.pending_send = Some(pending);
-                        self.send_text = Some(text);
                         self.show_after_paint = false;
                         self.status =
                             "Switching to your selected window. Pasting once, without Enter."
@@ -668,7 +652,7 @@ impl App {
                         self.saved_capture.as_ref().unwrap().display()
                     )
                 } else {
-                    "Image copied. Switch to your app and paste.\n\nIf your terminal accepts text only, use Copy file path on your next capture.".into()
+                    "Image copied. Switch to your coding agent and press Ctrl+V.".into()
                 };
                 self.clear_images();
             }

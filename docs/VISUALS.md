@@ -47,7 +47,7 @@ Screens, source identity, dimensions, nonblank-frame checks and the comparison r
 
 Inspect the screenshots as well as the report: a nonblank image is not proof that all text fits or that every state looks correct. Review idle, menu, selection, crop review, 1:1 scrolling, the window picker, settings, the scrolled compact layout and result. Inspect long window and pane labels, note validation, disabled actions and keyboard focus when changing the layout. Do not substitute a separately implemented mock interface.
 
-The README preview comes from the real review screenshot. It contains a synthetic deployment error, not private screen content or a claimed agent attachment. Only the opt-in developer fixture writes these synthetic screenshots; the production application saves a PNG only after explicit Send or Copy file path.
+The README preview comes from the real review screenshot. It contains a synthetic deployment error, not private screen content or a claimed agent attachment. Only the opt-in developer fixture writes these synthetic screenshots; the production application saves a PNG only after the optional Save PNG and copy path action.
 
 ## Remaining physical acceptance
 

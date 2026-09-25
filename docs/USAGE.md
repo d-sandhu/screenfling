@@ -1,6 +1,6 @@
 # Using ScreenFling
 
-ScreenFling captures one display, lets you select and review a crop, then sends its file path to a chosen coding window or copies the image. This is a pre-release native build, not a signed public release.
+ScreenFling captures one display, lets you select and review a crop, then pastes the image into a detected coding-agent terminal or copies it for manual paste. This is a pre-release native build, not a signed public release.
 
 ## Open and capture
 
@@ -27,32 +27,36 @@ Capture restores a minimized or maximized window for selection. Review and error
 
 Review shows only the crop that can be delivered. **Fit** preserves its aspect ratio within the preview. **1:1 pixels** displays the crop at its actual pixel size; scroll within the preview when it is larger than the available space. Neither mode changes the original pixels saved or copied.
 
-Review starts with the image. Choose **Send to…** to open the window picker and optional note. Narrow windows stack these sections vertically; the actions remain at the bottom.
+Review starts with the image. Choose **Send to agent** to see detected agent terminals. Narrow windows stack these sections vertically; the actions remain at the bottom.
 
-Copy includes the image, not the optional note. Nothing is copied just because you selected a region, changed the preview mode, resized the window or visited Settings. Cancellation leaves the existing clipboard unchanged. Send needs a selected window; Copy does not.
+Copy includes the image. Nothing is copied just because you selected a region, changed the preview mode, resized the window or visited Settings. Cancellation leaves the existing clipboard unchanged. Send needs a selected window; Copy does not.
 
 Close hides the application when a tray is available. Use **More → Quit ScreenFling**, or Quit in the tray, to exit. Without a tray, closing the idle window exits. On Linux, keep ScreenFling running until you paste: another application may need it to serve the clipboard image. Closing the selection window cancels selection first.
 
 ## Send to your session
 
-1. Open your terminal and coding agent. Select the tab or split pane where you want the screenshot.
-2. Capture and review a region in ScreenFling, then choose **Send to…**.
-3. Choose that terminal window, optionally add a note, and choose **Send · no submit**.
-4. Check the agent’s prompt and submit when ready.
+1. Open a local Claude Code, Codex or OpenCode session, ready for image input.
+2. Capture and review a region, then choose **Send to agent**.
+3. Choose an agent terminal and select **Paste image**.
+4. Check the attachment and submit when ready.
 
-ScreenFling saves the original crop as a PNG, copies its absolute path (preceded by your note), activates the selected window, and requests paste once. It does not press Enter or run a shell command. A successful paste request is not proof that an agent loaded the image. This works with local agents that accept image file paths, without requiring a particular terminal or agent plugin. Choose an agent prompt that is ready for input.
+ScreenFling puts the actual crop on the image clipboard, activates the selected terminal window, and presses **Ctrl+V** once. It does not type a file path, save a PNG, add a note or press Enter. The agent reads the clipboard image. A paste request is not an attachment receipt; inspect the prompt before submitting.
 
-The destination is a **window**, using its currently active tab or pane. ScreenFling cannot enumerate Claude Code, Codex, OpenCode or other sessions inside arbitrary terminals. Window titles help you choose; they are not proof of which process is reading input. The advanced WezTerm integration below offers exact pane addressing when needed.
+Detection uses foreground process groups and terminal ownership, not window titles. It recognizes local `claude`, `codex` and `opencode` processes, including Codex launched through its Node wrapper. Headless/background agents and ordinary application windows are excluded. The current adapters support recognized terminal hosts on **macOS and Linux X11**. A terminal app is eligible only when **every interactive terminal under that app is running a recognized foreground agent**. With mixed shell/agent tabs or splits, the app is omitted: the installed terminal APIs do not universally map an OS window to its active terminal process. The list identifies eligible terminal windows, not individual agent sessions; labels can show several agent types. Select the intended tab or pane in your terminal first.
 
-On macOS, allow Accessibility access when requested, then refresh windows. Windows uses Ctrl+V; X11 uses Ctrl+Shift+V; macOS uses Command+V. The selected terminal must use that paste shortcut. Custom bindings and stock xterm require manual paste; ScreenFling does not infer or change terminal keybindings. Windows cannot inject into a higher-privilege application. Wayland currently offers Copy instead of automatic window targeting. Remote and WSL agents need their own access to the file; paths are not translated or uploaded.
+**Copy image** works independently of detection. Use it on Windows, Wayland, with an unrecognized agent, or when automatic targeting cannot verify your terminal. Paste using your agent’s image-paste shortcut. SSH, WSL, tmux, remote or detached sessions are not automatically targeted. Their access to the local image clipboard depends on their own integration. ScreenFling does not upload images, remap terminal shortcuts or treat a shell as an agent.
 
-**Send and Copy file path save a PNG** in the `captures` subdirectory of the settings directory listed below. Files remain until you delete them, including after a failed send, so agents can finish reading them. Copy image and cancelled captures do not create PNG files. Notes are sent through the clipboard, not saved in the PNG.
+On macOS, automatic paste additionally needs **Accessibility** permission; manual Copy does not. Permission is requested only after choosing Send with eligible terminals, at most once per launch. Enable the installed copy in System Settings → Privacy & Security → Accessibility, then refresh sessions. Capture separately needs Screen Recording access. See recovery below if an old build remains authorized.
 
-If focus or clipboard changes, sending stops. After an uncertain paste, inspect the destination before retrying; there is no automatic retry or fallback window. Keep ScreenFling running until you paste on Linux.
+Ctrl+V is the documented image-paste binding for [Claude Code](https://support.claude.com/en/articles/14554922-claude-code-user-faq) and the default paste binding in [OpenCode](https://github.com/anomalyco/opencode/blob/dev/packages/tui/src/config/keybind.ts). Custom bindings, terminal interception and agent versions can change behavior. Check your agent’s attachment preview.
+
+If the agent process identity, focus or image clipboard changes, sending stops. There is no automatic retry or fallback window. Keep ScreenFling running until you paste on Linux so it can serve the clipboard image.
+
+**More → Save PNG and copy path** is a separate, optional action for agents that accept local image paths. It saves the crop in the `captures` subdirectory of the settings directory below. Those files remain until you delete them. Ordinary Send, Copy image and cancelled captures do not save image files.
 
 ## Configure Stage in WezTerm
 
-**Optional advanced integration.** Enable **More → WezTerm integration** and expand **Advanced: WezTerm integration** in Settings. Ordinary Send to… does not need any of this setup.
+**Optional advanced integration.** Enable **More → WezTerm integration** and expand **Advanced: WezTerm integration** in Settings. Ordinary Send to agent does not need any of this setup.
 
 Run a **local coding agent in WezTerm on the same OS** as ScreenFling. Stage currently supports the agent's Ctrl+V image-attachment binding, not an arbitrary paste shortcut. The application cannot prove which program is running inside a pane. Do not select a shell prompt, an SSH session, or a WSL agent with a different clipboard.
 
@@ -84,7 +88,7 @@ During Stage, wait for the result. Quit, cancellation, and settings changes are 
 
 **Windows.** Use Windows 10/11 with a graphics driver that supports OpenGL 3.2. Exact WezTerm staging needs Windows AF_UNIX support. The CI package is x86-64; compilation on a Windows Server runner is not acceptance testing on every Windows desktop. Packages are unsigned.
 
-**macOS.** ScreenCaptureKit still capture requires macOS 14 or later. CI packages target Apple Silicon; no Intel package is claimed here. Screen-recording permission is requested on Capture, not startup. Grant access to ScreenFling in System Settings under Privacy & Security and the screen-recording category. The category name varies by macOS version. ScreenFling does not capture audio. Retry Capture after changing permission; restart the app if macOS requests it.
+**macOS.** ScreenCaptureKit still capture requires macOS 14 or later. CI packages target Apple Silicon; no Intel package is claimed here. Screen-recording permission is requested on Capture, not startup. Grant access to ScreenFling in System Settings under Privacy & Security and the screen-recording category. The category name varies by macOS version. ScreenFling does not capture audio. The app requests this permission at most once per launch. After granting access, quit and reopen the app if macOS requests it, then retry Capture.
 
 The `.app` is ad-hoc signed and verified during packaging, but is not notarized. Verify and trust the source of the archive before using the system's Open Anyway control. Do not disable Gatekeeper globally. Move the app to its intended location before granting permissions. Keep one installed copy, for example `~/Applications/ScreenFling.app`, and launch that copy rather than alternating between extracted build folders.
 
@@ -98,7 +102,7 @@ For a Linux application-menu entry, install the binary on the PATH used by your 
 
 Settings is a separate page. Escape or Back returns to the current capture without discarding it. F6 and F8 do not copy or start a capture while this page is open. Each section saves explicitly; navigating back does not save unfinished edits.
 
-Shortcut and optional connection preferences are saved in `settings.json`. Explicit Send / Copy file path saves PNGs under `captures/` in the same directory:
+Shortcut and optional connection preferences are saved in `settings.json`. The optional Save PNG and copy path action saves PNGs under `captures/` in the same directory:
 
 | Platform | Directory |
 | --- | --- |
@@ -120,6 +124,6 @@ CI artifacts contain the native archive, `build.json`, `SHA256SUMS`, and the loc
 
 A matching checksum checks file integrity, not publisher identity. Unsigned/ad-hoc-signed packages are still development builds. The record identifies the checked-out source commit and the packaged executable; the macOS executable hash is taken after ad-hoc signing. It also records linked libraries and a packaged CLI launch check, not clean-machine desktop acceptance.
 
-ScreenFling does not upload captures. Send and Copy file path explicitly save PNGs as described above. Copy image / advanced Stage make the image available to the OS clipboard and other applications. Clipboard history, OS swap, and agent storage are outside its control.
+ScreenFling does not upload captures. Only Save PNG and copy path explicitly saves PNGs as described above. Send, Copy image and advanced Stage make the image available to the OS clipboard and other applications. Clipboard history, OS swap, and agent storage are outside its control.
 
 Source, build instructions, and issue reporting are in the [ScreenFling repository](https://github.com/d-sandhu/screenfling). Report the platform and error text without posting private screenshots or full local paths.

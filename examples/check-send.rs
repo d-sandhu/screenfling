@@ -1,5 +1,9 @@
 //! Opt-in X11 paste check, launched only by scripts/check-send.py on private Xvfb.
 #[cfg(target_os = "linux")]
+#[allow(dead_code)]
+#[path = "../src/clipboard.rs"]
+mod clipboard;
+#[cfg(target_os = "linux")]
 #[path = "../src/send.rs"]
 mod send;
 
@@ -36,23 +40,35 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
-    video
-        .clipboard()
-        .set_clipboard_text(&args[3])
-        .map_err(|e| e.to_string())?;
-    let target = send::discover()?
+    let crop = screenfling::model::Pixels::new(
+        3,
+        2,
+        vec![
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 17, 31, 49, 255, 61, 83, 97, 255, 111,
+            129, 147, 255,
+        ],
+    )?;
+    std::fs::write(&args[3], crop.png()?).map_err(|e| e.to_string())?;
+    let mut clipboard = clipboard::Clipboard::new()?;
+    clipboard.copy(&crop)?;
+    let targets = send::discover()?;
+    if targets.len() != 2
+        || targets
+            .iter()
+            .any(|target| !target.application.starts_with("Codex"))
+    {
+        return Err(format!(
+            "Expected only the two synthetic agent terminals: {targets:?}"
+        ));
+    }
+    let target = targets
         .into_iter()
         .find(|target| target.title == args[2])
         .ok_or("Fixture window not found")?;
     let pending = send::Pending::start(target, true)?;
     loop {
         for _ in events.poll_iter() {}
-        if let Some(result) = pending.poll(|| {
-            video
-                .clipboard()
-                .clipboard_text()
-                .is_ok_and(|s| s == args[3])
-        }) {
+        if let Some(result) = pending.poll(|| clipboard.matches(&crop)) {
             println!("{}", result?);
             break;
         }
