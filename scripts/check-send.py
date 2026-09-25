@@ -72,7 +72,41 @@ while time.monotonic() < end:
                 assert files[index].with_suffix('.png').read_bytes() == expected_png.read_bytes()
                 expected_other = b'' if index == 0 else bytes([22])
                 assert files[1-index].read_bytes() == expected_other
-            report = {'scope': 'Two synthetic receivers in Xfce Terminal; no real agent attachment claim', 'checks': ['remembered origin overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'no Enter', 'other receiver untouched']}
+            # Exercise the actual app: global Capture from a terminal remembers it.
+            app = sp.Popen([str(ROOT/'target/release/screenfling')], env=env)
+            processes.append(app)
+            def window(title):
+                deadline = time.monotonic() + 8
+                while time.monotonic() < deadline:
+                    found = sp.run(['xdotool', 'search', '--onlyvisible', '--name', title], env=env, capture_output=True)
+                    if found.returncode == 0 and found.stdout.splitlines():
+                        return found.stdout.splitlines()[0]
+                    if app.poll() is not None: raise RuntimeError('ScreenFling exited')
+                    time.sleep(0.05)
+                raise RuntimeError(f'Window not found: {title}')
+            window('^ScreenFling$')
+            original = sp.check_output(['xdotool', 'search', '--name', names[0]], env=env).splitlines()[0]
+            sp.run(['xdotool', 'windowactivate', '--sync', original], env=env, check=True)
+            sp.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9'], env=env, check=True)
+            window('Select region$')
+            sp.run(['xdotool', 'key', 'space'], env=env, check=True)
+            review = window('Review crop$')
+            # Allow the title change to be painted before recording the real UI.
+            time.sleep(0.2)
+            (ROOT/'dist').mkdir(exist_ok=True)
+            sp.run(['import', '-window', review, str(ROOT/'dist/paste-back-review.png')], env=env, check=True)
+            sp.run(['xdotool', 'mousemove', '--window', review, '290', '660', 'click', '1'], env=env, check=True)
+            deadline = time.monotonic() + 5
+            while files[0].read_bytes() != bytes([22,22]):
+                if time.monotonic() >= deadline: raise RuntimeError('App Paste back did not reach the original terminal')
+                time.sleep(0.02)
+            while files[0].with_suffix('.png').stat().st_size == (home/'expected-0.png').stat().st_size:
+                if time.monotonic() >= deadline: raise RuntimeError('App image was not read by the receiver')
+                time.sleep(0.02)
+            dimensions = sp.check_output(['identify', '-format', '%wx%h', str(files[0].with_suffix('.png'))], env=env).decode()
+            assert dimensions == '1280x800', dimensions
+            assert files[1].read_bytes() == bytes([22])
+            report = {'scope': 'Two synthetic receivers in Xfce Terminal; no real agent attachment claim', 'checks': ['remembered origin overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'no Enter', 'other receiver untouched', 'real app global capture and Paste back deliver the full image']}
             (ROOT/'dist').mkdir(exist_ok=True)
             (ROOT/'dist/smoke-send.json').write_text(json.dumps(report, indent=2)+'\n')
             print(json.dumps(report))
