@@ -313,7 +313,7 @@ impl App {
                 self.crop = Some(crop);
                 self.anchor = None;
                 self.selection = None;
-                self.status = "Copy the image, or paste it back into your terminal.".into();
+                self.status = String::new();
                 self.normal_window(window);
             }
             Action::Copy if self.flow.phase() == Phase::Review => {
@@ -345,8 +345,7 @@ impl App {
                         self.pending_send = Some(pending);
                         self.show_after_paint = false;
                         self.status =
-                            "Switching to your selected window. Pasting once, without Enter."
-                                .into();
+                            "Returning to your terminal. Pasting once, without Enter.".into();
                     }
                     Err(error) => {
                         let _ = self.flow.advance(id, Phase::Delivering, Phase::Review);

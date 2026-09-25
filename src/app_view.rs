@@ -435,7 +435,11 @@ fn footer(app: &mut App, ui: &mut Ui, action: &mut Action) {
             });
             muted(
                 ui,
-                "Send pastes the image with Ctrl+V. You submit it when ready.",
+                if app.destination.is_some() {
+                    "Paste back returns to your terminal and presses Ctrl+V. You submit when ready."
+                } else {
+                    "Copy the image, switch to your agent, then press Ctrl+V."
+                },
             );
         }
         Phase::Idle | Phase::Result => {
