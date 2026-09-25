@@ -18,6 +18,8 @@ Run with ImageMagick, DejaVu Sans and the other [fixture dependencies](DEVELOPME
 
 Screens and reports are saved under `dist/visuals/`. Inspect idle, settings, selection, review, 1:1 scrolling, compact layouts and result. Screenshot dimensions alone do not prove usability. The README preview is copied from this actual-app evidence, not a separately drawn mockup.
 
+The current README preview comes from [CI run 36170817173](https://github.com/d-sandhu/screenfling/actions/runs/36170817173) at `cc7280a`. That run also records the optional Paste back action in `paste-back-review.png` and its delivery results in `smoke-send.json`.
+
 ## Manual acceptance
 
 Windows/macOS rendering, native DPI changes, input methods, assistive technology and physical multi-display behavior still need desktop acceptance. Xvfb evidence does not establish those results. Agent attachment must be verified in the receiving agent, separately from UI or transport tests.

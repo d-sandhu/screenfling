@@ -48,7 +48,7 @@ xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-send.py
 
 X11 capture tests compare every cropped pixel against an independent reference after the live desktop changes. They also test cancellation, overlay bounds and minimized/maximized windows. The Wayland fixture performs the same pixel check at 125% scale inside headless Sway with real portal/PipeWire services; its Ubuntu 26.04 container command is in `.github/workflows/check.yml`.
 
-The paste fixture starts two raw-input receivers in real Xfce Terminal windows. It remembers the original terminal, deliberately focuses the other one, and requests Paste back. The original must receive only Ctrl+V, read the exact PNG bytes from the clipboard, and receive no Enter; the other must receive nothing. No receiver pretends to be a named coding agent. This verifies transport, not agent attachment.
+The paste fixture starts two raw-input receivers in real Xfce Terminal windows. It remembers the original terminal, deliberately focuses the other one, and requests Paste back. The original must receive only Ctrl+V, read the exact PNG bytes from the clipboard, and receive no Enter; the other must receive nothing. It also launches the actual app, captures through its global shortcut, reviews the image and clicks Paste back. No receiver pretends to be a named coding agent. This verifies transport, not agent attachment.
 
 Windows/macOS use a separate-process image clipboard check. Windows also captures and verifies a synthetic window. **Run this only on a disposable desktop; it replaces the clipboard:**
 
