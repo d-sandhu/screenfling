@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=ScreenFling
-Comment=Capture a region and stage it in an exact coding session
+Comment=Capture a region and paste the image into your coding session
 Exec=screenfling
 Icon=dev.screenfling.ScreenFling
 Terminal=false

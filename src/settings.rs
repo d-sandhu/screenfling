@@ -1,20 +1,19 @@
-use crate::{trusted, wezterm::ConnectionSettings};
+//! The only saved preference is the capture shortcut.
 use screenfling::model::Result;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
-const MAX_SETTINGS_BYTES: usize = 16384;
+const MAX_SETTINGS_BYTES: u64 = 16384;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default)]
 pub struct Settings {
     pub version: u32,
     pub shortcut: String,
-    pub connection: ConnectionSettings,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -26,74 +25,75 @@ impl Default for Settings {
                 "Control+Shift+Digit9"
             }
             .into(),
-            connection: ConnectionSettings::default(),
         }
     }
 }
+fn directory() -> Result<PathBuf> {
+    #[cfg(windows)]
+    let root = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    #[cfg(target_os = "macos")]
+    let root =
+        std::env::var_os("HOME").map(|p| PathBuf::from(p).join("Library/Application Support"));
+    #[cfg(target_os = "linux")]
+    let root = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".config")));
+    let root = root
+        .filter(|p| p.is_absolute())
+        .ok_or("The settings directory is unavailable.")?;
+    Ok(root.join("screenfling"))
+}
+fn nonce() -> Result<String> {
+    let mut bytes = [0u8; 8];
+    getrandom::fill(&mut bytes).map_err(|_| "Could not create a temporary settings filename.")?;
+    Ok(format!("{:016x}", u64::from_ne_bytes(bytes)))
+}
 impl Settings {
     fn validate(&self) -> Result<()> {
-        if self.version != 1
-            || self.shortcut.len() > 80
-            || self.connection.executable.len() > 4096
-            || self.connection.socket.len() > 4096
-        {
-            return Err(
-                "Settings have an unsupported version or an excessive field length.".into(),
-            );
+        if self.version != 1 || self.shortcut.len() > 80 {
+            return Err("Settings have an unsupported version or an invalid shortcut.".into());
         }
         Ok(())
     }
     fn read(path: &Path) -> Result<Option<Self>> {
-        match fs::symlink_metadata(path) {
+        let file = match File::open(path) {
+            Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(_) => return Err("Could not read settings.".into()),
-            Ok(metadata)
-                if metadata.len() > MAX_SETTINGS_BYTES as u64
-                    || !metadata.is_file()
-                    || metadata.file_type().is_symlink() =>
-            {
-                return Err("Settings are invalid or too large.".into());
-            }
-            Ok(_) => {}
+        };
+        if !file.metadata().is_ok_and(|m| m.is_file()) {
+            return Err("Settings must be a regular file.".into());
         }
-        // Bound the actual read as well as the metadata check.
         let mut data = Vec::new();
-        File::open(path)
-            .and_then(|file| {
-                file.take((MAX_SETTINGS_BYTES + 1) as u64)
-                    .read_to_end(&mut data)
-            })
+        file.take(MAX_SETTINGS_BYTES + 1)
+            .read_to_end(&mut data)
             .map_err(|_| "Could not read settings.")?;
-        if data.len() > MAX_SETTINGS_BYTES {
+        if data.len() as u64 > MAX_SETTINGS_BYTES {
             return Err("Settings are too large.".into());
         }
+        // Old connection fields are ignored, preserving the user's capture shortcut.
         let settings: Self = serde_json::from_slice(&data).map_err(|_| "Settings are invalid.")?;
         settings.validate()?;
         Ok(Some(settings))
     }
     pub fn load() -> (Self, String) {
-        let result = trusted::data_dir().and_then(|dir| Self::read(&dir.join("settings.json")));
-        match result {
-            Ok(Some(settings)) => (settings, String::new()),
-            Ok(None) => (
+        match directory().and_then(|p| Self::read(&p.join("settings.json"))) {
+            Ok(settings) => (settings.unwrap_or_default(), String::new()),
+            Err(error) => (
                 Self::default(),
-                "Capture a region, review it, then choose Copy or Stage. Nothing is uploaded."
-                    .into(),
+                format!("{error} Using the default shortcut."),
             ),
-            Err(error) => (Self::default(), format!("{error} Defaults are in use.")),
         }
     }
     pub fn save(&self) -> Result<()> {
-        self.save_to(&trusted::data_dir()?)
+        self.save_to(&directory()?)
     }
     fn save_to(&self, dir: &Path) -> Result<()> {
         self.validate()?;
-        trusted::private_dir(dir)?;
+        fs::create_dir_all(dir).map_err(|_| "Could not create the settings directory.")?;
         let data = serde_json::to_vec_pretty(self).map_err(|_| "Could not encode settings.")?;
-        if data.len() > MAX_SETTINGS_BYTES {
-            return Err("Settings are too large.".into());
-        }
-        let temp = dir.join(format!("settings-{}.tmp", trusted::nonce()?));
+        let temp = dir.join(format!("settings-{}.tmp", nonce()?));
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -101,23 +101,17 @@ impl Settings {
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
         }
+        // Finish the write before replacing the previous preference.
         let result = (|| -> Result<()> {
             let mut file = options
                 .open(&temp)
-                .map_err(|_| "Could not create the settings file.")?;
+                .map_err(|_| "Could not create settings.")?;
             file.write_all(&data)
                 .and_then(|_| file.sync_all())
                 .map_err(|_| "Could not save settings.")?;
             drop(file);
             fs::rename(&temp, dir.join("settings.json"))
-                .map_err(|_| "Could not replace settings safely.")?;
-            #[cfg(unix)]
-            {
-                if let Ok(parent) = File::open(dir) {
-                    let _ = parent.sync_all();
-                }
-            }
-            Ok(())
+                .map_err(|_| "Could not replace settings.".into())
         })();
         if result.is_err() {
             let _ = fs::remove_file(temp);
@@ -125,32 +119,27 @@ impl Settings {
         result
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn settings_round_trip_and_rejected_save_preserve_previous_value() {
-        let directory = trusted::TemporaryDirectory::new().unwrap();
-        let path = directory.0.join("settings.json");
-        assert!(Settings::read(&path).unwrap().is_none());
-        let mut settings = Settings::default();
-        settings.save_to(&directory.0).unwrap();
-        assert_eq!(Settings::read(&path).unwrap().unwrap(), settings);
-        settings.shortcut = "Control+Shift+KeyF".into();
-        settings.save_to(&directory.0).unwrap();
-        assert_eq!(Settings::read(&path).unwrap().unwrap(), settings);
+    fn legacy_preferences_migrate_and_failed_saves_preserve_the_shortcut() {
+        let dir = std::env::temp_dir().join(format!("screenfling-settings-{}", nonce().unwrap()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("settings.json");
+        fs::write(&path, br#"{"version":1,"shortcut":"Control+Shift+KeyF","connection":{"socket":"old","executable":"old","paste_confirmed":true}}"#).unwrap();
+        let settings = Settings::read(&path).unwrap().unwrap();
+        assert_eq!(settings.shortcut, "Control+Shift+KeyF");
+        settings.save_to(&dir).unwrap();
+        assert_eq!(Settings::read(&path).unwrap(), Some(settings.clone()));
+        assert!(!fs::read_to_string(&path).unwrap().contains("connection"));
         let mut invalid = settings.clone();
-        invalid.connection.socket = "x".repeat(4097);
-        assert!(invalid.save_to(&directory.0).is_err());
-        invalid = settings.clone();
-        invalid.version = 2;
-        assert!(invalid.save_to(&directory.0).is_err());
-        assert_eq!(Settings::read(&path).unwrap().unwrap(), settings);
-        fs::write(&path, vec![b' '; MAX_SETTINGS_BYTES + 1]).unwrap();
+        invalid.shortcut = "x".repeat(81);
+        assert!(invalid.save_to(&dir).is_err());
+        assert_eq!(Settings::read(&path).unwrap(), Some(settings));
+        fs::write(&path, vec![b' '; MAX_SETTINGS_BYTES as usize + 1]).unwrap();
         assert!(Settings::read(&path).is_err());
         fs::remove_file(path).unwrap();
-        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 0);
+        fs::remove_dir(dir).unwrap();
     }
 }

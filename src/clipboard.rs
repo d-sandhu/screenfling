@@ -1,4 +1,4 @@
-//! Image clipboard writes happen only through explicit Copy or Stage actions.
+//! Clipboard writes happen only through explicit Copy image or Paste back actions.
 use screenfling::model::{Pixels, Result};
 
 #[cfg(not(target_os = "linux"))]
@@ -30,11 +30,11 @@ impl Clipboard {
         #[cfg(target_os = "linux")]
         linux::write(image.png()?)?;
         if !self.matches(image) {
-            return Err("The clipboard write could not be verified. Nothing was staged.".into());
+            return Err("The clipboard write could not be verified. Try copying again.".into());
         }
         Ok(())
     }
-    /// Read-only. Never repair a replaced clipboard during Stage.
+    /// Read-only. Never overwrite an image replaced by another application.
     pub fn matches(&mut self, expected: &Pixels) -> bool {
         #[cfg(not(target_os = "linux"))]
         {

@@ -3,7 +3,7 @@ name = "screenfling"
 version = "0.2.0"
 edition = "2024"
 license = "MIT"
-description = "Capture, review, and stage a screenshot in an exact coding session."
+description = "Capture a region and paste the image into your coding session."
 repository = "https://github.com/d-sandhu/screenfling"
 readme = "README.md"
 publish = false
@@ -15,16 +15,15 @@ sdl3-sys = { version = "0.6.6", default-features = false, features = ["no-defaul
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
 getrandom = "0.3"
 global-hotkey = "0.8"
-socket2 = "0.6.5"
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 arboard = { version = "3.6.1", default-features = false, features = ["image-data"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication"] }
 block2 = "0.6.2"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSError"] }
 objc2-core-foundation = "0.3.2"
@@ -36,10 +35,10 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 xcap = { version = "0.9.8", default-features = false }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-x11rb = { version = "0.13", features = ["randr"] }
+x11rb = { version = "0.13", features = ["randr", "xtest"] }
 ashpd = { version = "0.13.13", default-features = false, features = ["async-io", "screencast", "global_shortcuts"] }
 pipewire = "0.10"
 async-io = "2"

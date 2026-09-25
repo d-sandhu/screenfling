@@ -5,10 +5,8 @@ mod clipboard;
 mod desktop;
 #[cfg(target_os = "linux")]
 mod portal_shortcut;
-mod relay;
+mod send;
 mod settings;
-mod trusted;
-mod wezterm;
 use egui_sdl3::{egui, egui_glow::glow};
 use sdl3::event::{Event, WindowEvent};
 use std::{
@@ -157,7 +155,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
                 Phase::Capturing => "ScreenFling — Capturing",
                 Phase::Selecting => "ScreenFling — Select region",
                 Phase::Review => "ScreenFling — Review crop",
-                Phase::Delivering => "ScreenFling — Stage pending",
+                Phase::Delivering => "ScreenFling — Sending",
                 Phase::Result => "ScreenFling — Result",
                 Phase::Idle => "ScreenFling",
             };

@@ -6,28 +6,29 @@
   <p><a href="#try-it">Build & run</a> · <a href="#engineering">Engineering</a> · <a href="docs/USAGE.md">User guide</a></p>
 </div>
 
-![ScreenFling reviewing a deployment-error screenshot, with a pixel preview, optional note, and Copy and Stage controls](docs/preview.webp)
+![ScreenFling reviewing a screenshot before sending it to a coding session](docs/preview.webp)
 
-*The running native app with a synthetic deployment error. Stage becomes available after connection and destination setup.*
+*The actual native app, showing a synthetic deployment error.*
 
-A screenshot often explains a bug faster than a paragraph. ScreenFling removes the file-saving and path-copying steps: review a crop, then copy it or stage it in the exact local WezTerm pane you choose. With several coding sessions open, the destination stays explicit.
+A screenshot often explains a bug faster than a paragraph. ScreenFling gives you a small, native capture-and-paste workflow for your coding agent.
 
 ## How it works
 
-1. **Capture.** Use the Capture button or global shortcut, then select a region on the frozen display.
-2. **Review.** Inspect the original crop with Fit or 1:1 preview. Add an optional note.
-3. **Copy or stage.** Copy the image for manual pasting, or Stage it in your selected WezTerm pane. Reveal that destination separately.
+1. **Capture** a region with the button or global shortcut.
+2. **Review** the image at Fit or 1:1 size.
+3. **Copy image**, switch to your agent, and press **Ctrl+V**.
 
-Copy works without terminal setup. **Stage sends Ctrl+V and your note, never Enter.** It requires a local coding agent whose Ctrl+V binding attaches an image; inspect the attachment before submitting. See [Stage setup](docs/USAGE.md#configure-stage-in-wezterm).
+Started capture from a terminal? **Paste back** returns to that terminal and presses Ctrl+V for you. You choose the agent by focusing it before capture. ScreenFling never presses Enter.
+
+No agent accounts, terminal plugins, socket configuration or saved image files. The clipboard is the handoff. Your agent must support clipboard images and your terminal must pass through its image-paste shortcut. [Usage and platform support](docs/USAGE.md).
 
 ## Engineering
 
-- **Native platform integration.** Rust, egui and SDL3 connect Windows capture, macOS ScreenCaptureKit, X11 and Wayland ScreenCast/PipeWire to one image model. The UI waits when idle; a bounded worker handles desktop operations. [Platform adapters](src/capture/) · [architecture](docs/DEVELOPMENT.md#code-map-and-boundaries)
-- **Original pixels throughout.** Selection maps to actual captured dimensions, including fractional display scaling. Resizing the preview never resizes the delivered crop. [Geometry and crop tests](src/model.rs)
-- **Explicit state transitions.** Capture generations prevent late background results from advancing an abandoned capture. Delivery requires the current reviewed image. [State machine](src/model.rs) · [application flow](src/app.rs)
-- **An exact destination.** Stage validates the connection and pane/window/tab IDs, then checks the clipboard against the reviewed image. Changed destinations and uncertain results never trigger a fallback or automatic retry. [Routing](src/wezterm.rs) · [relay](src/relay.rs)
+- **One image model.** Native Windows, macOS, X11 and Wayland capture adapters produce the same RGBA pixels. Selection preserves the original resolution, including fractional display scaling. [Capture](src/capture/) · [geometry](src/model.rs)
+- **Explicit state.** Capture → selection → review → delivery. Late capture results are discarded; cancelling leaves the clipboard unchanged. [Application](src/app.rs)
+- **Small platform boundaries.** Image clipboard access and optional focus/paste adapters stay separate from the UI. Paste checks focus and clipboard, sends once, and leaves submission to you. [Clipboard](src/clipboard.rs) · [paste back](src/send.rs)
 
-[CI](.github/workflows/check.yml) builds, lints, tests and packages all three platforms. Integration checks compare every crop pixel on X11 and on Wayland at 125% scale, verify native image clipboards, and use a real disposable WezTerm session to check routing and no-submit behavior. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
+[CI](.github/workflows/check.yml) builds and packages all three platforms. Tests compare every crop pixel on X11 and Wayland at 125% scale, read native clipboards from separate processes, and verify paste-back delivery in disposable terminals. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
 
 ## Try it
 
@@ -39,7 +40,7 @@ cd screenfling
 cargo run --release --locked
 ```
 
-Start with **Capture region** or **F8**. The [user guide](docs/USAGE.md) covers shortcuts, permissions and WezTerm setup.
+Start with **Capture region** or **F8**. The [user guide](docs/USAGE.md) covers shortcuts, permissions and Paste back.
 
 ## Status
 

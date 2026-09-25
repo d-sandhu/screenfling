@@ -163,6 +163,7 @@ impl Flow {
                 | (Phase::Selecting, Phase::Review)
                 | (Phase::Review, Phase::Delivering)
                 | (Phase::Delivering, Phase::Result)
+                | (Phase::Delivering, Phase::Review)
         );
         if !permitted || !self.is_current(generation, from) {
             return Err("This action is no longer current.".into());
@@ -189,24 +190,6 @@ impl Flow {
         self.phase = Phase::Result;
         true
     }
-}
-
-/// Raw terminal input is deliberately restricted to one line with no controls.
-/// CR/LF, ESC and C1 characters could submit a prompt or change terminal modes.
-pub fn stage_input(note: &str) -> Result<Vec<u8>> {
-    if note.len() > 4096
-        || note
-            .chars()
-            .any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}'))
-    {
-        return Err(
-            "Use a single-line note, without control characters, up to 4096 UTF-8 bytes.".into(),
-        );
-    }
-    let mut bytes = Vec::with_capacity(note.len() + 1);
-    bytes.push(0x16); // The explicitly configured coding agent's clipboard-image shortcut: Ctrl+V.
-    bytes.extend_from_slice(note.as_bytes());
-    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -294,16 +277,5 @@ mod tests {
         assert!(flow.advance(id, Phase::Review, Phase::Delivering).is_err());
         flow.advance(id, Phase::Delivering, Phase::Result).unwrap();
         assert!(flow.advance(id, Phase::Result, Phase::Delivering).is_err());
-    }
-    #[test]
-    fn staging_cannot_submit_or_inject_controls() {
-        for note in ["\r", "\n", "\x1b[200~", "\u{85}", "\u{2028}", "x\ty", "\0"] {
-            assert!(stage_input(note).is_err());
-        }
-        assert!(stage_input(&"x".repeat(4097)).is_err());
-        assert_eq!(
-            stage_input("Inspect this. Café.").unwrap(),
-            "\x16Inspect this. Café.".as_bytes()
-        );
     }
 }

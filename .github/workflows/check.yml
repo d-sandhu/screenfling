@@ -35,7 +35,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils x11-utils openbox wmctrl imagemagick fonts-dejavu-core
+          sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libdrm-dev libgbm-dev libdecor-0-dev libpipewire-0.3-dev libclang-dev libdbus-1-dev xvfb xdotool xclip x11-xserver-utils x11-utils openbox wmctrl xfce4-terminal imagemagick fonts-dejavu-core
       - name: Test and build
         shell: bash
         run: |
@@ -73,23 +73,16 @@ jobs:
               dpkg-query -W sway xdg-desktop-portal-wlr pipewire
               runuser -u sf-check -- python3 scripts/smoke-wayland.py
             '
-      - name: Isolated WezTerm routing
-        if: runner.os == 'Linux'
-        timeout-minutes: 5
-        shell: bash
-        run: |
-          exec > >(tee dist/wezterm-check.log) 2>&1
-          package=wezterm-20240203-110809-5046fc22.Ubuntu22.04.deb
-          GH_TOKEN="${{ github.token }}" gh release download 20240203-110809-5046fc22 \
-            --repo wezterm/wezterm --pattern "$package" --pattern "$package.sha256" --dir "$RUNNER_TEMP"
-          (cd "$RUNNER_TEMP" && sha256sum --check "$package.sha256")
-          sudo apt-get install -y "$RUNNER_TEMP/$package"
-          cargo build --release --locked --example check-wezterm --quiet
-          python3 scripts/check-wezterm.py
       - name: Native visual evidence
         if: runner.os == 'Linux'
         timeout-minutes: 3
         run: xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-visuals.py --isolated-xvfb
+      - name: Paste back to the original terminal
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: |
+          cargo build --release --locked --example check-send --quiet
+          xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-send.py
       - name: Package and record build evidence
         shell: bash
         run: |

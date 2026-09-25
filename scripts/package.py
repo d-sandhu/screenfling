@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Package and verify a native build. Never sign with a developer identity or publish."""
+"""Package and verify a native build. A macOS signing identity is opt-in."""
+import argparse
 import hashlib
 import json
 import os
@@ -196,6 +197,14 @@ def verify_archive(archive: Path, expected: dict[str, str], executable: str) -> 
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--signing-identity', help='macOS code-signing certificate SHA-1 fingerprint (40 hex digits)')
+    parser.add_argument('--signing-keychain', type=Path, help='Optional keychain containing that certificate')
+    options = parser.parse_args()
+    if options.signing_keychain and not options.signing_identity:
+        parser.error('--signing-keychain requires --signing-identity')
+    if options.signing_identity and (platform.system() != 'Darwin' or not re.fullmatch(r'[0-9a-fA-F]{40}', options.signing_identity)):
+        parser.error('--signing-identity requires macOS and a full certificate SHA-1 fingerprint')
     package = tomllib.loads((ROOT / 'Cargo.toml').read_text(encoding='utf-8'))['package']
     version = package['version']
     system = platform.system()
@@ -240,7 +249,12 @@ def main() -> None:
                 'NSPrincipalClass': 'NSApplication',
             }
             (contents / 'Info.plist').write_bytes(plistlib.dumps(info))
-            subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
+            signing = ['codesign', '--force', '--sign', options.signing_identity or '-']
+            if options.signing_keychain:
+                signing += ['--keychain', str(options.signing_keychain)]
+            # Use codesign's certificate-bound default requirement. Never replace it
+            # with an identifier-only requirement or silently fall back to ad-hoc.
+            subprocess.run([*signing, str(app)], check=True)
             subprocess.run(['codesign', '--verify', '--strict', str(app)], check=True)
         else:
             packaged_binary = folder / binary.name
@@ -272,7 +286,7 @@ def main() -> None:
         'package_bytes': archive.stat().st_size, 'package_sha256': archive_hash,
         'third_party_packages': dependency_count, 'archive_verified': True,
         'runtime_libraries': libraries, 'packaged_cli_verified': True,
-        'signing': 'ad-hoc only; not notarized' if system == 'Darwin' else 'unsigned',
+        'signing': (f'certificate {options.signing_identity}; not notarized' if options.signing_identity else 'ad-hoc only; not notarized') if system == 'Darwin' else 'unsigned',
     }
     (dist / 'build.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
     (dist / 'SHA256SUMS').write_text(f'{archive_hash}  {archive.name}\n', encoding='utf-8')
