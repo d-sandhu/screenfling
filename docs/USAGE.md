@@ -48,7 +48,7 @@ Detection uses foreground process groups and terminal ownership, not window titl
 
 On macOS, automatic paste additionally needs **Accessibility** permission; manual Copy does not. Permission is requested only after choosing Send with eligible terminals, at most once per launch. Enable the installed copy in System Settings → Privacy & Security → Accessibility, then refresh sessions. Capture separately needs Screen Recording access. See recovery below if an old build remains authorized.
 
-Ctrl+V is the documented image-paste binding for [Claude Code](https://support.claude.com/en/articles/14554922-claude-code-user-faq) and the default paste binding in [OpenCode](https://github.com/anomalyco/opencode/blob/dev/packages/tui/src/config/keybind.ts). Custom bindings, terminal interception and agent versions can change behavior. Check your agent’s attachment preview.
+Ctrl+V is the documented image-paste binding for [Claude Code](https://support.claude.com/en/articles/14554922-claude-code-user-faq), [Codex](https://github.com/openai/codex/blob/main/codex-rs/tui/assets/tooltips.txt), and the default paste binding in [OpenCode](https://github.com/anomalyco/opencode/blob/dev/packages/tui/src/config/keybind.ts). Custom bindings, terminal interception and agent versions can change behavior. Check your agent’s attachment preview.
 
 If the agent process identity, focus or image clipboard changes, sending stops. There is no automatic retry or fallback window. Keep ScreenFling running until you paste on Linux so it can serve the clipboard image.
 

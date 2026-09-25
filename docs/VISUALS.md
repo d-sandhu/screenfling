@@ -8,7 +8,7 @@ ScreenFling is a desktop handoff utility. The interface should make three things
 
 **Readable hierarchy.** Body text is 14 logical pixels, supporting text 12 or 14, section headings 22, and the idle introduction 32. Text is left-aligned and wraps within its region. Pane labels include separate identity metadata and an explicit Selected label; a blue fill alone is not the selection indicator. Path inputs scroll within padded fields instead of widening the application. Cards align to their column edges. Scrollbars reserve visible space instead of floating over content.
 
-**The image has priority.** The normal 1000 × 740 window starts with the preview; Send to… opens destination/note controls beside it. Below a 720-point content width, review stacks into one scrollable column. The footer does not scroll, so Send, Copy and Cancel stay reachable. The 640 × 480 minimum is exercised separately. The default preview budget leaves the crop dimensions visible above the action area; this was corrected after inspecting the first rendered screenshots.
+**The image has priority.** The normal 1000 × 740 window starts with the preview; Send to agent opens detected destinations beside it. Below a 720-point content width, review stacks into one scrollable column. The footer does not scroll, so Send, Copy and Cancel stay reachable. The 640 × 480 minimum is exercised separately. The default preview budget leaves the crop dimensions visible above the action area; this was corrected after inspecting the first rendered screenshots.
 
 **Preview is not delivery.** Fit preserves aspect ratio and affects only display. 1:1 pixels accounts for egui's pixels-per-point and provides scrollbars for larger images. Neither setting resamples the stored crop. The frozen-selection overlay has a crosshair, a light/dark outline, actual crop dimensions and a width-aware instruction panel.
 
@@ -45,7 +45,7 @@ The script refuses a non-Xvfb display. It uses temporary preferences and a synth
 
 Screens, source identity, dimensions, nonblank-frame checks and the comparison result are recorded under `dist/visuals/`. Synthetic reference/copied PNGs remain available to diagnose a mismatch. Existing asymmetric every-pixel X11 and Wayland capture tests are separate and unchanged.
 
-Inspect the screenshots as well as the report: a nonblank image is not proof that all text fits or that every state looks correct. Review idle, menu, selection, crop review, 1:1 scrolling, the window picker, settings, the scrolled compact layout and result. Inspect long window and pane labels, note validation, disabled actions and keyboard focus when changing the layout. Do not substitute a separately implemented mock interface.
+Inspect the screenshots as well as the report: a nonblank image is not proof that all text fits or that every state looks correct. Review idle, menu, selection, crop review, 1:1 scrolling, the agent picker, settings, the scrolled compact layout and result. Inspect long window and pane labels, note validation, disabled actions and keyboard focus when changing the layout. Do not substitute a separately implemented mock interface.
 
 The README preview comes from the real review screenshot. It contains a synthetic deployment error, not private screen content or a claimed agent attachment. Only the opt-in developer fixture writes these synthetic screenshots; the production application saves a PNG only after the optional Save PNG and copy path action.
 

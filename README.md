@@ -22,7 +22,6 @@ A screenshot often explains a bug faster than a paragraph. ScreenFling captures 
 
 Automatic targeting is still limited: mixed shell/agent tabs, remote sessions, Windows and Wayland use manual Copy. Terminal bindings and agent image support vary. [Compatibility and permissions](docs/USAGE.md#send-to-your-session).
 
-
 ## Engineering
 
 - **Native platform integration.** Rust, egui and SDL3 connect Windows capture, macOS ScreenCaptureKit, X11 and Wayland ScreenCast/PipeWire to one image model. The UI waits when idle; a bounded worker handles desktop operations. [Platform adapters](src/capture/) · [architecture](docs/DEVELOPMENT.md#code-map-and-boundaries)
