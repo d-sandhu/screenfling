@@ -256,7 +256,7 @@ fn overview(app: &App, ui: &mut Ui) {
             ui.add_space(16.0);
             card().show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
-                ui.label(RichText::new("Capture → review → send").strong());
+                ui.label(RichText::new("Capture / review / send").strong());
                 muted(ui, "ScreenFling pastes a local image path into your selected window. You stay in control of submitting. Copy is always available too.");
             });
             ui.add_space(12.0);
@@ -515,6 +515,7 @@ fn window_picker(app: &mut App, ui: &mut Ui, action: &mut Action) {
         if ui
             .add(
                 egui::TextEdit::singleline(&mut app.window_filter)
+                    .margin(egui::Margin::symmetric(9, 8))
                     .hint_text("Find an app or window…")
                     .desired_width(f32::INFINITY),
             )

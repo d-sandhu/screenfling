@@ -41,7 +41,7 @@ pub fn discover() -> Result<Vec<super::Target>> {
     let prompt = CFString::from_str("AXTrustedCheckOptionPrompt");
     let options = CFDictionary::from_slices(&[&*prompt], &[CFBoolean::new(true)]);
     if !unsafe { AXIsProcessTrustedWithOptions((&*options as *const CFDictionary<_, _>).cast()) } {
-        return Err("Allow ScreenFling in System Settings → Privacy & Security → Accessibility, then refresh windows. Copy still works without this permission.".into());
+        return Err("Allow ScreenFling in System Settings > Privacy & Security > Accessibility, then refresh windows. Copy still works without this permission.".into());
     }
     let mut targets = Vec::new();
     let deadline = Instant::now() + Duration::from_secs(2);

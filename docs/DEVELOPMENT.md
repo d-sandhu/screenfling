@@ -140,7 +140,7 @@ The native application is the official development baseline, not a physically ac
 
 - Permissions, denial and recovery, tray/global-shortcut behavior, close/reopen, normal idle screen locking, and clean-machine installation on Windows, macOS, and Wayland.
 - Mixed-DPI/multiple monitors, negative origins, rotation, disconnection, captured color/orientation, and hardware startup/idle CPU/RAM.
-- Real coding-agent attachment, a different focused pane, clipboard replacement during Stage, closed/moved destinations, and explicit Reveal/focus behavior. Confirm no submission.
+- Real coding-agent image loading from a file path, window focus and active-tab selection; advanced image attachment, a different focused pane, clipboard replacement during Stage, closed/moved destinations, and explicit Reveal/focus behavior. Confirm no submission.
 
 Public signing, notarization, release approval, and publication are separate owner decisions. CI software rendering is not a hardware benchmark. Do not present a development package as a fully validated public release.
 
