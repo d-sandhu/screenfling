@@ -9,10 +9,11 @@ use x11rb::{
 pub struct Target {
     window: u32,
     pid: u32,
+    started: u64,
 }
 fn connection() -> Result<(RustConnection, usize)> {
     if screenfling::capture::is_wayland() {
-        return Err("This Wayland desktop does not expose a portable window picker. Copy the image or file path and paste it into your session.".into());
+        return Err("This Wayland desktop does not support Paste back. Copy the image and paste it into your session.".into());
     }
     x11rb::connect(None).map_err(|_| "Could not connect to the X11 desktop.".into())
 }
@@ -32,67 +33,61 @@ fn values(conn: &RustConnection, window: u32, name: &[u8]) -> Result<Vec<u32>> {
         .map_err(|_| "The window is unavailable.")?;
     Ok(reply.value32().map(|v| v.collect()).unwrap_or_default())
 }
-fn label(conn: &RustConnection, window: u32, name: &[u8]) -> String {
-    atom(conn, name)
-        .ok()
-        .and_then(|a| {
-            conn.get_property(false, window, a, AtomEnum::ANY, 0, 1024)
-                .ok()?
-                .reply()
-                .ok()
-        })
-        .map(|r| {
-            String::from_utf8_lossy(&r.value)
-                .trim_matches('\0')
-                .replace('\0', " · ")
-        })
-        .unwrap_or_default()
+fn process(pid: u32) -> Option<(String, u64)> {
+    let root = std::path::PathBuf::from(format!("/proc/{pid}"));
+    let executable = std::fs::read_link(root.join("exe")).ok()?;
+    let name = executable.file_name()?.to_str()?.to_owned();
+    let stat = std::fs::read_to_string(root.join("stat")).ok()?;
+    let started = stat
+        .get(stat.rfind(')')? + 1..)?
+        .split_whitespace()
+        .nth(19)?
+        .parse()
+        .ok()?;
+    Some((name, started))
 }
-pub fn discover() -> Result<Vec<super::Target>> {
-    let (conn, screen) = connection()?;
-    let inventory = screenfling::agents::Inventory::read()
-        .ok_or("Could not inspect local agent sessions. Copy image remains available.")?;
+pub fn remember() -> Option<super::Target> {
+    let (conn, screen) = connection().ok()?;
     let root = conn.setup().roots[screen].root;
-    let mut targets = Vec::new();
-    for window in values(&conn, root, b"_NET_CLIENT_LIST_STACKING")?
-        .into_iter()
-        .rev()
-    {
-        let pid = values(&conn, window, b"_NET_WM_PID")?
-            .first()
-            .copied()
-            .unwrap_or(0);
-        if pid == 0 || pid == std::process::id() {
-            continue;
-        }
-        let Some(guard) = inventory.detect(pid) else {
-            continue;
-        };
-        let title = label(&conn, window, b"_NET_WM_NAME");
-        let title = if title.is_empty() {
-            label(&conn, window, b"WM_NAME")
-        } else {
-            title
-        };
-        if title.is_empty() {
-            continue;
-        }
-        targets.push(super::Target {
-            application: format!("{} · {}", guard.label, label(&conn, window, b"WM_CLASS")),
-            title,
-            guard,
-            native: Target { window, pid },
-        });
+    let window = *values(&conn, root, b"_NET_ACTIVE_WINDOW").ok()?.first()?;
+    let pid = *values(&conn, window, b"_NET_WM_PID").ok()?.first()?;
+    if pid == std::process::id() {
+        return None;
     }
-    Ok(targets)
+    let (name, started) = process(pid)?;
+    if !matches!(
+        name.to_lowercase().as_str(),
+        "ghostty"
+            | "wezterm-gui"
+            | "kitty"
+            | "alacritty"
+            | "xterm"
+            | "xfce4-terminal"
+            | "gnome-terminal-server"
+            | "konsole"
+            | "tilix"
+            | "foot"
+            | "footclient"
+    ) {
+        return None;
+    }
+    Some(super::Target {
+        application: name,
+        native: Target {
+            window,
+            pid,
+            started,
+        },
+    })
 }
 fn valid(conn: &RustConnection, target: &Target) -> bool {
     values(conn, target.window, b"_NET_WM_PID").is_ok_and(|v| v.first() == Some(&target.pid))
+        && process(target.pid).is_some_and(|(_, started)| started == target.started)
 }
 pub fn activate(target: &Target) -> Result<()> {
     let (conn, screen) = connection()?;
     if !valid(&conn, target) {
-        return Err("The selected window closed. Refresh windows.".into());
+        return Err("Your terminal closed. The image is copied; paste it manually.".into());
     }
     let event = ClientMessageEvent::new(
         32,

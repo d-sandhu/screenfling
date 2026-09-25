@@ -10,26 +10,25 @@
 
 *The actual native app, showing a synthetic deployment error.*
 
-A screenshot often explains a bug faster than a paragraph. ScreenFling captures the problem and puts the image into your coding agent’s prompt.
+A screenshot often explains a bug faster than a paragraph. ScreenFling gives you a small, native capture-and-paste workflow for your coding agent.
 
 ## How it works
 
-1. **Capture.** Click Capture or use the global shortcut, then select a region.
-2. **Review.** Check the crop at Fit or 1:1 size.
-3. **Send to agent.** Choose a detected agent terminal and paste the image. You decide when to submit.
+1. **Capture** a region with the button or global shortcut.
+2. **Review** the image at Fit or 1:1 size.
+3. **Copy image**, switch to your agent, and press **Ctrl+V**.
 
-**Send pastes the actual image with Ctrl+V; it never presses Enter.** Detection recognizes foreground Claude Code, Codex and OpenCode processes on macOS and Linux X11. It lists eligible agent terminals rather than every desktop window. **Copy image** lets you paste manually anywhere your agent supports clipboard images.
+Started capture from a terminal? **Paste back** returns to that terminal and presses Ctrl+V for you. You choose the agent by focusing it before capture. ScreenFling never presses Enter.
 
-Automatic targeting is still limited: mixed shell/agent tabs, remote sessions, Windows and Wayland use manual Copy. Terminal bindings and agent image support vary. [Compatibility and permissions](docs/USAGE.md#send-to-your-session).
+No agent accounts, terminal plugins, socket configuration or saved image files. The clipboard is the handoff. Your agent must support clipboard images and your terminal must pass through its image-paste shortcut. [Usage and platform support](docs/USAGE.md).
 
 ## Engineering
 
-- **Native platform integration.** Rust, egui and SDL3 connect Windows capture, macOS ScreenCaptureKit, X11 and Wayland ScreenCast/PipeWire to one image model. The UI waits when idle; a bounded worker handles desktop operations. [Platform adapters](src/capture/) · [architecture](docs/DEVELOPMENT.md#code-map-and-boundaries)
-- **Original pixels throughout.** Selection maps to actual captured dimensions, including fractional display scaling. Resizing the preview never resizes the delivered crop. [Geometry and crop tests](src/model.rs)
-- **Explicit state transitions.** Capture generations prevent late background results from advancing an abandoned capture. Delivery requires the current reviewed image. [State machine](src/model.rs) · [application flow](src/app.rs)
-- **One handoff, native adapters.** A shared coordinator checks the image clipboard, foreground agent processes and selected window before requesting paste. Changed destinations and uncertain results never trigger a fallback or automatic retry. [Window sending](src/send.rs) · [Agent detection](src/agents.rs)
+- **One image model.** Native Windows, macOS, X11 and Wayland capture adapters produce the same RGBA pixels. Selection preserves the original resolution, including fractional display scaling. [Capture](src/capture/) · [geometry](src/model.rs)
+- **Explicit state.** Capture → selection → review → delivery. Late capture results are discarded; cancelling leaves the clipboard unchanged. [Application](src/app.rs)
+- **Small platform boundaries.** Image clipboard access and optional focus/paste adapters stay separate from the UI. Paste checks focus and clipboard, sends once, and leaves submission to you. [Clipboard](src/clipboard.rs) · [paste back](src/send.rs)
 
-[CI](.github/workflows/check.yml) builds, lints, tests and packages all three platforms. Integration checks compare every crop pixel on X11 and on Wayland at 125% scale, verify native image clipboards, and exercise agent filtering, window targeting and image paste in disposable terminals. The optional advanced WezTerm integration has separate routing checks. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
+[CI](.github/workflows/check.yml) builds and packages all three platforms. Tests compare every crop pixel on X11 and Wayland at 125% scale, read native clipboards from separate processes, and verify paste-back delivery in disposable terminals. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
 
 ## Try it
 
@@ -41,7 +40,7 @@ cd screenfling
 cargo run --release --locked
 ```
 
-Start with **Capture region** or **F8**. The [user guide](docs/USAGE.md) covers shortcuts, permissions and the optional WezTerm integration.
+Start with **Capture region** or **F8**. The [user guide](docs/USAGE.md) covers shortcuts, permissions and Paste back.
 
 ## Status
 

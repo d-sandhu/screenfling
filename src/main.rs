@@ -3,14 +3,10 @@ mod app;
 mod cli;
 mod clipboard;
 mod desktop;
-mod handoff;
 #[cfg(target_os = "linux")]
 mod portal_shortcut;
-mod relay;
 mod send;
 mod settings;
-mod trusted;
-mod wezterm;
 use egui_sdl3::{egui, egui_glow::glow};
 use sdl3::event::{Event, WindowEvent};
 use std::{

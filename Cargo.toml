@@ -3,7 +3,7 @@ name = "screenfling"
 version = "0.2.0"
 edition = "2024"
 license = "MIT"
-description = "Capture, review, and stage a screenshot in an exact coding session."
+description = "Capture a region and paste the image into your coding session."
 repository = "https://github.com/d-sandhu/screenfling"
 readme = "README.md"
 publish = false
@@ -15,10 +15,8 @@ sdl3-sys = { version = "0.6.6", default-features = false, features = ["no-defaul
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
 getrandom = "0.3"
 global-hotkey = "0.8"
-socket2 = "0.6.5"
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 arboard = { version = "3.6.1", default-features = false, features = ["image-data"] }

@@ -170,7 +170,7 @@ pub(super) fn show(app: &mut App, ui: &mut Ui) -> Action {
                 .auto_shrink([false, false])
                 .show(ui, |ui| settings(app, ui, &mut action));
         } else if phase == Phase::Review {
-            review(app, ui, &mut action);
+            review(app, ui);
         } else {
             egui::ScrollArea::vertical()
                 .id_salt("overview-page")
@@ -190,18 +190,6 @@ fn header(app: &mut App, ui: &mut Ui, action: &mut Action) {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.add_enabled_ui(app.flow.phase() != Phase::Delivering, |ui| {
                 ui.menu_button("More", |ui| {
-                    if app.flow.phase() == Phase::Review
-                        && ui.button("Save PNG and copy path").clicked()
-                    {
-                        *action = Action::CopyPath;
-                        ui.close();
-                    }
-                    if ui
-                        .checkbox(&mut app.advanced_open, "WezTerm integration")
-                        .changed()
-                    {
-                        app.send_open = false;
-                    }
                     if app.tray_available && ui.button("Hide to tray").clicked() {
                         *action = Action::Hide;
                     }
@@ -263,7 +251,7 @@ fn overview(app: &App, ui: &mut Ui) {
             card().show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.label(RichText::new("Capture / review / send").strong());
-                muted(ui, "Send to a detected agent, or copy the image and press Ctrl+V there. You decide when to submit.");
+                muted(ui, "Copy the image and press Ctrl+V in your agent. Capture from your terminal to use Paste back.");
             });
             ui.add_space(12.0);
             muted(ui, &app.shortcut_status);
@@ -291,23 +279,6 @@ fn overview(app: &App, ui: &mut Ui) {
                 ui.set_min_width(ui.available_width());
                 ui.add(Label::new(RichText::new(&app.status).size(16.0)).wrap());
             });
-            if let Some(destination) = &app.reveal {
-                ui.add_space(12.0);
-                ui.label(RichText::new("Selected destination").strong());
-                muted(ui, &destination.title);
-                muted(
-                    ui,
-                    format!(
-                        "Pane {} · Window {} · {}",
-                        destination.pane_id, destination.window_id, destination.workspace
-                    ),
-                );
-                ui.add_space(8.0);
-                muted(
-                    ui,
-                    "A terminal write is not an attachment acknowledgment. Reveal the destination and inspect the coding agent before submitting or trying again.",
-                );
-            }
         }
         Phase::Capturing | Phase::Delivering => {
             ui.horizontal(|ui| {
@@ -338,45 +309,15 @@ fn overview(app: &App, ui: &mut Ui) {
     }
 }
 
-fn review(app: &mut App, ui: &mut Ui, action: &mut Action) {
-    if !app.advanced_open && !app.send_open {
-        egui::ScrollArea::vertical()
-            .id_salt("review-image")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                preview(app, ui);
-                ui.add_space(8.0);
-                muted(ui, &app.status);
-            });
-        return;
-    }
-    if ui.available_width() >= 720.0 {
-        let rect = ui.max_rect();
-        let left_width = (rect.width() - 20.0) * 0.56;
-        let left = Rect::from_min_size(rect.min, Vec2::new(left_width, rect.height()));
-        let right = Rect::from_min_max(Pos2::new(left.max.x + 20.0, rect.min.y), rect.max);
-        region(ui, left, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("preview-column")
-                .auto_shrink([false, false])
-                .show(ui, |ui| preview(app, ui));
+fn review(app: &mut App, ui: &mut Ui) {
+    egui::ScrollArea::vertical()
+        .id_salt("review-image")
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            preview(app, ui);
+            ui.add_space(8.0);
+            muted(ui, &app.status);
         });
-        region(ui, right, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("delivery-column")
-                .auto_shrink([false, false])
-                .show(ui, |ui| delivery(app, ui, action));
-        });
-    } else {
-        egui::ScrollArea::vertical()
-            .id_salt("review-stacked")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                preview(app, ui);
-                ui.add_space(16.0);
-                delivery(app, ui, action);
-            });
-    }
 }
 fn preview(app: &mut App, ui: &mut Ui) {
     heading(ui, "Review crop");
@@ -391,11 +332,7 @@ fn preview(app: &mut App, ui: &mut Ui) {
         });
         if let (Some(texture), Some(crop)) = (&app.texture, &app.crop) {
             let native = texture.size_vec2() / ui.ctx().pixels_per_point();
-            let height = if app.advanced_open || app.send_open {
-                240.0
-            } else {
-                (ui.available_height() - 112.0).clamp(120.0, 420.0)
-            };
+            let height = (ui.available_height() - 112.0).clamp(120.0, 420.0);
             Frame::new()
                 .fill(FIELD)
                 .corner_radius(8)
@@ -437,122 +374,6 @@ fn preview(app: &mut App, ui: &mut Ui) {
     ui.add_space(6.0);
     muted(ui, "Your screenshot keeps its original pixels.");
 }
-fn stage_blocked(app: &App) -> Option<&'static str> {
-    if app.discovering {
-        Some("Wait for pane discovery to finish.")
-    } else if !app.settings.connection.paste_confirmed {
-        Some("Confirm the agent's Ctrl+V image binding in Settings to enable Stage.")
-    } else if app.selected.and_then(|i| app.routes.get(i)).is_none() {
-        Some("Select an exact destination to enable Stage. Copy works without one.")
-    } else if model::stage_input(&app.note).is_err() {
-        Some("Fix the note before staging. Copy still copies only the image.")
-    } else {
-        None
-    }
-}
-fn delivery(app: &mut App, ui: &mut Ui, action: &mut Action) {
-    if app.send_open {
-        window_picker(app, ui, action);
-        return;
-    }
-    heading(ui, "Send to your session");
-    muted(ui, "Optional · local WezTerm only");
-    ui.add_space(4.0);
-    card().show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Destination").strong());
-            if ui.add_enabled(!app.discovering, Button::new(if app.discovering { "Finding panes…" } else { "Refresh panes" })).clicked() {
-                *action = Action::Discover;
-            }
-        });
-        if app.routes.is_empty() {
-            muted(ui, if app.discovering { "Reading the configured instance. Nothing has been delivered." } else { "No destination selected. Connect WezTerm, then refresh and choose the coding-agent pane." });
-            if ui.button("Connection settings").clicked() { app.settings_open = true; }
-        } else {
-            egui::ScrollArea::vertical().id_salt("exact-destinations").max_height(180.0).show(ui, |ui| {
-                for (index, destination) in app.routes.iter().enumerate() {
-                    let selected = app.selected == Some(index);
-                    let title = if destination.title.is_empty() { "Untitled pane" } else { &destination.title };
-                    let label = format!("{}{}\nPane {} · Window {}\n{}", if selected { "Selected · " } else { "" }, title, destination.pane_id, destination.window_id, destination.workspace);
-                    if ui.add_sized([ui.available_width(), 0.0], Button::new(label).wrap().selected(selected)).clicked() {
-                        app.selected = Some(index);
-                    }
-                }
-            });
-        }
-        if !app.settings.connection.paste_confirmed {
-            muted(ui, "Stage needs your confirmation that Ctrl+V attaches an image without submitting.");
-        }
-    });
-    ui.add_space(12.0);
-    card().show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.label(RichText::new("Note").strong());
-        muted(ui, "Optional · one line · included only with Stage");
-        ui.add(
-            egui::TextEdit::singleline(&mut app.note)
-                .margin(egui::Margin::symmetric(9, 8))
-                .id(egui::Id::new("stage-note"))
-                .desired_width(f32::INFINITY)
-                .char_limit(4096)
-                .hint_text("What should the agent look at?"),
-        );
-        if let Err(error) = model::stage_input(&app.note) {
-            ui.add(Label::new(RichText::new(error).color(ERROR)).wrap());
-        } else if !app.note.is_empty() {
-            muted(ui, format!("{} / 4096 UTF-8 bytes", app.note.len()));
-        }
-    });
-    ui.add_space(10.0);
-    muted(ui, &app.status);
-}
-fn window_picker(app: &mut App, ui: &mut Ui, action: &mut Action) {
-    heading(ui, "Detected coding agents");
-    ui.horizontal_wrapped(|ui| {
-        if ui.button("Refresh sessions").clicked() {
-            *action = Action::ChooseWindow;
-        }
-    });
-    ui.add_space(6.0);
-    card().show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        egui::ScrollArea::vertical()
-            .id_salt("session-windows")
-            .max_height(180.0)
-            .show(ui, |ui| {
-                for (index, target) in app.windows.iter().enumerate() {
-                    let label = format!("{}\n{}", target.application, target.title);
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 0.0],
-                            Button::new(if app.selected_window == Some(index) {
-                                format!("Selected · {label}")
-                            } else {
-                                label
-                            })
-                            .wrap()
-                            .selected(app.selected_window == Some(index)),
-                        )
-                        .clicked()
-                    {
-                        app.selected_window = Some(index);
-                    }
-                }
-            });
-        if app.windows.is_empty() {
-            muted(ui, &app.status);
-        }
-    });
-    ui.add_space(10.0);
-    muted(
-        ui,
-        "Pastes the image with Ctrl+V into the active pane. Check the attachment before submitting.",
-    );
-    if !app.windows.is_empty() {
-        muted(ui, &app.status);
-    }
-}
 fn settings(app: &mut App, ui: &mut Ui, action: &mut Action) {
     heading(ui, "Settings");
     muted(
@@ -576,29 +397,6 @@ fn settings(app: &mut App, ui: &mut Ui, action: &mut Action) {
         muted(ui, "In the app: F8 capture · F6 copy reviewed image · F10 settings · Esc back or cancel.");
     });
     ui.add_space(12.0);
-    egui::CollapsingHeader::new("Advanced: WezTerm integration")
-        .id_salt("advanced-connection")
-        .show(ui, |ui| {
-    card().show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.label(RichText::new("WezTerm connection").size(18.0).strong());
-        muted(ui, "Choose a local coding agent using the same OS clipboard. Do not select a shell, SSH session or WSL agent.");
-        ui.label("WezTerm executable · absolute path");
-        let executable = ui.add(egui::TextEdit::singleline(&mut app.settings.connection.executable).margin(egui::Margin::symmetric(9, 8)).id(egui::Id::new("wezterm-executable")).desired_width(f32::INFINITY)).changed();
-        ui.label("Instance socket · exact WEZTERM_UNIX_SOCKET value");
-        let socket = ui.add(egui::TextEdit::singleline(&mut app.settings.connection.socket).margin(egui::Margin::symmetric(9, 8)).id(egui::Id::new("wezterm-socket")).desired_width(f32::INFINITY)).changed();
-        if executable || socket {
-            app.routes.clear();
-            app.selected = None;
-            app.settings.connection.paste_confirmed = false;
-        }
-        ui.checkbox(&mut app.settings.connection.paste_confirmed, "I verified that Ctrl+V attaches an image in my agent and does not submit.");
-        muted(ui, "Pane titles are labels, not routing identities. Copy works without a connection.");
-        if ui.button("Save connection").clicked() { *action = Action::SaveSettings; }
-    });
-    ui.add_space(12.0);
-        });
-    ui.add_space(12.0);
     muted(ui, &app.status);
 }
 fn footer(app: &mut App, ui: &mut Ui, action: &mut Action) {
@@ -621,70 +419,34 @@ fn footer(app: &mut App, ui: &mut Ui, action: &mut Action) {
     match app.flow.phase() {
         Phase::Review => {
             ui.horizontal_wrapped(|ui| {
-                if !app.advanced_open {
-                    if app.send_open {
-                        if ui
-                            .add_enabled(app.selected_window.is_some(), primary("Paste image"))
-                            .clicked()
-                        {
-                            *action = Action::Send;
-                        }
-                    } else if ui.add(primary("Send to agent")).clicked() {
-                        *action = Action::ChooseWindow;
-                    }
-                }
-                if ui.button("Copy image  F6").clicked() {
+                if ui.add(primary("Copy image  F6")).clicked() {
                     *action = Action::Copy;
                 }
-                if app.advanced_open {
-                    let blocked = stage_blocked(app);
-                    if ui
-                        .add_enabled(blocked.is_none(), Button::new("Stage in WezTerm"))
-                        .on_disabled_hover_text(blocked.unwrap_or_default())
+                if let Some(target) = &app.destination
+                    && ui
+                        .button(format!("Paste back to {}", target.application))
                         .clicked()
-                    {
-                        *action = Action::Stage;
-                    }
+                {
+                    *action = Action::Send;
                 }
                 if ui.button("Cancel").clicked() {
                     *action = Action::Cancel;
                 }
             });
-            if app.advanced_open {
-                if let Some(blocked) = stage_blocked(app) {
-                    muted(ui, blocked);
-                }
-            } else {
-                muted(
-                    ui,
-                    "Send pastes the image with Ctrl+V. You submit it when ready.",
-                );
-            }
+            muted(
+                ui,
+                "Send pastes the image with Ctrl+V. You submit it when ready.",
+            );
         }
         Phase::Idle | Phase::Result => {
             ui.horizontal_wrapped(|ui| {
                 if ui.add(primary("Capture region  F8")).clicked() {
                     *action = Action::Capture;
                 }
-                if app.flow.phase() == Phase::Result
-                    && app.reveal.is_some()
-                    && ui
-                        .add_enabled(
-                            !app.revealing,
-                            Button::new(if app.revealing {
-                                "Revealing…"
-                            } else {
-                                "Reveal destination"
-                            }),
-                        )
-                        .clicked()
-                {
-                    *action = Action::Reveal;
-                }
             });
             muted(
                 ui,
-                "Nothing is sent until you choose Send. ScreenFling never submits your prompt.",
+                "Nothing is copied until you review the crop. Your prompt is never submitted.",
             );
         }
         Phase::Capturing => {

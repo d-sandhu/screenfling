@@ -161,10 +161,6 @@ def main():
                 shot('Review crop$', 'review-native-scrolled', (1000, 740))
                 unchanged()
                 click('Review crop$', 120, 232)
-                # Opening a window picker is explicit and never copies or pastes.
-                click('Review crop$', 85, 660)
-                shot('Review crop$', 'review-window-picker', (1000, 740))
-                unchanged()
                 key('Review crop$', 'F10')
                 key('Review crop$', 'Escape')
                 window('Review crop$')
@@ -189,7 +185,7 @@ def main():
                 report = {'source': command('git', 'rev-parse', 'HEAD').stdout.decode().strip(),
                           'scope': 'Actual release executable, isolated Xvfb/software OpenGL, synthetic deployment-error subject. No agent attachment claim.',
                           'wallpaper_file_matches_rendered_pixels': generated == expected,
-                          'checks': ['menu Escape dismisses only the menu', 'native text entry persists exact settings', 'settings back preserves review', 'selection/review/settings/resize preserve clipboard', 'preview modes and window discovery preserve clipboard', 'copied pixels equal the independently read rendered fixture crop', 'viewport dimensions and nonblank frames'],
+                          'checks': ['menu Escape dismisses only the menu', 'native text entry persists exact settings', 'settings back preserves review', 'selection/review/settings/resize preserve clipboard', 'preview modes preserve clipboard', 'copied pixels equal the independently read rendered fixture crop', 'viewport dimensions and nonblank frames'],
                           'screens': records}
                 (OUT / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2))

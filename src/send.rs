@@ -1,5 +1,5 @@
-//! Paste the clipboard image into a detected foreground coding agent.
-//! No terminal plugins, socket configuration, guessed focus, or Enter key.
+//! Optional paste back to the terminal used before Capture.
+//! One image clipboard, one explicit paste, no Enter.
 use screenfling::model::Result;
 use std::time::{Duration, Instant};
 
@@ -22,13 +22,11 @@ use windows as native;
 #[derive(Clone, Debug)]
 pub struct Target {
     pub application: String,
-    pub title: String,
-    guard: screenfling::agents::Guard,
     native: native::Target,
 }
 
-pub fn discover() -> Result<Vec<Target>> {
-    native::discover()
+pub fn remember() -> Option<Target> {
+    native::remember()
 }
 
 pub struct Pending {
@@ -39,12 +37,6 @@ impl Pending {
     pub fn start(target: Target, clipboard_matches: bool) -> Result<Self> {
         if !clipboard_matches {
             return Err("The clipboard changed. Nothing was pasted.".into());
-        }
-        if !target.guard.current() {
-            return Err(
-                "The agent session changed. Refresh sessions, or paste the copied image manually."
-                    .into(),
-            );
         }
         native::activate(&target.native)?;
         Ok(Self {
@@ -63,13 +55,13 @@ impl Pending {
         Some(
             checked_paste(
                 clipboard_matches(),
-                || self.target.guard.current() && native::focused(&self.target.native),
+                || native::focused(&self.target.native),
                 || native::paste(&self.target.native),
             )
             .map(|()| {
                 format!(
-                    "Image paste requested in {} — {}. Check the attachment before submitting.",
-                    self.target.application, self.target.title
+                    "Image paste requested in {}. Check the attachment before submitting.",
+                    self.target.application
                 )
             }),
         )

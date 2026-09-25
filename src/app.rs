@@ -1,9 +1,4 @@
-use crate::{
-    clipboard::Clipboard,
-    desktop, handoff, send,
-    settings::Settings,
-    wezterm::{self, Destination},
-};
+use crate::{clipboard::Clipboard, desktop, send, settings::Settings};
 use egui_sdl3::egui::{self, Color32, Pos2, Rect, Sense, TextureHandle, Vec2};
 use screenfling::{
     capture::{self, Captured},
@@ -14,7 +9,6 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc,
     },
     thread::JoinHandle,
     time::{Duration, Instant},
@@ -29,10 +23,6 @@ pub enum Message {
     Quit,
     Shortcut(u32),
     Captured(u64, Result<Captured>),
-    Destinations(u64, wezterm::ConnectionSettings, Result<Vec<Destination>>),
-    VerifyClipboard(u64, mpsc::SyncSender<bool>),
-    Staged(u64, Destination, Result<String>),
-    Revealed(u64, Result<String>),
     #[cfg(target_os = "linux")]
     ShortcutStatus(String),
 }
@@ -44,13 +34,7 @@ pub enum Action {
     Cancel,
     Crop([f64; 4], [f64; 2]),
     Copy,
-    CopyPath,
-    ChooseWindow,
     Send,
-    Discover,
-    Stage,
-    Reveal,
-    SaveSettings,
     ApplyShortcut,
     Hide,
     Quit,
@@ -58,7 +42,6 @@ pub enum Action {
 pub struct App {
     pub flow: Flow,
     pub settings: Settings,
-    saved_settings: Settings,
     pub status: String,
     pub shortcut_status: String,
     pub shortcut: desktop::Shortcut,
@@ -66,27 +49,17 @@ pub struct App {
     crop: Option<Pixels>,
     texture: Option<TextureHandle>,
     preview_native: bool,
-    advanced_open: bool,
-    send_open: bool,
-    windows: Vec<send::Target>,
-    selected_window: Option<usize>,
+    destination: Option<send::Target>,
     pending_send: Option<send::Pending>,
     copied: bool,
-    saved_capture: Option<std::path::PathBuf>,
-    note: String,
     anchor: Option<Pos2>,
     selection: Option<Rect>,
-    routes: Vec<Destination>,
-    selected: Option<usize>,
-    reveal: Option<Destination>,
     clipboard: Option<Clipboard>,
     worker: Option<JoinHandle<()>>,
     cancelled: Arc<AtomicBool>,
     capture_due: Option<(Instant, [i32; 2])>,
     restore: [i32; 4],
     settings_open: bool,
-    discovering: bool,
-    revealing: bool,
     show_after_paint: bool,
     pub tray_available: bool,
     pub quit: bool,
@@ -100,7 +73,6 @@ impl App {
     ) -> Self {
         Self {
             flow: Flow::default(),
-            saved_settings: settings.clone(),
             settings,
             status,
             shortcut_status,
@@ -109,27 +81,17 @@ impl App {
             crop: None,
             texture: None,
             preview_native: false,
-            advanced_open: false,
-            send_open: false,
-            windows: Vec::new(),
-            selected_window: None,
+            destination: None,
             pending_send: None,
             copied: false,
-            saved_capture: None,
-            note: String::new(),
             anchor: None,
             selection: None,
-            routes: Vec::new(),
-            selected: None,
-            reveal: None,
             clipboard: None,
             worker: None,
             cancelled: Arc::new(AtomicBool::new(false)),
             capture_due: None,
             restore: [100, 100, 1000, 740],
             settings_open: false,
-            discovering: false,
-            revealing: false,
             show_after_paint: false,
             tray_available: false,
             quit: false,
@@ -162,8 +124,6 @@ impl App {
         self.crop = None;
         self.texture = None;
         self.preview_native = false;
-        self.saved_capture = None;
-        self.note.clear();
         self.anchor = None;
         self.selection = None;
     }
@@ -198,12 +158,6 @@ impl App {
                 self.pending_send = None;
                 let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
                 self.status = result.unwrap_or_else(|error| error);
-                if let Some(path) = &self.saved_capture {
-                    self.status.push_str(&format!(
-                        "\n\nSaved PNG: {}\nThe file stays on this computer until you delete it.",
-                        path.display()
-                    ));
-                }
                 self.clear_images();
             }
         }
@@ -246,9 +200,6 @@ impl App {
             self.cancelled.store(true, Ordering::Release);
             self.capture_due = None;
             self.clear_images();
-            self.routes.clear();
-            self.selected = None;
-            self.discovering = false;
             self.status = "Capture cancelled. No further delivery was requested.".into();
             self.normal_window(window);
         }
@@ -296,67 +247,11 @@ impl App {
                     }
                 }
             }
-            Message::Destinations(id, connection, result) => {
-                self.finish_discovery(id, connection, result);
-            }
-            Message::VerifyClipboard(id, reply) => {
-                let matches = self.flow.is_current(id, Phase::Delivering)
-                    && self
-                        .crop
-                        .as_ref()
-                        .zip(self.clipboard.as_mut())
-                        .is_some_and(|(crop, clipboard)| clipboard.matches(crop));
-                let _ = reply.try_send(matches);
-            }
-            Message::Staged(id, destination, result)
-                if self.flow.is_current(id, Phase::Delivering) =>
-            {
-                let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
-                self.reveal = Some(destination);
-                self.status = result.unwrap_or_else(|error| error);
-                self.clear_images();
-            }
-            Message::Revealed(id, result) if self.flow.is_current(id, Phase::Result) => {
-                self.revealing = false;
-                self.status = result.unwrap_or_else(|error| error);
-            }
             #[cfg(target_os = "linux")]
             Message::ShortcutStatus(status) => self.shortcut_status = status,
             _ => {} // Stale work cannot mutate the workflow or clipboard.
         }
         ctx.request_repaint();
-    }
-    fn finish_discovery(
-        &mut self,
-        id: u64,
-        connection: wezterm::ConnectionSettings,
-        result: Result<Vec<Destination>>,
-    ) {
-        if !self.flow.is_current(id, Phase::Review) {
-            return;
-        }
-        // A settings change invalidates the result, but must release the busy UI.
-        // A result from an older capture must not release a newer request.
-        self.discovering = false;
-        self.routes.clear();
-        self.selected = None;
-        if connection != self.settings.connection {
-            self.status =
-                "Connection settings changed. Refresh panes to select a current destination."
-                    .into();
-            return;
-        }
-        match result {
-            Ok(routes) => {
-                self.routes = routes;
-                self.status = if self.routes.is_empty() {
-                    "No panes were found in the selected WezTerm instance.".into()
-                } else {
-                    "Select the exact coding-session pane. Nothing has been delivered.".into()
-                };
-            }
-            Err(error) => self.status = error,
-        }
     }
     pub fn action(&mut self, action: Action, ctx: &egui::Context, window: &mut Window) {
         if matches!(action, Action::None) {
@@ -366,16 +261,6 @@ impl App {
             self.status = error;
         }
         ctx.request_repaint();
-    }
-    fn connection_settings_to_save(&self) -> Settings {
-        let mut next = self.saved_settings.clone();
-        next.connection = self.settings.connection.clone();
-        next
-    }
-    fn shortcut_settings_to_save(&self) -> Settings {
-        let mut next = self.saved_settings.clone();
-        next.shortcut = self.settings.shortcut.clone();
-        next
     }
     fn try_action(
         &mut self,
@@ -399,16 +284,9 @@ impl App {
                 }
                 self.flow.start()?;
                 self.copied = false;
-                self.send_open = false;
-                self.windows.clear();
-                self.selected_window = None;
+                self.destination = send::remember();
                 self.clear_images();
                 self.settings_open = false;
-                self.routes.clear();
-                self.selected = None;
-                self.reveal = None;
-                self.discovering = false;
-                self.revealing = false;
                 self.cancelled = Arc::new(AtomicBool::new(false));
                 self.restore = desktop::geometry(window);
                 let pointer = desktop::pointer();
@@ -435,12 +313,10 @@ impl App {
                 self.crop = Some(crop);
                 self.anchor = None;
                 self.selection = None;
-                self.status =
-                    "Send the image to a coding agent, or copy it and press Ctrl+V there.".into();
+                self.status = "Copy the image, or paste it back into your terminal.".into();
                 self.normal_window(window);
             }
-            Action::Copy | Action::CopyPath if self.flow.phase() == Phase::Review => {
-                let copy_path = matches!(action, Action::CopyPath);
+            Action::Copy if self.flow.phase() == Phase::Review => {
                 if self.clipboard.is_none() {
                     self.clipboard = Some(Clipboard::new()?);
                 }
@@ -448,40 +324,12 @@ impl App {
                     .crop
                     .as_ref()
                     .ok_or("The reviewed crop is unavailable.")?;
-                if copy_path && self.saved_capture.is_none() {
-                    self.saved_capture = Some(handoff::save(crop)?);
-                }
                 self.flow.advance(id, Phase::Review, Phase::Delivering)?;
-                let clipboard = self.clipboard.as_mut().ok_or("Clipboard unavailable.")?;
-                let result = if copy_path {
-                    clipboard.copy_text(handoff::clipboard_path(
-                        self.saved_capture.as_ref().unwrap(),
-                    )?)
-                } else {
-                    clipboard.copy(crop)
-                };
-                self.finish_copy(id, result, copy_path);
-            }
-            Action::ChooseWindow if self.flow.phase() == Phase::Review => {
-                self.send_open = true;
-                self.advanced_open = false;
-                self.selected_window = None;
-                self.windows.clear();
-                self.windows = send::discover()?;
-                self.selected_window = (self.windows.len() == 1).then_some(0);
-                self.status = if self.windows.is_empty() {
-                    "No agent terminal could be verified. Use Copy image, then Ctrl+V in your agent. Terminals with mixed shell and agent tabs are omitted."
-                } else {
-                    "Choose an agent terminal. Ctrl+V pastes the image into its active pane; Enter is never sent."
-                }
-                .into();
+                let result = self.clipboard.as_mut().unwrap().copy(crop);
+                self.finish_copy(id, result);
             }
             Action::Send if self.flow.phase() == Phase::Review => {
-                let target = self
-                    .selected_window
-                    .and_then(|i| self.windows.get(i))
-                    .cloned()
-                    .ok_or("Choose a window first.")?;
+                let target = self.destination.clone().ok_or("Start capture with the shortcut from your terminal to use Paste back. Copy image is always available.")?;
                 let crop = self
                     .crop
                     .as_ref()
@@ -506,98 +354,10 @@ impl App {
                     }
                 }
             }
-            Action::Discover if self.flow.phase() == Phase::Review => {
-                if !self.reap() {
-                    return Err(
-                        "Another desktop operation is still ending. Copy remains available.".into(),
-                    );
-                }
-                self.routes.clear();
-                self.selected = None;
-                let connection = self.settings.connection.clone();
-                self.spawn(move || {
-                    let result = wezterm::discover(&connection);
-                    desktop::post(Message::Destinations(id, connection, result));
-                })?;
-                self.discovering = true;
-                self.status = "Reading panes from the configured WezTerm instance…".into();
-            }
-            Action::Stage if self.flow.phase() == Phase::Review => {
-                if !self.reap() {
-                    return Err(
-                        "Another desktop operation is still ending. Nothing was staged.".into(),
-                    );
-                }
-                if !self.settings.connection.paste_confirmed {
-                    return Err("Confirm the coding agent's image-paste binding in connection settings first.".into());
-                }
-                model::stage_input(&self.note)?;
-                let destination = self
-                    .selected
-                    .and_then(|i| self.routes.get(i))
-                    .cloned()
-                    .ok_or("Select an exact destination first.")?;
-                if !destination.belongs_to(&self.settings.connection) {
-                    return Err(
-                        "The connection changed. Refresh and select the destination again.".into(),
-                    );
-                }
-                if self.clipboard.is_none() {
-                    self.clipboard = Some(Clipboard::new()?);
-                }
-                self.flow.advance(id, Phase::Review, Phase::Delivering)?;
-                if let Err(error) = self
-                    .clipboard
-                    .as_mut()
-                    .ok_or("Clipboard unavailable.")?
-                    .copy(
-                        self.crop
-                            .as_ref()
-                            .ok_or("The reviewed crop is unavailable.")?,
-                    )
-                {
-                    self.flow.fail(id);
-                    self.clear_images();
-                    return Err(error);
-                }
-                let note = self.note.clone();
-                let spawn = self.spawn(move || {
-                    let result = wezterm::stage(&destination, &note, || {
-                        let (tx, rx) = mpsc::sync_channel(1);
-                        desktop::post(Message::VerifyClipboard(id, tx));
-                        rx.recv_timeout(Duration::from_secs(2)).unwrap_or(false)
-                    });
-                    desktop::post(Message::Staged(id, destination, result));
-                });
-                if let Err(error) = spawn {
-                    self.flow.fail(id);
-                    self.clear_images();
-                    return Err(error);
-                }
-                self.status = "Staging once, without submitting. Do not paste or retry while this operation is pending.".into();
-            }
-            Action::Reveal if self.flow.phase() == Phase::Result => {
-                let destination = self
-                    .reveal
-                    .clone()
-                    .ok_or("There is no staged destination to reveal.")?;
-                self.spawn(move || {
-                    desktop::post(Message::Revealed(id, wezterm::reveal(&destination)));
-                })?;
-                self.revealing = true;
-            }
-            Action::SaveSettings if self.flow.phase() != Phase::Delivering => {
-                let next = self.connection_settings_to_save();
-                next.save()?;
-                self.saved_settings = next;
-                self.status =
-                    "Connection settings saved. Images and notes are never stored in settings."
-                        .into();
-            }
             Action::ApplyShortcut if self.flow.phase() != Phase::Delivering => {
                 let old = self.shortcut.current().to_owned();
                 self.shortcut.set(&self.settings.shortcut)?;
-                let next = self.shortcut_settings_to_save();
+                let next = self.settings.clone();
                 if let Err(error) = next.save() {
                     if let Err(rollback) = self.shortcut.restore(&old) {
                         self.shortcut_status =
@@ -606,7 +366,6 @@ impl App {
                     }
                     return Err(error);
                 }
-                self.saved_settings = next;
                 self.shortcut_status = format!("Capture shortcut: {}", self.shortcut.current());
                 self.status = "Capture shortcut saved.".into();
             }
@@ -638,7 +397,7 @@ impl App {
         }
         Ok(())
     }
-    fn finish_copy(&mut self, id: u64, result: Result<()>, path: bool) {
+    fn finish_copy(&mut self, id: u64, result: Result<()>) {
         if !self.flow.is_current(id, Phase::Delivering) {
             return;
         }
@@ -646,14 +405,7 @@ impl App {
             Ok(()) => {
                 let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
                 self.copied = true;
-                self.status = if path {
-                    format!(
-                        "File path copied. Paste it into your agent's prompt.\n\nSaved PNG: {}\nThe file stays on this computer until you delete it.",
-                        self.saved_capture.as_ref().unwrap().display()
-                    )
-                } else {
-                    "Image copied. Switch to your coding agent and press Ctrl+V.".into()
-                };
+                self.status = "Image copied. Switch to your coding agent and press Ctrl+V.".into();
                 self.clear_images();
             }
             Err(error) => {
@@ -803,14 +555,14 @@ mod tests {
         app.flow
             .advance(id, Phase::Review, Phase::Delivering)
             .unwrap();
-        app.finish_copy(id, Err("Clipboard busy".into()), false);
+        app.finish_copy(id, Err("Clipboard busy".into()));
         assert!(app.flow.is_current(id, Phase::Review));
         assert_eq!(app.crop, Some(pixels));
         assert!(!app.copied);
         app.flow
             .advance(id, Phase::Review, Phase::Delivering)
             .unwrap();
-        app.finish_copy(id, Ok(()), false);
+        app.finish_copy(id, Ok(()));
         assert!(app.flow.is_current(id, Phase::Result));
         assert!(app.crop.is_none() && app.copied);
     }
@@ -831,65 +583,5 @@ mod tests {
                 height: 599,
             }
         );
-    }
-
-    #[test]
-    fn discovery_recovers_after_settings_change_and_ignores_old_capture() {
-        let mut app = App::new(
-            Settings::default(),
-            String::new(),
-            desktop::Shortcut::default(),
-            String::new(),
-        );
-        let begin_review = |app: &mut App| {
-            let id = app.flow.start().unwrap();
-            app.flow
-                .advance(id, Phase::Capturing, Phase::Selecting)
-                .unwrap();
-            app.flow
-                .advance(id, Phase::Selecting, Phase::Review)
-                .unwrap();
-            app.discovering = true;
-            id
-        };
-        let old = begin_review(&mut app);
-        let settings = app.settings.connection.clone();
-        app.settings.connection.socket.push_str("changed");
-        app.finish_discovery(old, settings.clone(), Err("obsolete response".into()));
-        assert!(!app.discovering);
-        assert!(app.status.contains("settings changed"));
-        assert!(app.routes.is_empty() && app.selected.is_none());
-
-        assert!(app.flow.cancel(old));
-        let current = begin_review(&mut app);
-        app.finish_discovery(old, settings, Err("old capture".into()));
-        assert!(app.discovering);
-        app.finish_discovery(
-            current,
-            app.settings.connection.clone(),
-            Err("unavailable".into()),
-        );
-        assert!(!app.discovering);
-        assert_eq!(app.status, "unavailable");
-    }
-
-    #[test]
-    fn applying_one_settings_section_does_not_persist_other_drafts() {
-        let saved = Settings::default();
-        let mut app = App::new(
-            saved.clone(),
-            String::new(),
-            desktop::Shortcut::default(),
-            String::new(),
-        );
-        app.settings.shortcut = "not a registered shortcut".into();
-        app.settings.connection.socket = "/an/unsaved/socket".into();
-        let connection = app.connection_settings_to_save();
-        assert_eq!(connection.shortcut, saved.shortcut);
-        assert_eq!(connection.connection, app.settings.connection);
-        let shortcut = app.shortcut_settings_to_save();
-        assert_eq!(shortcut.connection, saved.connection);
-        assert_eq!(shortcut.shortcut, app.settings.shortcut);
-        assert_eq!(app.saved_settings, saved);
     }
 }

@@ -1,6 +1,5 @@
 //! Opt-in X11 paste check, launched only by scripts/check-send.py on private Xvfb.
 #[cfg(target_os = "linux")]
-#[allow(dead_code)]
 #[path = "../src/clipboard.rs"]
 mod clipboard;
 #[cfg(target_os = "linux")]
@@ -51,20 +50,21 @@ fn main() -> Result<(), String> {
     std::fs::write(&args[3], crop.png()?).map_err(|e| e.to_string())?;
     let mut clipboard = clipboard::Clipboard::new()?;
     clipboard.copy(&crop)?;
-    let targets = send::discover()?;
-    if targets.len() != 2
-        || targets
-            .iter()
-            .any(|target| !target.application.starts_with("Codex"))
-    {
-        return Err(format!(
-            "Expected only the two synthetic agent terminals: {targets:?}"
-        ));
+    let target = send::remember().ok_or("The foreground fixture terminal was not remembered")?;
+    if target.application != "xfce4-terminal" {
+        return Err("Unexpected origin application".into());
     }
-    let target = targets
-        .into_iter()
-        .find(|target| target.title == args[2])
-        .ok_or("Fixture window not found")?;
+    // Let the controller change focus AFTER the target has been remembered.
+    let expected = std::path::Path::new(&args[3]);
+    std::fs::write(expected.with_extension("ready"), b"ready").map_err(|e| e.to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !expected.with_extension("go").exists() {
+        if Instant::now() >= deadline {
+            return Err("Fixture controller timed out".into());
+        }
+        for _ in events.poll_iter() {}
+        std::thread::sleep(Duration::from_millis(10));
+    }
     let pending = send::Pending::start(target, true)?;
     loop {
         for _ in events.poll_iter() {}

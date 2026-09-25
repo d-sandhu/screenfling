@@ -1,17 +1,16 @@
 # Developing ScreenFling
 
-This guide describes the native Rust application on `main`.
+ScreenFling has one image handoff: the OS clipboard. Optional Paste back remembers the terminal used before capture and sends its image-paste key once. There are no agent plugins, process scanners, socket relays or screenshot files.
 
 ## Build prerequisites
 
-Install the Rust toolchain selected by `rust-toolchain.toml`, **CMake**, and a native C/C++ compiler. Cargo builds the SDL3 video/tray subset from source; no separately installed SDL runtime is needed.
+Install the selected Rust toolchain, **CMake** and a native C/C++ compiler. Cargo builds SDL3 from source. Python is used for development checks and packaging, not at runtime.
 
-**Windows:** use the MSVC target and Visual Studio Build Tools with the C++ workload and Windows SDK. Rust and native C/C++ code use the same static C runtime. **macOS:** install Xcode Command Line Tools and CMake. The deployment target is macOS 14 because of ScreenCaptureKit still capture; do not substitute SDL's lower minimum.
-
-On Ubuntu 24.04:
+- macOS: Xcode Command Line Tools, CMake, macOS 14+. Packages target Apple Silicon.
+- Windows: MSVC, Visual Studio C++ Build Tools and Windows SDK. C/C++ dependencies use the static runtime. Packages target x86-64.
+- Linux: packages target Ubuntu 24.04 x86-64. Other distributions may need different library packages.
 
 ```sh
-sudo apt-get update
 sudo apt-get install build-essential cmake pkg-config clang libclang-dev \
   libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
   libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
@@ -20,7 +19,7 @@ sudo apt-get install build-essential cmake pkg-config clang libclang-dev \
 cargo run --release --locked
 ```
 
-Other distributions use different package names. The GUI requires OpenGL 3.2. Wayland capture also requires PipeWire and the compositor's matching ScreenCast portal backend. Python is a development/packaging tool, not an application dependency.
+The GUI requires OpenGL 3.2. Wayland additionally needs PipeWire and the compositor’s ScreenCast portal backend. Capture imports CPU-readable shared memory; GPU-only buffers are not supported. Missing tray/global-shortcut services leave the Capture button available.
 
 ## Checks
 
@@ -32,147 +31,81 @@ cargo build --release --locked
 python3 scripts/check-cli.py
 ```
 
-The CLI check runs the real release executable without a desktop, checking help/version and rejecting unknown or conflicting options before capture. The Rust tests cover geometry and pixel bounds, fractional-scale edge selections, stale generations, review-gated delivery, no-submit bytes, exact IDs, settings persistence and draft isolation, clipboard write gating, endpoint replacement, private-directory ancestry, and Wayland session detection. Platform-specific tests exercise macOS bitmap conversion and Linux shared-memory offsets and truncation, and PNG-to-RGBA expansion bounds before pixel decoding. Ordinary `cargo test` does not capture your screen or write your clipboard.
+Unit tests cover crop bounds, fractional scaling, stale capture generations, review-gated delivery, clipboard/focus replacement, retryable copy failures, legacy preference migration, menu dismissal and settings navigation. They do not capture a desktop or write the clipboard.
 
-Presentation tests measure palette contrast, reserve non-overlapping action/content regions at normal and compact sizes, and check that returning from Settings preserves Review. They run with an in-memory egui context and do not perform delivery. See [visual design and verification](VISUALS.md) for the researched design decisions and actual-screen capture procedure.
+CI has three native jobs. Each runs linting, tests, build, CLI checks and packaging. Linux also audits the lockfile. These checks provide reproducible evidence, not a claim that every desktop or agent was manually tested.
 
-Keep regression tests focused on behavior that could corrupt a crop, route to the wrong destination, submit input, prevent recovery or hide a required action. Extend the existing native test runner; do not add a test framework just to add assertions.
-
-### Isolated desktop and destination checks
-
-For the synthetic X11 workflow:
+### Desktop and paste fixtures
 
 ```sh
-sudo apt-get install xvfb xdotool xclip x11-xserver-utils x11-utils openbox wmctrl libgl1-mesa-dri
+sudo apt-get install xvfb openbox xfce4-terminal xdotool xclip x11-utils \
+  x11-xserver-utils wmctrl imagemagick fonts-dejavu-core
 xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/smoke-x11.py
+xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-visuals.py --isolated-xvfb
+cargo build --release --locked --example check-send
+xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-send.py
 ```
 
-The fixture starts Openbox inside Xvfb with disposable settings and no tray service. It checks overlay bounds after maximization, the global shortcut from a minimized window, selection/review cancellation, clean no-tray close, and an external client's PNG clipboard read. Every pixel of an asymmetric crop is compared with the frozen desktop after the live desktop changes. A wrong crop origin, row flip, changed channel, or accidental live-frame copy fails the check. The fixture clears inherited Wayland display/socket hints; CI deliberately supplies both to exercise that isolation.
+X11 capture tests compare every cropped pixel against an independent reference after the live desktop changes. They also test cancellation, overlay bounds and minimized/maximized windows. The Wayland fixture performs the same pixel check at 125% scale inside headless Sway with real portal/PipeWire services; its Ubuntu 26.04 container command is in `.github/workflows/check.yml`.
 
-The Wayland smoke uses a private headless Sway session at 125% scale with real ScreenCast/PipeWire services. It waits for known wallpaper anchors, then reads an independent reference through grim before ScreenFling starts; the copied crop must match every rendered pixel even after the live wallpaper changes. It rejects and accepts the display chooser, checks cancellation and recovery, and compares the copied crop with the frozen frame. CI runs it in Ubuntu 26.04 because that fixture's portal supports headless shared-memory capture; the release executable is built on Ubuntu 24.04. The container command and prerequisites are in `.github/workflows/check.yml`. It does not use your normal desktop, D-Bus, PipeWire, settings, or clipboard.
+The paste fixture starts two raw-input receivers in real Xfce Terminal windows. It remembers the original terminal, deliberately focuses the other one, and requests Paste back. The original must receive only Ctrl+V, read the exact PNG bytes from the clipboard, and receive no Enter; the other must receive nothing. No receiver pretends to be a named coding agent. This verifies transport, not agent attachment.
 
-The Windows/macOS clipboard check uses the production clipboard module. On Windows, it also draws a synthetic window, captures its monitor through the production capture adapter, and verifies the crop before copying it. **It accesses the Windows desktop and replaces the system clipboard with synthetic images. Run it only on a disposable desktop:**
+Windows/macOS use a separate-process image clipboard check. Windows also captures and verifies a synthetic window. **Run this only on a disposable desktop; it replaces the clipboard:**
 
 ```sh
 cargo run --release --locked --example check-native-clipboard -- --allow-clipboard-write
 ```
 
-A separate process compares all 200 × 150 image pixels, then another replaces the last pixel and exits. The original image must be rejected and the replacement must remain readable. Without the explicit flag the check refuses to access the desktop or clipboard. It is not executed by `cargo test` or included in native packages. This does not test macOS screen-recording consent or the Windows review UI.
+The reader compares all 200 × 150 pixels. A second writer changes the last pixel; stale-image verification must reject it. Ordinary `cargo test` does not run this check.
 
-For the real WezTerm transport check on Linux, install a matching WezTerm CLI and mux server on PATH, then run:
-
-```sh
-cargo build --release --locked --example check-wezterm
-python3 scripts/check-wezterm.py
-```
-
-The script creates a private home, configuration, socket, and two synthetic raw-input panes. It never selects an existing session or reads the clipboard. It tests duplicate pane labels, exact Stage bytes, a wrong focus hint, rejected clipboard verification, separate Reveal, and a closed destination. Receiver bytes must contain only Ctrl+V and the intended note, never Enter, and the other pane must stay untouched. This checks terminal transport, **not coding-agent image attachment**.
-
-For rendered visual evidence, install ImageMagick and DejaVu Sans in addition to the X11 fixture tools, then run:
-
-```sh
-xvfb-run -a -s '-screen 0 1280x800x24 -noreset' \
-  python3 scripts/check-visuals.py --isolated-xvfb
-```
-
-The script checks its disposable display before starting. It records the real release executable's idle, selection, review, settings and result pages, including compact/scrolled layouts, under `dist/visuals/`. Settings navigation and resizing must preserve the clipboard until explicit Copy. Inspect the images: dimension and nonblank checks alone cannot prove that a layout looks correct. No mock application is substituted.
-
-CI remains one workflow with three native jobs. Pull requests run real checks against the test-merge commit; `main` pushes are checked after integration. Every job checks formatting, strict Clippy, Rust tests, release compilation, CLI behavior, and packaging. Windows/macOS additionally check their native image clipboard, with Windows capture as described above. Linux runs the isolated desktop, WezTerm and visual checks and audits the complete lockfile. Python assertions remain enabled. There are no publishing steps, ignored failures, or new runtime dependencies for these checks.
-
-To repeat the dependency check:
-
-```sh
-cargo install cargo-audit --version 0.22.2 --locked --no-default-features
-cargo audit --deny warnings
-```
-
-CI records the RustSec report in `dist/audit.json`. Do not silence an advisory or weaken routing checks to manufacture a pass. Build success and synthetic desktops are not physical acceptance results.
+Rendered app screenshots and pixel-comparison reports are under `dist/visuals/`. Inspect normal and compact layouts, rather than relying only on dimensions or nonblank-image assertions. [Visual checks](VISUALS.md).
 
 ## Code map and boundaries
 
-| File | Responsibility |
+| Module | Responsibility |
 | --- | --- |
-| `src/main.rs`, `src/desktop.rs` | Window, event wakeups, tray, shortcut, and lifecycle |
-| `src/cli.rs` | Launch options checked before desktop initialization |
-| `src/app.rs` | User actions, crop review, and operation results |
-| `src/app_view.rs` | Theme, responsive presentation, preview controls and settings navigation; no delivery side effects |
-| `src/model.rs`, `src/frame.rs` | State, geometry, pixel validation, and no-submit bytes |
-| `src/agents.rs` | Foreground process/TTY detection and stale-session guards; no title guessing |
-| `src/capture/` | Windows, macOS, X11, and Wayland capture adapters |
-| `src/clipboard.rs` | Explicit image/text writes and read-only verification |
-| `src/send.rs`, `src/send/`, `src/handoff.rs` | Native window selection/paste and explicitly saved PNG paths |
-| `src/wezterm.rs`, `src/trusted.rs`, `src/relay.rs` | Exact destinations, endpoint identity, and bounded CLI transport |
-| `src/settings.rs`, `src/portal_shortcut.rs` | Local preferences and the Wayland shortcut session |
+| `main.rs`, `desktop.rs` | SDL event loop, tray, shortcut, window lifecycle |
+| `app.rs`, `app_view.rs` | Actions/state and egui presentation |
+| `model.rs`, `frame.rs` | Validated RGBA pixels, crop mapping and capture generations |
+| `capture/` | Native capture adapters |
+| `clipboard.rs` | Write and verify the reviewed image |
+| `send.rs`, `send/` | Remember original terminal, activate it, verify focus, send Ctrl+V once |
+| `settings.rs` | One saved shortcut, bounded reads and atomic replacement |
 
-Only the current capture generation can advance through Capture → Select → Review → Delivering → Result. Selection and review do not deliver anything. The full desktop image is dropped after cropping; in-memory crop pixels and notes are dropped after completion or cancellation. Explicitly saved PNGs remain until deleted. An explicitly copied image may remain owned by the OS clipboard.
+Capture runs on one bounded worker; native UI/clipboard work stays on the main thread. The event loop sleeps when idle. No arbitrary terminal text is generated, and no terminal process inventory is maintained. Focus and clipboard are checked immediately before delivery; OS event delivery still has an unavoidable race, so the result asks the user to inspect the attachment.
 
-The main thread handles the UI. A bounded worker handles capture and advanced WezTerm operations; native window control stays on the main thread and a short deadline governs focus polling. The worker and posts results through SDL. Late work must not change a new capture or leave a stale discovery request active. The event loop waits when idle. ScreenFling explicitly permits normal screensaver behavior instead of using SDL's default inhibition.
+macOS remembers the terminal application and returns to its active window/pane. Windows/X11 remember a window and its process start identity. This is an explicit return-to-origin action, not agent or tab discovery. Wayland exposes Copy only.
 
-The view returns the same explicit application actions. Fit and 1:1 preview modes change only presentation. Settings is a separate page; Back/Escape returns to the current capture, while each preference section still saves explicitly. The bottom action area stays outside the content scroll regions. Do not move clipboard or terminal side effects into drawing code.
-
-Stage checks the selected socket and pane/window/tab IDs. A short-lived AF_UNIX relay connects upstream before spawning the CLI and checks endpoint identity and the reviewed clipboard before upstream writes. There is no TCP listener, persistent relay service, focused-window fallback, or automatic delivery retry. The CLI neither loads user configuration nor starts an absent mux. Titles are labels, not addresses.
-
-Settings and transient relay directories validate their ancestry as well as the private leaf: another user must not be able to replace a parent directory. Legitimate platform aliases are resolved before checking; an untrusted chain fails closed. A failed creation removes only the newly created empty directory, never an existing settings directory.
-
-This is not a sandbox against code running as the same user or an administrator. A pane ID does not prove which foreground program is running inside it. The user's Ctrl+V binding confirmation and inspection of the result remain necessary.
-
-Wayland uses ScreenCast/PipeWire, not the file-returning Screenshot portal. It negotiates shared memory and copies a held buffer through its granted file descriptor using bounded reads, without dereferencing GPU-only or optionally mapped pointers. Session detection checks the actual video driver and Wayland environment, including inherited sockets; a missing `WAYLAND_DISPLAY` does not force X11 capture. The driver is read on the main thread before workers start. Hidden Wayland windows are not rendered; the window is shown and its OpenGL context rebound before drawing. Other platforms choose the display under the pointer. Crop geometry uses actual captured dimensions and independent horizontal/vertical ratios, not an assumed display scale.
-
-## Build native packages without publishing
+## Packaging
 
 ```sh
-cargo build --release --locked
 python3 scripts/package.py
 ```
 
-Use Python 3.11 or later; `python scripts/package.py` is equivalent on Windows. Build and package on the native target OS with Cargo's default target directory. The script packages an existing release executable; do not pair an old executable with a new checkout.
+The package includes the standalone user guide and dependency license notices. `build.json` records source state, archive/executable hashes, signing and loader checks. `SHA256SUMS` applies to the inner native archive, not GitHub’s outer artifact ZIP. Checksums verify file integrity, not publisher identity.
 
-Windows gets a portable ZIP. macOS gets an ad-hoc-signed `.app` archive, checked with `codesign --verify --strict`. Linux gets the executable, desktop launcher, and icon. Each includes an offline usage README, project license, and third-party notices, including native-library and embedded-font license texts. No standalone font files are distributed.
+### macOS signing
 
-Some crates omit their upstream license files. `assets/license-overrides.json` records reviewed texts, source blob IDs, and exact package versions; recheck these on dependency updates. The notice inventory includes build-time dependencies and is not a claim that every listed crate is linked into the executable.
+By default, development packages are ad-hoc signed. Their identity changes with each binary, which can invalidate saved macOS permissions even when the old permission switch is still on.
 
-Packaging inspects native link imports using MSVC `dumpbin`, macOS `otool`, or Linux `ldd`. It rejects a dynamic SDL dependency, non-system libraries, and Windows dynamic C/C++ runtime imports. It also runs the staged executable's `--version` outside the checkout with no display connection. These loader checks do not exercise SDL's optional dynamically loaded desktop integrations or replace clean-machine GUI acceptance.
+For repeated local builds, reuse a code-signing certificate from your keychain:
 
-Packaging verifies archive members and executable bytes, then writes `build.json` and `SHA256SUMS` with source identity, hashes, sizes, linked libraries, CLI verification, and signing status. On macOS, the executable hash describes the signed copy in the app. Cargo has `publish = false`; no workflow creates a tag or release.
+```sh
+python3 scripts/package.py --signing-identity CERTIFICATE_SHA1_FINGERPRINT
+```
+
+A dedicated keychain can be supplied with `--signing-keychain /absolute/path/to/keychain`. The full 40-digit fingerprint prevents selecting the wrong same-named certificate. Signing failure stops packaging; it never silently falls back to ad-hoc. No certificate, keychain or trust setting is created by this script.
+
+The script uses `codesign`’s normal certificate-bound designated requirement. Do not replace it with an identifier-only requirement to suppress permission prompts. Reuse the same certificate and installed bundle path across updates. Initial Screen Recording and optional Accessibility consent are still required.
+
+Apple documents [designated requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements) and [self-signed identities for local development](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/Procedures/Procedures.html). A local development certificate is not Developer ID notarization or a public-distribution identity.
 
 ## Remaining release acceptance
 
-The native application is the official development baseline, not a physically accepted release. Record the OS, hardware/compositor, exact commit/package, and observations for these remaining checks:
+- Native desktop capture, DPI changes, multiple displays and permission recovery on macOS/Windows.
+- Actual clipboard-image attachment in supported agent/terminal combinations; custom keybindings and terminal interception.
+- Paste back with closed destinations, changed focus and held modifier keys.
+- Broader Wayland compositor/portal compatibility and accessibility/input methods.
+- Public signing, notarization and clean-machine installation.
 
-- Permissions, denial and recovery, tray/global-shortcut behavior, close/reopen, normal idle screen locking, and clean-machine installation on Windows, macOS, and Wayland.
-- Mixed-DPI/multiple monitors, negative origins, rotation, disconnection, captured color/orientation, and hardware startup/idle CPU/RAM.
-- Real coding-agent clipboard image attachment, window focus and active-tab selection; advanced image attachment, a different focused pane, clipboard replacement during Stage, closed/moved destinations, and explicit Reveal/focus behavior. Confirm no submission.
-
-Public signing, notarization, release approval, and publication are separate owner decisions. CI software rendering is not a hardware benchmark. Do not present a development package as a fully validated public release.
-
-The README preview is an actual Linux/Xvfb review window containing a synthetic deployment-error subject. It is not a mock interface or a confirmed agent-attachment demonstration.
-
-## Contributing
-
-Read the relevant module, make the smallest useful fix, and add or extend a targeted regression. Keep dependencies, services, and CI jobs limited to a demonstrated need. Run the applicable checks above and state which physical checks were not performed.
-
-Report the platform, compositor when relevant, commit/package, expected behavior, and observed error. Redact local paths and private screenshots; do not post captured desktop data just to demonstrate that a test ran.
-
-## Window handoff
-
-`src/send.rs` coordinates one native window activation and paste request. `src/send/` implements macOS Accessibility/CoreGraphics and X11 EWMH/XTEST; Windows reports that verified targeting is unavailable. Native macOS objects remain on the main thread. `src/agents.rs` reads same-user process metadata and requires all interactive TTYs under a recognized terminal host to contain one known foreground agent. It excludes background/headless agents, rejects mixed shell tabs and snapshots with inconsistent foreground groups, and retains process start identities for revalidation. It does not read command arguments or environments. `src/handoff.rs` creates private, uniquely named PNGs only for the optional Save PNG and copy path action. These files persist until deleted; cancelled captures and image-only Copy do not create files.
-
-The coordinator checks image clipboard contents, agent process identities and window focus before requesting paste, never sends Enter, and never automatically retries. Focus can still change while the OS delivers events; this is window targeting, not exact terminal-pane routing or an agent attachment acknowledgment. Wayland intentionally reports the missing portable targeting capability and offers Copy.
-
-On a disposable Linux desktop, install `xvfb openbox xfce4-terminal xdotool xclip`, build `cargo build --release --locked --example check-send`, and run:
-
-```sh
-xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-send.py
-```
-
-The fixture runs two synthetic foreground processes named `codex` inside unmodified Xfce Terminal windows, plus an ordinary terminal that must be omitted. It switches away from the selected terminal, sends through the production adapter, and verifies exactly Ctrl+V, an independent receiver's read of the exact PNG bytes, no Enter and no input in either other terminal. This exercises detection and transport, not a real agent's image attachment implementation. macOS sending still needs desktop acceptance, including permission denial, multiple windows, closed targets and custom paste bindings.
-
-Read-only detection can be inspected without clipboard or Accessibility access:
-
-```sh
-cargo run --release --locked --example check-agents -- TERMINAL_PID
-```
-
-macOS permission requests are limited to once per launch and explicit actions. Development bundles remain ad-hoc signed; stable signing/notarization is still required to avoid build-specific permission recovery.
-
-Implementation references: [Apple AX attributes](https://developer.apple.com/documentation/applicationservices/1462085-axuielementcopyattributevalue), [Windows SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput), [Windows foreground activation](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow), [XTEST](https://www.x.org/releases/X11R7.5/doc/man/man3/XTestFakeKeyEvent.3.html). Context7 was used to check the Rust binding APIs.
+Contributions should keep the clipboard contract small. Add regression tests for wrong pixels, unintended input, lost crops or broken recovery. Avoid extra delivery protocols for individual agents.
