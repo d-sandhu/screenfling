@@ -44,7 +44,7 @@ ScreenFling saves the original crop as a PNG, copies its absolute path (preceded
 
 The destination is a **window**, using its currently active tab or pane. ScreenFling cannot enumerate Claude Code, Codex, OpenCode or other sessions inside arbitrary terminals. Window titles help you choose; they are not proof of which process is reading input. The advanced WezTerm integration below offers exact pane addressing when needed.
 
-On macOS, allow Accessibility access when requested, then refresh windows. Windows uses Ctrl+V; X11 uses Ctrl+Shift+V; macOS uses Command+V. Custom terminal bindings may need manual paste. Windows cannot inject into a higher-privilege application. Wayland currently offers Copy instead of automatic window targeting. Remote and WSL agents need their own access to the file; paths are not translated or uploaded.
+On macOS, allow Accessibility access when requested, then refresh windows. Windows uses Ctrl+V; X11 uses Ctrl+Shift+V; macOS uses Command+V. The selected terminal must use that paste shortcut. Custom bindings and stock xterm require manual paste; ScreenFling does not infer or change terminal keybindings. Windows cannot inject into a higher-privilege application. Wayland currently offers Copy instead of automatic window targeting. Remote and WSL agents need their own access to the file; paths are not translated or uploaded.
 
 **Send and Copy file path save a PNG** in the `captures` subdirectory of the settings directory listed below. Files remain until you delete them, including after a failed send, so agents can finish reading them. Copy image and cancelled captures do not create PNG files. Notes are sent through the clipboard, not saved in the PNG.
 

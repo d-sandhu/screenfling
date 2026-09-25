@@ -158,12 +158,12 @@ Report the platform, compositor when relevant, commit/package, expected behavior
 
 The coordinator checks clipboard contents and window focus before requesting paste, never sends Enter, and never automatically retries. Focus can still change while the OS delivers events; this is window targeting, not exact terminal-pane routing or an agent attachment acknowledgment. Wayland intentionally reports the missing portable targeting capability and offers Copy.
 
-On a disposable Linux desktop, install `xvfb openbox xterm xdotool`, build `cargo build --release --locked --example check-send`, and run:
+On a disposable Linux desktop, install `xvfb openbox xfce4-terminal xdotool`, build `cargo build --release --locked --example check-send`, and run:
 
 ```sh
 xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-send.py
 ```
 
-The fixture switches away from each of two real terminal windows, sends through the production adapter, and asserts exact received text, no Enter, and no input in the other window. Mac/Windows sending still needs real desktop acceptance, including permission denial, multiple windows, closed targets and custom paste bindings.
+The fixture switches away from each of two unmodified Xfce Terminal windows, sends through the production adapter, and asserts exact received text, no Enter, and no input in the other window. Mac/Windows sending still needs real desktop acceptance, including permission denial, multiple windows, closed targets and custom paste bindings.
 
 Implementation references: [Apple AX attributes](https://developer.apple.com/documentation/applicationservices/1462085-axuielementcopyattributevalue), [Windows SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput), [Windows foreground activation](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow), [XTEST](https://www.x.org/releases/X11R7.5/doc/man/man3/XTestFakeKeyEvent.3.html). Context7 was used to check the Rust binding APIs.

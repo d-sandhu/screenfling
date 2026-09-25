@@ -20,7 +20,7 @@ A screenshot often explains a bug faster than a paragraph. ScreenFling captures 
 
 Use your existing terminal and local coding agent. ScreenFling saves a PNG and pastes its path into the selected window’s active tab or pane; **it never presses Enter**. The agent must support reading local image files. **Copy image** and **Copy file path** are available too.
 
-Window sending supports macOS (Accessibility permission), Windows, and Linux X11. On Wayland, copy and paste into your session. Remote/WSL sessions need access to the saved file. [Details and permissions](docs/USAGE.md#send-to-your-session).
+Window sending uses standard paste shortcuts on macOS (Accessibility permission), Windows, and Linux X11. Terminals with other bindings need manual paste. On Wayland, copy and paste into your session. Remote/WSL sessions need access to the saved file. [Details and permissions](docs/USAGE.md#send-to-your-session).
 
 ## Engineering
 

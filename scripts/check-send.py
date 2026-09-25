@@ -26,7 +26,7 @@ def main():
     processes = []
     with tempfile.TemporaryDirectory(prefix='screenfling-paste-') as directory:
         home = Path(directory)
-        env.update(HOME=directory, XDG_CONFIG_HOME=directory)
+        env.update(HOME=directory, XDG_CONFIG_HOME=directory, XDG_SESSION_TYPE='x11', GDK_BACKEND='x11')
         receiver = home / 'receiver.py'
         receiver.write_text('''import os, select, sys, termios, time, tty
 from pathlib import Path
@@ -44,7 +44,7 @@ while time.monotonic() < end:
             names = ['screenfling-paste-fixture-A', 'screenfling-paste-fixture-B']
             files = [home / 'a.bin', home / 'b.bin']
             for name, path in zip(names, files):
-                processes.append(sp.Popen(['xterm', '-T', name, '-e', 'python3', str(receiver), str(path)], env=env))
+                processes.append(sp.Popen(['xfce4-terminal', '--disable-server', '--title', name, '--execute', 'python3', str(receiver), str(path)], env=env))
             deadline = time.monotonic() + 10
             while not all(path.exists() for path in files):
                 if time.monotonic() >= deadline: raise RuntimeError('Terminal receiver did not start')
@@ -58,7 +58,7 @@ while time.monotonic() < end:
                 assert files[index].read_bytes() == payload.encode(), files[index].read_bytes()
                 expected_other = b'' if index == 0 else payloads[0].encode()
                 assert files[1-index].read_bytes() == expected_other
-            report = {'scope': 'X11 window paste into two real xterm sessions; no agent attachment claim', 'checks': ['selected window overrides misleading focus', 'exact path and note bytes', 'no Enter', 'other receiver untouched']}
+            report = {'scope': 'X11 window paste into two unmodified Xfce Terminal sessions; no agent attachment claim', 'checks': ['selected window overrides misleading focus', 'exact path and note bytes', 'no Enter', 'other receiver untouched']}
             (ROOT/'dist').mkdir(exist_ok=True)
             (ROOT/'dist/smoke-send.json').write_text(json.dumps(report, indent=2)+'\n')
             print(json.dumps(report))
