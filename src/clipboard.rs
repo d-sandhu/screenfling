@@ -30,9 +30,43 @@ impl Clipboard {
         #[cfg(target_os = "linux")]
         linux::write(image.png()?)?;
         if !self.matches(image) {
-            return Err("The clipboard write could not be verified. Nothing was staged.".into());
+            return Err("The clipboard write could not be verified. Try copying again.".into());
         }
         Ok(())
+    }
+    pub fn copy_text(&mut self, text: &str) -> Result<()> {
+        #[cfg(not(target_os = "linux"))]
+        self.0
+            .set_text(text)
+            .map_err(|_| "The clipboard is busy or unavailable.")?;
+        #[cfg(target_os = "linux")]
+        {
+            let text = std::ffi::CString::new(text)
+                .map_err(|_| "The file path contains an invalid character.")?;
+            if !unsafe { sdl3_sys::clipboard::SDL_SetClipboardText(text.as_ptr()) } {
+                return Err("The desktop did not accept the file path.".into());
+            }
+        }
+        if !self.matches_text(text) {
+            return Err("The copied text could not be verified.".into());
+        }
+        Ok(())
+    }
+    pub fn matches_text(&mut self, text: &str) -> bool {
+        #[cfg(not(target_os = "linux"))]
+        {
+            self.0.get_text().is_ok_and(|actual| actual == text)
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let actual = unsafe { sdl3_sys::clipboard::SDL_GetClipboardText() };
+            if actual.is_null() {
+                return false;
+            }
+            let matches = unsafe { std::ffi::CStr::from_ptr(actual) }.to_bytes() == text.as_bytes();
+            unsafe { sdl3_sys::stdinc::SDL_free(actual.cast()) };
+            matches
+        }
     }
     /// Read-only. Never repair a replaced clipboard during Stage.
     pub fn matches(&mut self, expected: &Pixels) -> bool {

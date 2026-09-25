@@ -73,6 +73,11 @@ fn check(operation: &str) -> Result<(), String> {
             if clipboard.matches(&first) || !clipboard.matches(&replacement) {
                 return Err("Clipboard verification missed another process's replacement.".into());
             }
+            let text = "Inspect /synthetic/path with spaces/capture.png";
+            clipboard.copy_text(text)?;
+            if !clipboard.matches_text(text) || clipboard.matches_text("replaced") {
+                return Err("Text clipboard verification failed.".into());
+            }
             println!(
                 "Native clipboard: all 200 x 150 pixels read by another process; one changed last-row pixel rejected after its writer exited."
             );

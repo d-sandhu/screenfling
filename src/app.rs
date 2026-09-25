@@ -1,6 +1,6 @@
 use crate::{
     clipboard::Clipboard,
-    desktop,
+    desktop, handoff, send,
     settings::Settings,
     wezterm::{self, Destination},
 };
@@ -44,6 +44,9 @@ pub enum Action {
     Cancel,
     Crop([f64; 4], [f64; 2]),
     Copy,
+    CopyPath,
+    ChooseWindow,
+    Send,
     Discover,
     Stage,
     Reveal,
@@ -63,6 +66,15 @@ pub struct App {
     crop: Option<Pixels>,
     texture: Option<TextureHandle>,
     preview_native: bool,
+    advanced_open: bool,
+    send_open: bool,
+    window_filter: String,
+    windows: Vec<send::Target>,
+    selected_window: Option<usize>,
+    pending_send: Option<send::Pending>,
+    send_text: Option<String>,
+    copied: bool,
+    saved_capture: Option<std::path::PathBuf>,
     note: String,
     anchor: Option<Pos2>,
     selection: Option<Rect>,
@@ -99,6 +111,15 @@ impl App {
             crop: None,
             texture: None,
             preview_native: false,
+            advanced_open: false,
+            send_open: false,
+            window_filter: String::new(),
+            windows: Vec::new(),
+            selected_window: None,
+            pending_send: None,
+            send_text: None,
+            copied: false,
+            saved_capture: None,
             note: String::new(),
             anchor: None,
             selection: None,
@@ -145,6 +166,7 @@ impl App {
         self.crop = None;
         self.texture = None;
         self.preview_native = false;
+        self.saved_capture = None;
         self.note.clear();
         self.anchor = None;
         self.selection = None;
@@ -160,9 +182,30 @@ impl App {
         ));
     }
     pub fn next_deadline(&self) -> Option<Instant> {
-        self.capture_due.map(|(when, _)| when)
+        if self.pending_send.is_some() {
+            Some(Instant::now() + Duration::from_millis(25))
+        } else {
+            self.capture_due.map(|(when, _)| when)
+        }
     }
     pub fn tick(&mut self) {
+        if let Some(pending) = &self.pending_send {
+            let clipboard = &mut self.clipboard;
+            let text = &self.send_text;
+            if let Some(result) = pending.poll(|| {
+                clipboard
+                    .as_mut()
+                    .zip(text.as_ref())
+                    .is_some_and(|(c, t)| c.matches_text(t))
+            }) {
+                let id = self.flow.generation();
+                self.pending_send = None;
+                self.send_text = None;
+                let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
+                self.status = result.unwrap_or_else(|error| error);
+                self.clear_images();
+            }
+        }
         if let Some((when, pointer)) = self.capture_due
             && Instant::now() >= when
         {
@@ -354,6 +397,11 @@ impl App {
                     return Err("The previous desktop operation is still ending.".into());
                 }
                 self.flow.start()?;
+                self.copied = false;
+                self.send_open = false;
+                self.window_filter.clear();
+                self.windows.clear();
+                self.selected_window = None;
                 self.clear_images();
                 self.settings_open = false;
                 self.routes.clear();
@@ -387,26 +435,86 @@ impl App {
                 self.crop = Some(crop);
                 self.anchor = None;
                 self.selection = None;
-                self.status = "Review this crop before copying or staging it.".into();
+                self.status =
+                    "Choose Send to… to pick your coding window, or copy the image.".into();
                 self.normal_window(window);
             }
-            Action::Copy if self.flow.phase() == Phase::Review => {
+            Action::Copy | Action::CopyPath if self.flow.phase() == Phase::Review => {
+                let copy_path = matches!(action, Action::CopyPath);
                 if self.clipboard.is_none() {
                     self.clipboard = Some(Clipboard::new()?);
                 }
+                let crop = self
+                    .crop
+                    .as_ref()
+                    .ok_or("The reviewed crop is unavailable.")?;
+                if copy_path && self.saved_capture.is_none() {
+                    self.saved_capture = Some(handoff::save(crop)?);
+                }
                 self.flow.advance(id, Phase::Review, Phase::Delivering)?;
-                let result = self
-                    .clipboard
-                    .as_mut()
-                    .ok_or("Clipboard unavailable.")?
-                    .copy(
+                let clipboard = self.clipboard.as_mut().ok_or("Clipboard unavailable.")?;
+                let result = if copy_path {
+                    clipboard.copy_text(handoff::clipboard_path(
+                        self.saved_capture.as_ref().unwrap(),
+                    )?)
+                } else {
+                    clipboard.copy(crop)
+                };
+                self.finish_copy(id, result, copy_path);
+            }
+            Action::ChooseWindow if self.flow.phase() == Phase::Review => {
+                self.send_open = true;
+                self.advanced_open = false;
+                self.selected_window = None;
+                self.windows.clear();
+                self.windows = send::discover()?;
+                self.status = if self.windows.is_empty() {
+                    "No available windows. Open your coding session, then refresh."
+                } else {
+                    "Choose your session's window. The paste goes to its active tab or pane."
+                }
+                .into();
+            }
+            Action::Send if self.flow.phase() == Phase::Review => {
+                let target = self
+                    .selected_window
+                    .and_then(|i| self.windows.get(i))
+                    .cloned()
+                    .ok_or("Choose a window first.")?;
+                model::stage_input(&self.note)?;
+                if self.saved_capture.is_none() {
+                    self.saved_capture = Some(handoff::save(
                         self.crop
                             .as_ref()
                             .ok_or("The reviewed crop is unavailable.")?,
-                    );
-                self.flow.advance(id, Phase::Delivering, Phase::Result)?;
-                self.clear_images();
-                self.status = match result { Ok(()) => "Image copied and verified. The optional note was not copied. Nothing was sent to a destination.".into(), Err(error) => error };
+                    )?);
+                }
+                let path = handoff::clipboard_path(self.saved_capture.as_ref().unwrap())?;
+                let text = if self.note.is_empty() {
+                    path.to_owned()
+                } else {
+                    format!("{} {}", self.note, path)
+                };
+                if self.clipboard.is_none() {
+                    self.clipboard = Some(Clipboard::new()?);
+                }
+                let clipboard = self.clipboard.as_mut().unwrap();
+                clipboard.copy_text(&text)?;
+                self.flow.advance(id, Phase::Review, Phase::Delivering)?;
+                match send::Pending::start(target, clipboard.matches_text(&text)) {
+                    Ok(pending) => {
+                        self.pending_send = Some(pending);
+                        self.send_text = Some(text);
+                        self.show_after_paint = false;
+                        self.status =
+                            "Switching to your selected window. Pasting once, without Enter."
+                                .into();
+                    }
+                    Err(error) => {
+                        let _ = self.flow.advance(id, Phase::Delivering, Phase::Review);
+                        return Err(error);
+                    }
+                }
             }
             Action::Discover if self.flow.phase() == Phase::Review => {
                 if !self.reap() {
@@ -514,7 +622,7 @@ impl App {
             }
             Action::Hide => {
                 if self.flow.phase() == Phase::Delivering {
-                    return Err("Stage is still pending. This window stays available until its result is known.".into());
+                    return Err("Delivery is still pending. This window stays available until its result is known.".into());
                 }
                 if self.flow.phase() == Phase::Selecting {
                     self.cancel(window);
@@ -530,7 +638,7 @@ impl App {
             }
             Action::Quit => {
                 if self.flow.phase() == Phase::Delivering {
-                    return Err("Stage is still pending. Wait for its result before quitting; do not retry it.".into());
+                    return Err("Delivery is still pending. Wait for its result before quitting; do not retry it.".into());
                 }
                 self.cancelled.store(true, Ordering::Release);
                 self.clear_images();
@@ -539,6 +647,31 @@ impl App {
             _ => return Err("This action is no longer available for the current capture.".into()),
         }
         Ok(())
+    }
+    fn finish_copy(&mut self, id: u64, result: Result<()>, path: bool) {
+        if !self.flow.is_current(id, Phase::Delivering) {
+            return;
+        }
+        match result {
+            Ok(()) => {
+                let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
+                self.copied = true;
+                self.status = if path {
+                    format!(
+                        "File path copied. Paste it into your agent's prompt.\n\nSaved PNG: {}\nThe file stays on this computer until you delete it.",
+                        self.saved_capture.as_ref().unwrap().display()
+                    )
+                } else {
+                    "Image copied. Switch to your app and paste.\n\nIf your terminal accepts text only, use Copy file path on your next capture.".into()
+                };
+                self.clear_images();
+            }
+            Err(error) => {
+                // A failed local copy is retryable; an uncertain terminal write is not.
+                let _ = self.flow.advance(id, Phase::Delivering, Phase::Review);
+                self.status = format!("{error} Your crop is still here; choose Copy to try again.");
+            }
+        }
     }
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Action {
         view::show(self, ui)
@@ -659,6 +792,38 @@ fn crop_action(selection: Rect, image: Rect) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_copy_keeps_the_reviewed_pixels_for_an_explicit_retry() {
+        let mut app = App::new(
+            Settings::default(),
+            String::new(),
+            desktop::Shortcut::default(),
+            String::new(),
+        );
+        let id = app.flow.start().unwrap();
+        app.flow
+            .advance(id, Phase::Capturing, Phase::Selecting)
+            .unwrap();
+        app.flow
+            .advance(id, Phase::Selecting, Phase::Review)
+            .unwrap();
+        let pixels = Pixels::new(1, 1, vec![12, 24, 48, 255]).unwrap();
+        app.crop = Some(pixels.clone());
+        app.flow
+            .advance(id, Phase::Review, Phase::Delivering)
+            .unwrap();
+        app.finish_copy(id, Err("Clipboard busy".into()), false);
+        assert!(app.flow.is_current(id, Phase::Review));
+        assert_eq!(app.crop, Some(pixels));
+        assert!(!app.copied);
+        app.flow
+            .advance(id, Phase::Review, Phase::Delivering)
+            .unwrap();
+        app.finish_copy(id, Ok(()), false);
+        assert!(app.flow.is_current(id, Phase::Result));
+        assert!(app.crop.is_none() && app.copied);
+    }
 
     #[test]
     fn fractional_scale_edge_selection_stays_in_bounds() {

@@ -163,6 +163,7 @@ impl Flow {
                 | (Phase::Selecting, Phase::Review)
                 | (Phase::Review, Phase::Delivering)
                 | (Phase::Delivering, Phase::Result)
+                | (Phase::Delivering, Phase::Review)
         );
         if !permitted || !self.is_current(generation, from) {
             return Err("This action is no longer current.".into());

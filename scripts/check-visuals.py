@@ -132,14 +132,14 @@ def main():
                 unchanged()
                 key('^ScreenFling$', 'F10')
                 shot('^ScreenFling$', 'settings', (1000, 740))
-                # Read back saved preferences to prove native typing reached the field.
-                click('^ScreenFling$', 300, 275)
+                # The primary settings page exposes only the capture shortcut.
+                click('^ScreenFling$', 200, 245)
                 key('^ScreenFling$', 'ctrl+a')
-                typed_path = '/visual-fixture/not-installed-wezterm'
-                command('xdotool', 'type', '--clearmodifiers', '--delay', '5', typed_path)
-                click('^ScreenFling$', 110, 457)
+                typed_shortcut = 'Ctrl+Shift+8'
+                command('xdotool', 'type', '--clearmodifiers', '--delay', '5', typed_shortcut)
+                click('^ScreenFling$', 370, 245)
                 settings_path = home / 'config' / 'screenfling' / 'settings.json'
-                assert json.loads(settings_path.read_text())['connection']['executable'] == typed_path, 'Native text input did not reach Settings'
+                assert json.loads(settings_path.read_text())['shortcut'] == typed_shortcut, 'Native text input did not reach Settings'
                 unchanged()
                 resize('^ScreenFling$', 640, 480)
                 shot('^ScreenFling$', 'settings-compact', (640, 480))
@@ -161,14 +161,9 @@ def main():
                 shot('Review crop$', 'review-native-scrolled', (1000, 740))
                 unchanged()
                 click('Review crop$', 120, 232)
-                click('Review crop$', 700, 505)
-                command('xdotool', 'type', '--clearmodifiers', '--delay', '5', 'Check why the preview deployment is missing its API URL.')
-                click('Review crop$', 600, 145)
-                shot('Review crop$', 'review-note', (1000, 740))
-                unchanged()
-                click('Review crop$', 730, 232)
-                time.sleep(0.3)
-                shot('Review crop$', 'review-connection-error', (1000, 740))
+                # Opening a window picker is explicit and never copies or pastes.
+                click('Review crop$', 85, 660)
+                shot('Review crop$', 'review-window-picker', (1000, 740))
                 unchanged()
                 key('Review crop$', 'F10')
                 key('Review crop$', 'Escape')
@@ -194,7 +189,7 @@ def main():
                 report = {'source': command('git', 'rev-parse', 'HEAD').stdout.decode().strip(),
                           'scope': 'Actual release executable, isolated Xvfb/software OpenGL, synthetic deployment-error subject. No agent attachment claim.',
                           'wallpaper_file_matches_rendered_pixels': generated == expected,
-                          'checks': ['menu Escape dismisses only the menu', 'native text entry persists exact settings', 'settings back preserves review', 'selection/review/settings/resize preserve clipboard', 'preview modes and note editing preserve clipboard', 'copied pixels equal the independently read rendered fixture crop', 'viewport dimensions and nonblank frames'],
+                          'checks': ['menu Escape dismisses only the menu', 'native text entry persists exact settings', 'settings back preserves review', 'selection/review/settings/resize preserve clipboard', 'preview modes and window discovery preserve clipboard', 'copied pixels equal the independently read rendered fixture crop', 'viewport dimensions and nonblank frames'],
                           'screens': records}
                 (OUT / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2))

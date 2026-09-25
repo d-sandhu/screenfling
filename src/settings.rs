@@ -77,8 +77,7 @@ impl Settings {
             Ok(Some(settings)) => (settings, String::new()),
             Ok(None) => (
                 Self::default(),
-                "Capture a region, review it, then choose Copy or Stage. Nothing is uploaded."
-                    .into(),
+                "Capture a region, review it, then send or copy. Nothing is uploaded.".into(),
             ),
             Err(error) => (Self::default(), format!("{error} Defaults are in use.")),
         }
