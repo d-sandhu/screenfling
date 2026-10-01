@@ -100,12 +100,24 @@ The script uses `codesign`’s normal certificate-bound designated requirement. 
 
 Apple documents [designated requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements) and [self-signed identities for local development](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/Procedures/Procedures.html). A local development certificate is not Developer ID notarization or a public-distribution identity.
 
+## v0.1.0 scope
+
+Three additions are planned on top of the current surface. All extend the existing focus/clipboard-verified send path; none adds an agent-specific protocol.
+
+- **Send loop.** After a successful Paste back the window hides, so the global shortcut can start the next capture immediately. The intended rhythm is capture, send, capture, send.
+- **Destination picker.** Send targets any open terminal window, not only the terminal used before capture. Granularity is the OS window, never a process, tab or pane inside the terminal. macOS enumerates `CGWindowList` and raises with the Accessibility permission Paste back already needs; Windows uses `EnumWindows` and `SetForegroundWindow`; X11 uses `_NET_CLIENT_LIST` and `_NET_ACTIVE_WINDOW`. Wayland remains Copy image only. The pick is remembered for the session.
+- **Optional message.** A short text typed after the image paste, over the same verified-focus synthetic-input path. ScreenFling never sends Enter; submitting stays with the user.
+
+Agent paste keys verified against official documentation in October 2026: Claude Code pastes images with Ctrl+V (Cmd+V in iTerm2, Alt+V on Windows/WSL); Codex CLI and OpenCode bind Ctrl+V. Physical attachment checks still apply per agent/terminal combination.
+
 ## Remaining release acceptance
 
-- Native desktop capture, DPI changes, multiple displays and permission recovery on macOS/Windows.
-- Actual clipboard-image attachment in supported agent/terminal combinations; custom keybindings and terminal interception.
-- Paste back with closed destinations, changed focus and held modifier keys.
-- Broader Wayland compositor/portal compatibility and accessibility/input methods.
-- Public signing, notarization and clean-machine installation.
+- CI evidence for the additions: the X11 paste fixture gains destination-picker targeting and message-typing assertions.
+- Physical macOS acceptance: capture across DPI changes and multiple displays, permission grant/deny/revoke recovery, picker raise with focus verification, and image plus message into real Claude Code, Codex and OpenCode composers.
+- Physical Windows smoke: capture, Copy image, and one Send in a supported terminal; record which image-paste key each agent expects there.
+- Linux: the CI pixel and paste fixtures stand as evidence; Wayland limits stay documented in USAGE.md.
+- Packages remain ad-hoc/unsigned with the existing install-recovery documentation. Tag v0.1.0 when the rows above pass.
+
+Out of scope for v0.1.0: signing and notarization, installers, annotation, image history, saved files, tab/pane/session discovery, and any form of submission.
 
 Contributions should keep the clipboard contract small. Add regression tests for wrong pixels, unintended input, lost crops or broken recovery. Avoid extra delivery protocols for individual agents.
