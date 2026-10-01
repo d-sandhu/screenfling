@@ -123,7 +123,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
         for message in receiver.try_iter() {
             app.message(message, &gui.ctx, &mut window);
         }
-        app.tick();
+        app.tick(&mut window);
         if app.quit {
             break;
         }

@@ -127,6 +127,11 @@ impl App {
         self.anchor = None;
         self.selection = None;
     }
+    /// Hide after a successful send only when a path back exists: a tray icon
+    /// or a registered global shortcut. Otherwise the window keeps the result.
+    fn can_hide(&self) -> bool {
+        self.tray_available || !self.shortcut.current().is_empty()
+    }
     fn load_texture(&mut self, ctx: &egui::Context, pixels: &Pixels) {
         self.texture = Some(ctx.load_texture(
             "reviewed-capture",
@@ -144,7 +149,7 @@ impl App {
             self.capture_due.map(|(when, _)| when)
         }
     }
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, window: &mut Window) {
         if let Some(pending) = &self.pending_send {
             let clipboard = &mut self.clipboard;
             let crop = &self.crop;
@@ -157,8 +162,14 @@ impl App {
                 let id = self.flow.generation();
                 self.pending_send = None;
                 let _ = self.flow.advance(id, Phase::Delivering, Phase::Result);
+                let sent = result.is_ok();
                 self.status = result.unwrap_or_else(|error| error);
                 self.clear_images();
+                // Send loop: after a successful delivery the window gets out of
+                // the way so the global shortcut can start the next capture.
+                if sent && self.can_hide() {
+                    window.hide();
+                }
             }
         }
         if let Some((when, pointer)) = self.capture_due
@@ -533,6 +544,20 @@ fn crop_action(selection: Rect, image: Rect) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn send_loop_hides_only_with_a_path_back() {
+        let mut app = App::new(
+            Settings::default(),
+            String::new(),
+            desktop::Shortcut::default(),
+            String::new(),
+        );
+        // No tray and no registered shortcut: the window keeps the result.
+        assert!(!app.can_hide());
+        app.tray_available = true;
+        assert!(app.can_hide());
+    }
 
     #[test]
     fn failed_copy_keeps_the_reviewed_pixels_for_an_explicit_retry() {

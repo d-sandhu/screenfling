@@ -106,7 +106,18 @@ while time.monotonic() < end:
             dimensions = sp.check_output(['identify', '-format', '%wx%h', str(files[0].with_suffix('.png'))], env=env).decode()
             assert dimensions == '1280x800', dimensions
             assert files[1].read_bytes() == bytes([22])
-            report = {'scope': 'Two synthetic receivers in Xfce Terminal; no real agent attachment claim', 'checks': ['remembered origin overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'no Enter', 'other receiver untouched', 'real app global capture and Paste back deliver the full image']}
+            # Send loop: a successful Paste back hides the window, and the
+            # global shortcut starts the next capture from the terminal.
+            deadline = time.monotonic() + 5
+            while sp.run(['xdotool', 'search', '--onlyvisible', '--name', '^ScreenFling'], env=env, capture_output=True).stdout.splitlines():
+                if time.monotonic() >= deadline: raise RuntimeError('Window did not hide after a successful Paste back')
+                time.sleep(0.05)
+            sp.run(['xdotool', 'windowactivate', '--sync', original], env=env, check=True)
+            sp.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9'], env=env, check=True)
+            window('Select region$')
+            sp.run(['xdotool', 'key', 'Escape'], env=env, check=True)
+            window('^ScreenFling$')
+            report = {'scope': 'Two synthetic receivers in Xfce Terminal; no real agent attachment claim', 'checks': ['remembered origin overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'no Enter', 'other receiver untouched', 'real app global capture and Paste back deliver the full image', 'window hides after a successful Paste back and the shortcut reopens capture']}
             (ROOT/'dist').mkdir(exist_ok=True)
             (ROOT/'dist/smoke-send.json').write_text(json.dumps(report, indent=2)+'\n')
             print(json.dumps(report))
