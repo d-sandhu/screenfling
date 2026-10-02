@@ -168,7 +168,10 @@ impl App {
                 // Send loop: after a successful delivery the window gets out of
                 // the way so the global shortcut can start the next capture.
                 if sent && self.can_hide() {
+                    eprintln!("[debug send-loop] hiding window (sent={sent})");
                     window.hide();
+                } else {
+                    eprintln!("[debug send-loop] NOT hiding: sent={sent} can_hide={} tray={} shortcut={:?}", self.can_hide(), self.tray_available, self.shortcut.current());
                 }
             }
         }

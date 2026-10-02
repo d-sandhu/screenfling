@@ -109,8 +109,14 @@ while time.monotonic() < end:
             # Send loop: a successful Paste back hides the window, and the
             # global shortcut starts the next capture from the terminal.
             deadline = time.monotonic() + 5
-            while sp.run(['xdotool', 'search', '--onlyvisible', '--name', '^ScreenFling'], env=env, capture_output=True).stdout.splitlines():
-                if time.monotonic() >= deadline: raise RuntimeError('Window did not hide after a successful Paste back')
+            while True:
+                visible = sp.run(['xdotool', 'search', '--onlyvisible', '--name', '^ScreenFling'], env=env, capture_output=True).stdout.splitlines()
+                if not visible:
+                    break
+                if time.monotonic() >= deadline:
+                    tree = sp.run(['xwininfo', '-root', '-children'], env=env, capture_output=True).stdout.decode(errors='replace')
+                    active = sp.run(['xdotool', 'getactivewindow', 'getwindowname'], env=env, capture_output=True).stdout.decode(errors='replace').strip()
+                    raise RuntimeError(f'Window did not hide after a successful Paste back; visible={visible} active={active!r}\n{tree}')
                 time.sleep(0.05)
             sp.run(['xdotool', 'windowactivate', '--sync', original], env=env, check=True)
             sp.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9'], env=env, check=True)
