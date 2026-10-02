@@ -171,7 +171,12 @@ impl App {
                     eprintln!("[debug send-loop] hiding window (sent={sent})");
                     window.hide();
                 } else {
-                    eprintln!("[debug send-loop] NOT hiding: sent={sent} can_hide={} tray={} shortcut={:?}", self.can_hide(), self.tray_available, self.shortcut.current());
+                    eprintln!(
+                        "[debug send-loop] NOT hiding: sent={sent} can_hide={} tray={} shortcut={:?}",
+                        self.can_hide(),
+                        self.tray_available,
+                        self.shortcut.current()
+                    );
                 }
             }
         }
