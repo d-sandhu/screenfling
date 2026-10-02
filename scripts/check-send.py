@@ -108,15 +108,15 @@ while time.monotonic() < end:
             assert files[1].read_bytes() == bytes([22])
             # Send loop: a successful Paste back hides the window, and the
             # global shortcut starts the next capture from the terminal.
+            # Match the app's WM_CLASS instance name: the fixture terminals
+            # carry 'screenfling' in their titles and must not match.
             deadline = time.monotonic() + 5
             while True:
-                visible = sp.run(['xdotool', 'search', '--onlyvisible', '--name', '^ScreenFling'], env=env, capture_output=True).stdout.splitlines()
+                visible = sp.run(['xdotool', 'search', '--onlyvisible', '--classname', '^screenfling$'], env=env, capture_output=True).stdout.splitlines()
                 if not visible:
                     break
                 if time.monotonic() >= deadline:
-                    tree = sp.run(['xwininfo', '-root', '-children'], env=env, capture_output=True).stdout.decode(errors='replace')
-                    active = sp.run(['xdotool', 'getactivewindow', 'getwindowname'], env=env, capture_output=True).stdout.decode(errors='replace').strip()
-                    raise RuntimeError(f'Window did not hide after a successful Paste back; visible={visible} active={active!r}\n{tree}')
+                    raise RuntimeError(f'Window did not hide after a successful Paste back; visible={visible}')
                 time.sleep(0.05)
             sp.run(['xdotool', 'windowactivate', '--sync', original], env=env, check=True)
             sp.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9'], env=env, check=True)
