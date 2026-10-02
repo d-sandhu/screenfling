@@ -12,6 +12,8 @@ For one less app switch, focus your coding-agent terminal and use the **global c
 
 Paste back appears only when capture starts from a supported terminal. Capturing from a browser or from ScreenFling itself still offers Copy image. Capture from any app when manual paste suits the task better.
 
+After a successful Paste back, ScreenFling hides so the capture shortcut can start the next capture right away. If the desktop has neither a tray icon nor a capture shortcut, the window stays open with the result instead.
+
 macOS returns to the original terminal application’s active window/pane. Windows and X11 return to the original terminal window’s active tab/pane. Supported hosts include Ghostty, Terminal, iTerm2, WezTerm, Windows Terminal, classic Windows consoles, Alacritty and common X11 terminals, as applicable to each OS. Wayland offers Copy image because applications cannot freely activate another window or inject input there.
 
 Your terminal must pass Ctrl+V to the agent. Custom bindings, terminal interception, elevated Windows applications, SSH and WSL can need manual paste or their own clipboard integration. ScreenFling does not change terminal settings. After an error the image remains available on the clipboard; inspect your agent before trying again.

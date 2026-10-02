@@ -44,6 +44,6 @@ Start with **Capture region** or **F8**. The [user guide](docs/USAGE.md) covers 
 
 ## Status
 
-**Pre-release.** Automated checks cover Windows x86-64, macOS Apple Silicon and Linux x86-64. Physical desktop testing, real coding-agent attachment, and public signing/notarization remain on the [release checklist](docs/DEVELOPMENT.md#remaining-release-acceptance).
+**Pre-release.** Automated checks cover Windows x86-64, macOS Apple Silicon and Linux x86-64. Physical desktop acceptance and real coding-agent attachment remain on the [v0.1.0 checklist](docs/DEVELOPMENT.md#remaining-release-acceptance); signing and notarization are deferred past the first release.
 
 [Development & contributing](docs/DEVELOPMENT.md) · [Visual design](docs/VISUALS.md) · [Report an issue](https://github.com/d-sandhu/screenfling/issues) · [MIT](LICENSE)
