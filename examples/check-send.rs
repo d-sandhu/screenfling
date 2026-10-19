@@ -32,15 +32,7 @@ fn main() -> Result<(), String> {
     if !private {
         return Err("Refusing to paste outside a private Xvfb display.".into());
     }
-    let sdl = sdl3::init().map_err(|e| e.to_string())?;
-    let video = sdl.video().map_err(|e| e.to_string())?;
-    screenfling::capture::initialize_session(video.current_video_driver());
-    let _window = video
-        .window("screenfling-paste-sender", 100, 100)
-        .hidden()
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
+    screenfling::capture::initialize_session("x11");
     let crop = screenfling::model::Pixels::new(
         3,
         2,
@@ -64,12 +56,10 @@ fn main() -> Result<(), String> {
         if Instant::now() >= deadline {
             return Err("Fixture controller timed out".into());
         }
-        for _ in events.poll_iter() {}
         std::thread::sleep(Duration::from_millis(10));
     }
     let pending = send::Pending::start(target)?;
     loop {
-        for _ in events.poll_iter() {}
         if let Some(result) = pending.poll(|| clipboard.matches(&crop)) {
             println!("{}", result?);
             break;
@@ -79,7 +69,6 @@ fn main() -> Result<(), String> {
     // X11 clipboard data is served by its owner after the terminal requests it.
     let deadline = Instant::now() + Duration::from_secs(1);
     while Instant::now() < deadline {
-        for _ in events.poll_iter() {}
         std::thread::sleep(Duration::from_millis(10));
     }
     Ok(())

@@ -82,7 +82,7 @@ def check_png(data, reference=None):
 
 
 def main():
-    os.environ.update(SDL_VIDEO_DRIVER='x11', XDG_SESSION_TYPE='x11', LIBGL_ALWAYS_SOFTWARE='1')
+    os.environ.update(XDG_SESSION_TYPE='x11')
     # Either Wayland hint selects the portal path; neither belongs to this Xvfb fixture.
     os.environ.pop('WAYLAND_DISPLAY', None)
     os.environ.pop('WAYLAND_SOCKET', None)
@@ -97,7 +97,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix='sf-smoke-') as config, tempfile.TemporaryFile() as log:
         env = os.environ.copy()
         env['XDG_CONFIG_HOME'] = config
-        # This fixture has no tray service. Closing must exit, not strand a hidden app.
+        env['SCREENFLING_TRACE'] = '1'
+        # No session bus, so no tray: the controls live in the home panel, and
+        # closing it must exit rather than strand a hidden app.
         env['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + str(Path(config) / 'no-session-bus')
         try:
             wm_config = Path(config) / 'openbox.xml'
@@ -125,7 +127,6 @@ def main():
                         handle = found.stdout.splitlines()[0].decode()
                         if not focus:
                             return handle
-                        # SDL can unmap/remap a window while changing its border.
                         # Wait for readiness; never repeat the key or delivery action.
                         focused = command('xdotool', 'windowfocus', '--sync', handle, check=False)
                         confirmed = command(*search, check=False)
@@ -138,38 +139,32 @@ def main():
                 window(title, focus=True)
                 command('xdotool', 'key', '--clearmodifiers', value)
 
-            def state(handle, property_name, expected):
-                deadline = time.monotonic() + 5
-                while time.monotonic() < deadline:
-                    actual = command('xprop', '-id', handle, property_name).stdout.decode()
-                    if all(value in actual for value in expected):
-                        return
+            def gone(title):
+                deadline = time.monotonic() + 8
+                search = ('xdotool', 'search', '--all', '--onlyvisible', '--pid', str(app.pid), '--name', title)
+                while command(*search, check=False).stdout.strip():
+                    assert time.monotonic() < deadline, f'Window stayed visible: {title}'
                     time.sleep(0.05)
-                raise AssertionError(f'Window did not reach {expected}: {actual}')
 
-            handle = window('^ScreenFling$')
-            command('wmctrl', '-ir', handle, '-b', 'add,maximized_vert,maximized_horz')
-            state(handle, '_NET_WM_STATE', ['_NET_WM_STATE_MAXIMIZED_VERT', '_NET_WM_STATE_MAXIMIZED_HORZ'])
+            def shortcut():
+                command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9')
+                return window('Select region$', focus=True)
+
+            home = window('^ScreenFling$')
             command('xdotool', 'mousemove', '0', '0')
-            key('^ScreenFling$', 'F8')
-            overlay = window('Select region$', focus=True)
+            overlay = shortcut()
             geometry = dict(line.split('=', 1) for line in command(
                 'xdotool', 'getwindowgeometry', '--shell', overlay).stdout.decode().splitlines())
             assert [int(geometry[k]) for k in ('X', 'Y', 'WIDTH', 'HEIGHT')] == [0, 0, 1280, 800], geometry
             key('Select region$', 'Escape')
-            handle = window('^ScreenFling$')
+            gone('Select region$')
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
-            # A real minimized window, not a synthetic flag. The native global
-            # shortcut must reopen selection, not reapply SDL's hidden pending state.
-            command('xdotool', 'windowminimize', '--sync', handle)
-            state(handle, 'WM_STATE', ['Iconic'])
-            command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9')
+            shortcut()
             key('Select region$', 'space')
             key('Select region$', 'Escape')
-            window('^ScreenFling$')
+            gone('Select region$')
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
-            key('^ScreenFling$', 'F8')
-            window('Select region$', focus=True)
+            shortcut()
             # Changing the desktop now must not change the frozen capture.
             command('xsetroot', '-solid', '#112233')
             command('xdotool', 'mousemove', '100', '100', 'mousedown', '1', 'sleep', '0.15',
@@ -177,19 +172,19 @@ def main():
             time.sleep(0.2)
             # Choosing a region copies nothing; only the explicit action does.
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
+            # No agent window is open here, so Enter copies.
             key('Select region$', 'Return')
-            handle = window('^ScreenFling$')
+            gone('Select region$')
             png = command('xclip', '-selection', 'clipboard', '-out', '-target', 'image/png').stdout
             size = check_png(png)
-            command('wmctrl', '-ic', handle)
-            assert app.wait(timeout=8) == 0, 'Closing without a tray did not exit cleanly'
+            command('wmctrl', '-ic', home)
+            assert app.wait(timeout=8) == 0, 'Closing the home panel did not exit cleanly'
             result = {
-                'checks': ['maximized capture uses exact display bounds', 'cancel keeps clipboard',
-                           'native global shortcut restores minimized capture',
-                           'whole-display cancellation keeps clipboard',
+                'checks': ['global shortcut opens the overlay on the exact display bounds',
+                           'cancel keeps clipboard', 'whole-display cancellation keeps clipboard',
                            'selecting a region keeps clipboard',
                            'Enter copies every expected pixel from the original frozen frame',
-                           'close without a tray exits cleanly'],
+                           'without a tray, closing the home panel exits cleanly'],
                 'copied_dimensions': size,
             }
             (output / 'smoke-x11.json').write_text(json.dumps(result, indent=2) + '\n')

@@ -4,7 +4,7 @@
 
 ## Capture
 
-Press the capture shortcut in any app: **Ctrl+Shift+9** on Windows and X11, **Cmd+Shift+9** on macOS. The screen under the pointer freezes. You can also use **Capture region** (F8) in the ScreenFling window, or **Capture** in its tray menu.
+Press the capture shortcut in any app: **Ctrl+Shift+9** on Windows and X11, **Cmd+Shift+9** on macOS. The screen under the pointer freezes. You can also left-click the tray icon, choose **Capture** in its menu, or launch ScreenFling again.
 
 Drag a region. Drag again to replace it, or press **Space** to select the whole display. The selection shows its size in pixels, and the crop keeps the display's full resolution.
 
@@ -40,7 +40,7 @@ The paste key depends on where it lands:
 
 Coding agents in a terminal read image paste from their own key, because the terminal keeps its paste shortcut for text. Claude Code and Codex use Alt+V on Windows and Ctrl+V on macOS and Linux. OpenCode uses Ctrl+V.
 
-Send never presses Enter. Afterwards focus stays in your agent, ready for you to type. Copy and Esc return focus to the app you captured from. Either way, the shortcut starts the next capture right away. ScreenFling hides to its tray icon; on a desktop without a tray, its window stays open behind yours so you can still reach Settings and Quit. If anything changed first (the window closed, focus moved, or the clipboard was replaced), nothing is pasted and the image stays copied.
+Send never presses Enter. Afterwards focus stays in your agent, ready for you to type. Copy and Esc return focus to the app you captured from. Either way, the shortcut starts the next capture right away. Without a tray, the small ScreenFling window stays open behind yours, so its controls stay reachable. If anything changed first (the window closed, focus moved, or the clipboard was replaced), nothing is pasted and the image stays copied.
 
 **Where Send cannot help:**
 
@@ -56,25 +56,37 @@ Send never presses Enter. Afterwards focus stays in your agent, ready for you to
 | Action | Shortcut |
 | --- | --- |
 | Capture from any app | Ctrl+Shift+9 (Cmd+Shift+9 on macOS) |
-| Capture in the ScreenFling window | F8 |
+| Capture without the keyboard | Left-click the tray icon, or launch ScreenFling again |
 | Select the whole display | Space |
 | Send (or Copy without a destination) | Enter |
 | Copy | Ctrl+C (Cmd+C on macOS) |
-| Cancel, or hide the window | Esc |
+| Cancel | Esc |
 
-Change the capture shortcut in the ScreenFling window, using names such as `Control+Shift+Digit9` or `Super+Shift+KeyS`. On Wayland the desktop's portal settings assign it.
+Change the capture shortcut with **Change shortcut…** in the tray menu.
 
 ## Install and permissions
 
-**Windows 10/11.** Extract the ZIP and run `screenfling.exe`. It needs OpenGL 3.2. Development packages are unsigned.
+**Windows 10/11.** Extract the ZIP and run `screenfling.exe`. Development packages are unsigned.
 
 **macOS 14+.** Extract the archive, move `ScreenFling.app` to `~/Applications`, and open that copy. Capture needs **Screen Recording**. Send also needs **Accessibility**, which is requested the first time you send. Copy does not need it.
 
 After replacing a development build, macOS can keep a stale permission entry. Quit ScreenFling, remove its entry in System Settings → Privacy & Security, add the installed app again, and reopen it. Development packages are ad-hoc signed and not notarized; [stable local signing](DEVELOPMENT.md#macos-signing) avoids repeated prompts.
 
-**Linux.** Extract and run `./screenfling`. It needs the [runtime libraries](DEVELOPMENT.md#build-prerequisites). Wayland capture goes through the desktop's ScreenCast portal and PipeWire: pick one display in its dialog. Keep ScreenFling running until you paste, because on Linux the app serves the clipboard image itself.
+**Linux.** Extract and run `./screenfling`. It uses the desktop's own X11 or Wayland libraries. Wayland capture goes through the desktop's ScreenCast portal and PipeWire: pick one display in its dialog. Keep ScreenFling running until you paste, because on Linux the app serves the clipboard image itself.
 
-Keep one copy running. `screenfling --capture` starts a new copy and captures immediately. `--help` and `--version` print without opening a window.
+`--help` and `--version` print without opening a window.
+
+## The tray
+
+ScreenFling has no main window. A notice says it is running, and its tray icon holds everything else:
+
+- **Left-click** to capture.
+- **Capture**, the same as the shortcut.
+- **Change shortcut…**: press the new combination, such as Ctrl+Shift+S. Esc cancels. On Wayland the desktop's settings assign it instead.
+- **Start at login**: uses the system's own login items, so the system settings show it too.
+- **Quit ScreenFling.**
+
+Only one copy runs. Launching it again, or running `screenfling --capture`, starts a capture in the copy that is already running, so a launcher, key binding or script can trigger one. On macOS, opening the app again only brings it forward; use `screenfling --capture` (inside `ScreenFling.app/Contents/MacOS/`) for that. On desktops without a tray, such as GNOME without the AppIndicator extension, a small ScreenFling window holds the same controls; closing it quits.
 
 ## Privacy and settings
 

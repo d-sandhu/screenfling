@@ -1,138 +1,58 @@
-//! Native event/lifecycle glue. No polling loop or secondary application process.
+//! Desktop integration: the event bus into the event loop, the pointer
+//! position and the global capture shortcut.
 use crate::app::Message;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
 use screenfling::{capture, model::Result};
-use sdl3::{event::EventSender, video::Window};
-use std::{
-    ffi::c_void,
-    sync::{
-        OnceLock,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
-};
+use std::sync::OnceLock;
+use winit::event_loop::EventLoopProxy;
 
-#[derive(Debug)]
-pub struct Wake;
-struct Bus {
-    sender: mpsc::Sender<Message>,
-    events: EventSender,
-}
-static BUS: OnceLock<Bus> = OnceLock::new();
-static ACTIVE: AtomicBool = AtomicBool::new(true);
+static BUS: OnceLock<EventLoopProxy<Message>> = OnceLock::new();
 
-pub fn install(sdl: &sdl3::Sdl) -> Result<mpsc::Receiver<Message>> {
-    let events = sdl.event().map_err(|e| e.to_string())?;
-    events
-        .register_custom_event::<Wake>()
-        .map_err(|e| e.to_string())?;
-    let (sender, receiver) = mpsc::channel();
-    BUS.set(Bus {
-        sender,
-        events: events.event_sender(),
-    })
-    .map_err(|_| "The desktop event loop was already initialized.")?;
-    Ok(receiver)
+/// Route messages from other threads (capture, shortcut, tray, launches)
+/// into the event loop, which wakes to handle each one.
+pub fn install(proxy: EventLoopProxy<Message>) {
+    let _ = BUS.set(proxy);
 }
-pub fn wake() {
-    if ACTIVE.load(Ordering::Acquire)
-        && let Some(bus) = BUS.get()
-    {
-        let _ = bus.events.push_custom_event(Wake);
-    }
-}
+
 pub fn post(message: Message) {
-    if ACTIVE.load(Ordering::Acquire)
-        && let Some(bus) = BUS.get()
-        && bus.sender.send(message).is_ok()
-    {
-        wake();
+    if let Some(bus) = BUS.get() {
+        // Fails only after the event loop has exited, when nothing is waiting.
+        let _ = bus.send_event(message);
     }
 }
-pub fn shutdown() {
-    ACTIVE.store(false, Ordering::Release);
-}
-/// Every key, modifiers included, is up. Read from SDL: egui-sdl3 does not
-/// report modifier releases, and macOS drops key-ups while Command is held.
-pub fn keys_released() -> bool {
-    let mut count = 0;
-    let state = unsafe { sdl3_sys::keyboard::SDL_GetKeyboardState(&mut count) };
-    // SDL owns this array of `count` flags for the life of the application.
-    state.is_null()
-        || unsafe { std::slice::from_raw_parts(state, count.max(0) as usize) }
-            .iter()
-            .all(|down| !down)
-}
 
-/// Normal window size and its minimum, in window coordinates.
-pub const SIZE: [u32; 2] = [560, 440];
-pub const MIN_SIZE: [u32; 2] = [480, 380];
-
+/// The pointer in the desktop coordinates the capture adapters use: physical
+/// pixels on Windows and X11, points on macOS. Wayland does not expose it.
 pub fn pointer() -> [i32; 2] {
-    let (mut x, mut y) = (0.0f32, 0.0f32);
-    unsafe {
-        sdl3_sys::mouse::SDL_GetGlobalMouseState(&mut x, &mut y);
+    #[cfg(windows)]
+    {
+        let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point) };
+        [point.x, point.y]
     }
-    [x.floor() as i32, y.floor() as i32]
-}
-pub fn geometry(window: &Window) -> [i32; 4] {
-    let (x, y) = window.position();
-    let (w, h) = window.size();
-    [x, y, w as i32, h as i32]
-}
-pub fn overlay(window: &mut Window, bounds: Option<[i32; 4]>) -> Result<()> {
-    use sdl3_sys::video::*;
-    unsafe {
-        // Hide preserves pending maximized/minimized/fullscreen flags. Clear them
-        // before placement: a maximized window ignores explicit size/position,
-        // and a minimized window must not hide the frozen selection on show.
-        if !SDL_SetWindowFullscreen(window.raw(), false) || !SDL_RestoreWindow(window.raw()) {
-            return Err("Could not restore the capture window. Nothing was copied.".into());
-        }
-        SDL_SetWindowMinimumSize(window.raw(), 1, 1);
-        SDL_SetWindowResizable(window.raw(), false);
-        SDL_SetWindowBordered(window.raw(), false);
-        SDL_SetWindowAlwaysOnTop(window.raw(), true);
-        if let Some([x, y, width, height]) = bounds {
-            // Windows drivers promote a borderless OpenGL window that exactly
-            // covers a monitor to an uncomposited present: the compositor,
-            // screen capture and sharing then keep showing a stale frame, and
-            // entering that mode can flicker. One extra row below the monitor
-            // keeps the window composited; the frozen image is drawn at the
-            // top-left, so every captured pixel stays visible and selectable.
-            let extra = i32::from(cfg!(windows));
-            if width <= 0
-                || height <= 0
-                || !SDL_SetWindowPosition(window.raw(), x, y)
-                || !SDL_SetWindowSize(window.raw(), width, height + extra)
-                || !SDL_SyncWindow(window.raw())
-            {
-                return Err(
-                    "Could not place the frozen capture on its display. Nothing was copied.".into(),
-                );
-            }
-        } else if !SDL_SetWindowFullscreen(window.raw(), true) {
-            return Err(
-                "The Wayland compositor could not present the frozen selection surface.".into(),
-            );
-        }
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_core_graphics::CGEvent;
+        CGEvent::new(None).map_or([0, 0], |event| {
+            let p = CGEvent::location(Some(&event));
+            [p.x.floor() as i32, p.y.floor() as i32]
+        })
     }
-    Ok(())
-}
-pub fn restore(window: &mut Window, [x, y, width, height]: [i32; 4]) {
-    use sdl3_sys::video::*;
-    unsafe {
-        SDL_SetWindowFullscreen(window.raw(), false);
-        // Results and errors return to a normally sized window, even when a
-        // global shortcut started capture from a minimized window.
-        SDL_RestoreWindow(window.raw());
-        SDL_SetWindowAlwaysOnTop(window.raw(), false);
-        SDL_SetWindowBordered(window.raw(), true);
-        SDL_SetWindowResizable(window.raw(), true);
-        let [min_width, min_height] = MIN_SIZE.map(|v| v as i32);
-        SDL_SetWindowMinimumSize(window.raw(), min_width, min_height);
-        SDL_SetWindowSize(window.raw(), width.max(min_width), height.max(min_height));
-        SDL_SetWindowPosition(window.raw(), x, y);
+    #[cfg(target_os = "linux")]
+    {
+        use x11rb::{connection::Connection, protocol::xproto::ConnectionExt};
+        if capture::is_wayland() {
+            return [0, 0];
+        }
+        x11rb::connect(None)
+            .ok()
+            .and_then(|(conn, screen)| {
+                let root = conn.setup().roots[screen].root;
+                conn.query_pointer(root).ok()?.reply().ok()
+            })
+            .map_or([0, 0], |reply| {
+                [i32::from(reply.root_x), i32::from(reply.root_y)]
+            })
     }
 }
 
@@ -164,7 +84,7 @@ impl Shortcut {
         }));
         let status = match shortcut.set(value) {
             Ok(()) => format!("Capture shortcut: {value}"),
-            Err(error) => format!("{error} The Capture button remains available."),
+            Err(error) => format!("{error} Capture remains available from the tray."),
         };
         (shortcut, status)
     }
@@ -235,66 +155,42 @@ impl Drop for Shortcut {
     }
 }
 
-pub struct Tray(*mut sdl3_sys::tray::SDL_Tray);
-impl Tray {
-    pub fn new() -> Option<Self> {
-        use sdl3_sys::{pixels::SDL_PIXELFORMAT_RGBA32, surface::*, tray::*};
-        let mut icon = vec![0u8; 24 * 24 * 4];
-        for y in 4usize..20 {
-            for x in 4usize..20 {
-                if (!(7..17).contains(&x) && !(10..14).contains(&y))
-                    || (!(7..17).contains(&y) && !(10..14).contains(&x))
-                {
-                    let i = (y * 24 + x) * 4;
-                    icon[i..i + 4].copy_from_slice(&[78, 170, 245, 255]);
-                }
-            }
-        }
-        unsafe {
-            let surface = SDL_CreateSurfaceFrom(
-                24,
-                24,
-                SDL_PIXELFORMAT_RGBA32,
-                icon.as_mut_ptr().cast(),
-                24 * 4,
-            );
-            if surface.is_null() {
-                return None;
-            }
-            let tray = SDL_CreateTray(surface, c"ScreenFling".as_ptr());
-            SDL_DestroySurface(surface);
-            if tray.is_null() {
-                return None;
-            }
-            let menu = SDL_CreateTrayMenu(tray);
-            if menu.is_null() {
-                SDL_DestroyTray(tray);
-                return None;
-            }
-            for (label, code) in [(c"Capture", 1usize), (c"Open ScreenFling", 2), (c"Quit", 3)] {
-                let entry = SDL_InsertTrayEntryAt(menu, -1, label.as_ptr(), SDL_TRAYENTRY_BUTTON);
-                if entry.is_null() {
-                    SDL_DestroyTray(tray);
-                    return None;
-                }
-                SDL_SetTrayEntryCallback(entry, Some(tray_action), code as *mut c_void);
-            }
-            Some(Self(tray))
-        }
-    }
-}
-unsafe extern "C" fn tray_action(data: *mut c_void, _: *mut sdl3_sys::tray::SDL_TrayEntry) {
-    match data as usize {
-        1 => post(Message::Capture),
-        2 => post(Message::Open),
-        3 => post(Message::Quit),
-        _ => {}
-    }
-}
-impl Drop for Tray {
-    fn drop(&mut self) {
-        unsafe {
-            sdl3_sys::tray::SDL_DestroyTray(self.0);
-        }
-    }
+/// Cover a display with `window` above the menu bar and Dock, on every Space.
+/// `bounds` are CoreGraphics points with a top-left origin; Cocoa frames
+/// measure from the bottom-left of the primary display.
+#[cfg(target_os = "macos")]
+pub fn cover(window: &winit::window::Window, [x, y, w, h]: [i32; 4]) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSScreen, NSScreenSaverWindowLevel, NSView, NSWindowCollectionBehavior};
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return;
+    };
+    // SAFETY: winit's AppKit handle is a live NSView on the main thread.
+    let view: &NSView = unsafe { handle.ns_view.cast().as_ref() };
+    let Some(ns_window) = view.window() else {
+        return;
+    };
+    let Some(primary) = NSScreen::screens(mtm).firstObject() else {
+        return;
+    };
+    let top = primary.frame().size.height;
+    let frame = NSRect::new(
+        NSPoint::new(f64::from(x), top - f64::from(y + h)),
+        NSSize::new(f64::from(w), f64::from(h)),
+    );
+    // The level sits above the menu bar; screen savers stay above it.
+    ns_window.setLevel(NSScreenSaverWindowLevel - 1);
+    ns_window.setCollectionBehavior(
+        NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::FullScreenAuxiliary,
+    );
+    ns_window.setFrame_display(frame, true);
 }

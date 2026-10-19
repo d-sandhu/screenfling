@@ -105,7 +105,7 @@ def session():
         outputs = json.loads(command('swaymsg', '-t', 'get_outputs', '-r').stdout)
         assert len(outputs) == 1 and outputs[0]['scale'] == 1.25, outputs
         assert outputs[0]['rect']['width'] == 1024 and outputs[0]['rect']['height'] == 640, outputs
-        # A virtual keyboard alone does not give SDL a wl_pointer. Retain a
+        # A virtual keyboard alone does not give the app a wl_pointer. Retain a
         # pointer device for the entire session before the application starts.
         pointer_exe = home / 'pointer'
         command('cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
@@ -172,34 +172,41 @@ def session():
             print(f'Wayland input: {title} -> {value}', flush=True)
             # Give the virtual keyboard time to publish its keymap and focus.
             command('wtype', '-s', '200', '-k', value)
+        def capture():
+            # Wayland gives apps no global shortcut here, so start a capture the
+            # way any launcher can: a second launch asks the running copy.
+            launch = start('screenfling-capture', str(ROOT / 'target' / 'release' / 'screenfling'), '--capture')
+            assert launch.wait(timeout=10) == 0, 'The second launch did not hand over'
+        # No tray host here, so the controls live in the home panel.
         window('ScreenFling')
         # A declined chooser must return control without replacing the clipboard.
         (home / 'deny').touch()
-        key('ScreenFling', 'F8')
+        capture()
         wait_for((home / 'asked').exists, 'declined display chooser')
         window('ScreenFling')
         unchanged()
         (home / 'deny').unlink()
-        key('ScreenFling', 'F8')
+        capture()
         key('Select region', 'Escape')
         window('ScreenFling')
         unchanged()
-        key('ScreenFling', 'F8')
+        capture()
         key('Select region', 'space')
         key('Select region', 'Escape')
         window('ScreenFling')
         unchanged()
-        key('ScreenFling', 'F8')
+        capture()
         window('Select region')
         sway('output HEADLESS-1 bg #112233 solid_color')
         # Logical points map through 125% display scaling to the physical
         # (100, 100)..(300, 250) reference crop. Never loosen pixel equality.
-        sway('seat seat0 cursor set 80 80')
-        sway('seat seat0 cursor press button1')
-        time.sleep(0.15)
-        sway('seat seat0 cursor set 240 200')
-        time.sleep(0.15)
-        sway('seat seat0 cursor release button1')
+        # Real pointer events from the virtual pointer, as a mouse sends them.
+        def mouse(*lines):
+            for line in lines:
+                pointer.stdin.write((line + chr(10)).encode())
+                pointer.stdin.flush()
+                time.sleep(0.15)
+        mouse('move 80 80', 'down', 'move 160 140', 'move 240 200', 'up')
         # Choosing a region copies nothing; only the explicit action does.
         time.sleep(0.2)
         unchanged()
@@ -258,7 +265,7 @@ def main():
                    XDG_CONFIG_HOME=str(home / 'config'), XDG_DATA_HOME=str(home / 'data'),
                    XDG_CACHE_HOME=str(home / 'cache'), XDG_CURRENT_DESKTOP='sway', XDG_SESSION_TYPE='wayland',
                    WLR_BACKENDS='headless', WLR_RENDERER='pixman', WLR_HEADLESS_OUTPUTS='1',
-                   SDL_VIDEO_DRIVER='wayland', LIBGL_ALWAYS_SOFTWARE='1')
+                   SCREENFLING_TRACE='1')
         sp.run(['dbus-run-session', '--', sys.executable, str(Path(__file__).resolve()), '--session'],
                env=env, cwd=ROOT, check=True, timeout=150)
 
