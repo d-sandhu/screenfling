@@ -541,7 +541,7 @@ impl App {
         };
         let captured = match result {
             Ok(captured) => captured,
-            Err(error) => return self.finish(event_loop, Some(error), origin, false),
+            Err(error) => return self.finish(event_loop, Some(error), origin),
         };
         let chosen = self
             .last_sent
@@ -556,7 +556,6 @@ impl App {
                 event_loop,
                 Some("Could not open the capture window.".into()),
                 origin,
-                false,
             );
         };
         place_overlay(event_loop, &overlay.window, captured.bounds);
@@ -575,13 +574,16 @@ impl App {
     }
 
     /// End a capture and return to where the user was: the agent after Send,
-    /// otherwise the window capture started from. Errors are shown, never lost.
+    /// otherwise the window capture started from (or the home panel, when
+    /// capture began there). Focus is handed back explicitly even when it
+    /// should already be there: hiding does not move it everywhere (macOS
+    /// keeps the app active), and X11 window managers focus the home panel
+    /// when it is shown again. Errors are shown, never lost.
     fn finish(
         &mut self,
         event_loop: &ActiveEventLoop,
         error: Option<String>,
         focus: Option<send::Target>,
-        sent: bool,
     ) {
         // Stay fullscreen while hidden: leaving fullscreen restores, and so
         // shows, the window on Windows. The next capture re-places it.
@@ -590,10 +592,8 @@ impl App {
             self.show_panel(event_loop, Mode::Home, false);
         }
         if let Some(target) = &focus {
-            // Hiding does not move focus everywhere (macOS keeps the app active).
             send::return_to(target);
-        } else if !sent
-            && std::mem::take(&mut self.home_was_active)
+        } else if std::mem::take(&mut self.home_was_active)
             && let Some(panel) = &self.panel
         {
             panel.window.focus_window();
@@ -618,7 +618,7 @@ impl App {
                 return;
             }
         };
-        self.finish(event_loop, error, origin, false);
+        self.finish(event_loop, error, origin);
     }
 
     fn deliver(&mut self, event_loop: &ActiveEventLoop, delivery: Delivery, crop: Crop) {
@@ -646,7 +646,7 @@ impl App {
                 self.hide(Which::Overlay);
                 match started {
                     Ok(pending) => self.stage = Stage::Sending { pending, image },
-                    Err(error) => self.finish(event_loop, Some(error), selection.origin, false),
+                    Err(error) => self.finish(event_loop, Some(error), selection.origin),
                 }
             }
             (_, agent) => {
@@ -654,7 +654,7 @@ impl App {
                     Some(agent) => format!("Paste into {} with {}.", agent.name(), agent.chord()),
                     None => PASTE.to_owned(),
                 };
-                self.finish(event_loop, None, selection.origin, false);
+                self.finish(event_loop, None, selection.origin);
                 self.notify(
                     event_loop,
                     format!("Copied {} × {}. {hint}", image.width, image.height),
@@ -677,9 +677,8 @@ impl App {
                     };
                     let target = pending.into_target();
                     match result {
-                        // Focus is already in the agent; leave it there.
-                        Ok(_) => self.finish(event_loop, None, None, true),
-                        Err(error) => self.finish(event_loop, Some(error), Some(target), false),
+                        Ok(_) => self.finish(event_loop, None, Some(target)),
+                        Err(error) => self.finish(event_loop, Some(error), Some(target)),
                     }
                 }
             }
