@@ -132,7 +132,9 @@ mod linux {
         fn icon_pixmap(&self) -> Vec<Icon> {
             // StatusNotifierItem pixmaps are ARGB32 in network byte order.
             let data = icon_rgba()
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|p| [p[3], p[0], p[1], p[2]])
                 .collect();
             vec![Icon {

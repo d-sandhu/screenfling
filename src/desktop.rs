@@ -187,7 +187,7 @@ pub fn cover(window: &winit::window::Window, [x, y, w, h]: [i32; 4]) {
         NSSize::new(f64::from(w), f64::from(h)),
     );
     // The level sits above the menu bar; screen savers stay above it.
-    ns_window.setLevel(unsafe { NSScreenSaverWindowLevel } - 1);
+    ns_window.setLevel(NSScreenSaverWindowLevel - 1);
     ns_window.setCollectionBehavior(
         NSWindowCollectionBehavior::CanJoinAllSpaces
             | NSWindowCollectionBehavior::FullScreenAuxiliary,

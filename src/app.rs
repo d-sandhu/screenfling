@@ -981,27 +981,33 @@ fn window_attributes() -> winit::window::WindowAttributes {
 /// Show a window without activating it, so focus stays in the user's app.
 /// winit honours this only for a window's first show, and not on Linux.
 fn show_without_focus(window: &Window) {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    let Ok(handle) = window.window_handle() else {
-        return window.set_visible(true);
-    };
-    match handle.as_raw() {
-        #[cfg(windows)]
-        RawWindowHandle::Win32(handle) => {
-            use windows_sys::Win32::UI::WindowsAndMessaging::{SW_SHOWNOACTIVATE, ShowWindow};
-            unsafe { ShowWindow(handle.hwnd.get() as _, SW_SHOWNOACTIVATE) };
-        }
-        #[cfg(target_os = "macos")]
-        RawWindowHandle::AppKit(handle) => {
-            // SAFETY: winit's AppKit handle is a live NSView on the main thread.
-            let view: &objc2_app_kit::NSView = unsafe { handle.ns_view.cast().as_ref() };
-            match view.window() {
-                Some(ns_window) => ns_window.orderFrontRegardless(),
-                None => window.set_visible(true),
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        if let Ok(handle) = window.window_handle() {
+            match handle.as_raw() {
+                #[cfg(windows)]
+                RawWindowHandle::Win32(handle) => {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        SW_SHOWNOACTIVATE, ShowWindow,
+                    };
+                    unsafe { ShowWindow(handle.hwnd.get() as _, SW_SHOWNOACTIVATE) };
+                    return;
+                }
+                #[cfg(target_os = "macos")]
+                RawWindowHandle::AppKit(handle) => {
+                    // SAFETY: winit's AppKit handle is a live NSView on the main thread.
+                    let view: &objc2_app_kit::NSView = unsafe { handle.ns_view.cast().as_ref() };
+                    if let Some(ns_window) = view.window() {
+                        ns_window.orderFrontRegardless();
+                        return;
+                    }
+                }
+                _ => {}
             }
         }
-        // X11 notices are override-redirect, which the window manager never
-        // focuses; Wayland leaves focus to the compositor.
-        _ => window.set_visible(true),
     }
+    // X11 notices are override-redirect, which the window manager never
+    // focuses; Wayland leaves focus to the compositor.
+    window.set_visible(true);
 }
