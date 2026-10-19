@@ -2,8 +2,10 @@
 #[cfg(target_os = "linux")]
 #[path = "../src/clipboard.rs"]
 mod clipboard;
+// The app's own module; this fixture drives only remember and Pending.
 #[cfg(target_os = "linux")]
 #[path = "../src/send.rs"]
+#[allow(dead_code)]
 mod send;
 
 #[cfg(target_os = "linux")]
