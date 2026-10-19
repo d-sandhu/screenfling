@@ -1,0 +1,5 @@
+[advisories]
+# Informational, not vulnerabilities: zbus 6 (2026-10-16) absorbed these
+# crates. ashpd 0.13, the Wayland portal client, still requires zbus 5.
+# Remove these once ashpd releases on zbus 6.
+ignore = ["RUSTSEC-2026-0370", "RUSTSEC-2026-0371", "RUSTSEC-2026-0372"]
