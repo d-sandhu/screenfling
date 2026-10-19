@@ -1,256 +1,83 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 mod app;
+mod autostart;
+mod canvas;
 mod cli;
 mod clipboard;
 mod desktop;
+mod instance;
+mod overlay;
+mod panel;
 #[cfg(target_os = "linux")]
 mod portal_shortcut;
 mod send;
 mod settings;
-use egui_sdl3::{egui, egui_glow::glow};
-use sdl3::event::{Event, WindowEvent};
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+mod tray;
 
-fn main() -> std::process::ExitCode {
+use std::process::ExitCode;
+use winit::event_loop::EventLoop;
+
+fn main() -> ExitCode {
     let capture_on_start = match cli::parse(std::env::args_os().skip(1)) {
         Ok(cli::Startup::Open) => false,
         Ok(cli::Startup::Capture) => true,
         Ok(cli::Startup::Version) => {
             println!("ScreenFling {}", env!("CARGO_PKG_VERSION"));
-            return std::process::ExitCode::SUCCESS;
+            return ExitCode::SUCCESS;
         }
         Ok(cli::Startup::Help) => {
             println!("{}", cli::HELP);
-            return std::process::ExitCode::SUCCESS;
+            return ExitCode::SUCCESS;
         }
         Err(error) => {
             eprintln!("ScreenFling: {error}\nRun screenfling --help for usage.");
-            return std::process::ExitCode::from(2);
+            return ExitCode::from(2);
         }
     };
-    if let Err(error) = run(capture_on_start) {
-        eprintln!("ScreenFling: {error}");
-        let _ = sdl3::messagebox::show_simple_message_box(
-            sdl3::messagebox::MessageBoxFlag::ERROR,
-            "ScreenFling",
-            &error,
-            None,
-        );
-        return std::process::ExitCode::FAILURE;
+    match run(capture_on_start) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("ScreenFling: {error}");
+            ExitCode::FAILURE
+        }
     }
-    std::process::ExitCode::SUCCESS
-}
-fn run(capture_on_start: bool) -> Result<(), String> {
-    // A screenshot utility must not keep an idle desktop awake.
-    sdl3::hint::set("SDL_VIDEO_ALLOW_SCREENSAVER", "1");
-    sdl3::hint::set("SDL_APP_NAME", "ScreenFling");
-    sdl3::hint::set("SDL_APP_ID", "dev.screenfling.ScreenFling");
-    sdl3::hint::set("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
-    let sdl = sdl3::init().map_err(|e| e.to_string())?;
-    let video = sdl.video().map_err(|e| e.to_string())?;
-    if !unsafe { sdl3_sys::video::SDL_EnableScreenSaver() } {
-        return Err("Could not allow the desktop's normal screensaver behavior.".into());
-    }
-    let wayland = video.current_video_driver() == "wayland";
-    screenfling::capture::initialize_session(video.current_video_driver());
-    let receiver = desktop::install(&sdl)?;
-    video
-        .gl_attr()
-        .set_context_profile(sdl3::video::GLProfile::Core);
-    video.gl_attr().set_context_version(3, 2);
-    let mut window = video
-        .window("ScreenFling", desktop::SIZE[0], desktop::SIZE[1])
-        .opengl()
-        .high_pixel_density()
-        .resizable()
-        .position_centered()
-        .hidden()
-        .build()
-        .map_err(|e| e.to_string())?;
-    unsafe {
-        sdl3_sys::video::SDL_SetWindowMinimumSize(
-            window.raw(),
-            desktop::MIN_SIZE[0] as i32,
-            desktop::MIN_SIZE[1] as i32,
-        );
-    }
-    let gl_context = window.gl_create_context().map_err(|e| e.to_string())?;
-    let glow = Arc::new(unsafe {
-        glow::Context::from_loader_function(|name| {
-            video
-                .gl_get_proc_address(name)
-                .map_or(std::ptr::null(), |p| p as *const _)
-        })
-    });
-    let mut gui = egui_sdl3::EguiGlow::new(&window, glow, None, false);
-    app::configure(&gui.ctx);
-    gui.ctx.set_request_repaint_callback(|info| {
-        if info.delay.is_zero() {
-            desktop::wake();
-        }
-    });
-    let (settings, status) = settings::Settings::load();
-    let (shortcut, shortcut_status) = desktop::Shortcut::new(&settings.shortcut);
-    let tray = desktop::Tray::new();
-    let mut app = app::App::new(settings, status, shortcut, shortcut_status);
-    app.tray_available = tray.is_some();
-    let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
-    let mut deadline = Instant::now();
-    let mut first_frame = true;
-    let mut title = "";
-    while !app.quit {
-        let scheduled = app
-            .next_deadline()
-            .map_or(deadline, |capture| deadline.min(capture));
-        let mut pending = Vec::new();
-        if let Some(event) =
-            events.wait_event_timeout(scheduled.saturating_duration_since(Instant::now()))
-        {
-            pending.push(event);
-        }
-        pending.extend(events.poll_iter());
-        for event in pending {
-            match &event {
-                Event::Quit { .. } => app.action(app::Action::Quit, &gui.ctx, &mut window),
-                Event::Window {
-                    win_event: WindowEvent::CloseRequested,
-                    ..
-                } => app.action(app::Action::Hide, &gui.ctx, &mut window),
-                Event::Display { .. } if !first_frame => app.topology_changed(&mut window),
-                _ => {}
-            }
-            let _ = gui.state.on_event(&window, &event);
-        }
-        for message in receiver.try_iter() {
-            app.message(message, &gui.ctx, &mut window);
-        }
-        app.tick(&mut window);
-        if app.quit {
-            break;
-        }
-        if wayland {
-            // A mapped EGL drawable is required for painting. Flush the pending
-            // show before drawing on Wayland, not afterwards as on X11/macOS.
-            if first_frame && capture_on_start {
-                first_frame = false;
-                app.action(app::Action::Capture, &gui.ctx, &mut window);
-            }
-            if first_frame {
-                window.show();
-            }
-            app.after_paint(&mut window);
-            if window.window_flags().0 & sdl3_sys::video::SDL_WINDOW_HIDDEN.0 != 0 {
-                // Do not consume egui's texture changes until they can be painted.
-                // Capture deadlines and worker events still wake the event loop.
-                deadline = Instant::now() + Duration::from_secs(86400);
-                continue;
-            }
-            // SDL can recreate the EGL surface across hide/show transitions.
-            window
-                .gl_make_current(&gl_context)
-                .map_err(|e| e.to_string())?;
-        }
-        if title != app.title() {
-            title = app.title();
-            window.set_title(title).map_err(|e| e.to_string())?;
-        }
-        gui.state.sync_window_size(&window);
-        let mut input = gui.state.take_egui_input();
-        // egui-sdl3 0.4 updates modifiers only on key events it maps, which
-        // excludes the modifier keys, so a released Ctrl or Cmd stays held.
-        // SDL's own state is the truth.
-        {
-            use sdl3_sys::keycode::*;
-            let held =
-                |mask: SDL_Keymod| (unsafe { sdl3_sys::keyboard::SDL_GetModState() } & mask).0 != 0;
-            let (ctrl, gui_key) = (held(SDL_KMOD_CTRL), held(SDL_KMOD_GUI));
-            input.modifiers = egui::Modifiers {
-                alt: held(SDL_KMOD_ALT),
-                ctrl,
-                shift: held(SDL_KMOD_SHIFT),
-                mac_cmd: cfg!(target_os = "macos") && gui_key,
-                command: if cfg!(target_os = "macos") {
-                    gui_key
-                } else {
-                    ctrl
-                },
-            };
-        }
-        // egui-sdl3 0.4 lays out in drawable pixels / pixels-per-point, but
-        // divides window-coordinate mouse/touch positions by that same factor
-        // without first applying pixel density. Correct only its position events;
-        // screen_rect and wheel deltas are already in their intended units.
-        // Keep this boundary covered by the fractional-scale desktop fixture
-        // when updating the backend; do not apply the conversion twice upstream.
-        let (w, h) = gui.state.get_window_size();
-        let (pw, ph) = gui.state.get_drawable_size();
-        for event in &mut input.events {
-            match event {
-                egui::Event::PointerMoved(pos)
-                | egui::Event::PointerButton { pos, .. }
-                | egui::Event::Touch { pos, .. } => {
-                    pos.x *= pw as f32 / w.max(1) as f32;
-                    pos.y *= ph as f32 / h.max(1) as f32;
-                }
-                _ => {}
-            }
-        }
-        let mut action = app::Action::None;
-        let output = gui.ctx.run_ui(input, |ui| action = app.ui(ui));
-        let repaint = output
-            .viewport_output
-            .get(&egui::ViewportId::ROOT)
-            .map(|v| v.repaint_delay)
-            .unwrap_or(Duration::MAX);
-        sync_text_input(&window, output.platform_output.ime.is_some())?;
-        gui.state.handle_platform_output(output.platform_output);
-        let primitives = gui.ctx.tessellate(output.shapes, output.pixels_per_point);
-        gui.clear([12.0 / 255.0, 17.0 / 255.0, 27.0 / 255.0, 1.0]);
-        gui.painter.paint_and_update_textures(
-            gui.state.get_drawable_size().into(),
-            output.pixels_per_point,
-            &primitives,
-            &output.textures_delta,
-        );
-        window.gl_swap_window();
-        app.after_paint(&mut window);
-        if first_frame {
-            first_frame = false;
-            if capture_on_start {
-                app.action(app::Action::Capture, &gui.ctx, &mut window);
-            } else {
-                window.show();
-            }
-        }
-        app.action(action, &gui.ctx, &mut window);
-        deadline = Instant::now() + repaint.min(Duration::from_secs(86400));
-    }
-    desktop::shutdown();
-    drop(app);
-    drop(tray);
-    gui.destroy();
-    Ok(())
 }
 
-fn sync_text_input(window: &sdl3::video::Window, wanted: bool) -> Result<(), String> {
-    // SDL3 does not enable Unicode text events by default. Follow egui's focused
-    // text editor, not all keyboard focus, and leave non-editing shortcuts alone.
-    use sdl3_sys::keyboard::{SDL_StartTextInput, SDL_StopTextInput, SDL_TextInputActive};
-    let current = unsafe { SDL_TextInputActive(window.raw()) };
-    if current != wanted {
-        let changed = unsafe {
-            if wanted {
-                SDL_StartTextInput(window.raw())
-            } else {
-                SDL_StopTextInput(window.raw())
-            }
-        };
-        if !changed {
-            return Err("Could not update native text input for the focused field.".into());
+fn run(capture_on_start: bool) -> Result<(), String> {
+    #[allow(unused_mut)]
+    let mut builder = EventLoop::<app::Message>::with_user_event();
+    #[cfg(target_os = "macos")]
+    {
+        // A menu-bar utility: no Dock icon and no app menu.
+        use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
+        builder.with_activation_policy(ActivationPolicy::Accessory);
+    }
+    let event_loop = builder
+        .build()
+        .map_err(|_| "Could not connect to the desktop.")?;
+    screenfling::capture::initialize_session(&wayland_session(&event_loop));
+    desktop::install(event_loop.create_proxy());
+    // One running copy: a later launch, with or without --capture, asks the
+    // running copy to capture and exits.
+    let _listener = match instance::claim()? {
+        instance::Role::Primary(listener) => listener,
+        instance::Role::Forwarded => return Ok(()),
+    };
+    let mut app = app::App::new(capture_on_start);
+    event_loop
+        .run_app(&mut app)
+        .map_err(|_| "The desktop event loop stopped unexpectedly.".into())
+}
+
+/// The display server winit connected to, which decides how capture works.
+fn wayland_session(event_loop: &EventLoop<app::Message>) -> String {
+    #[cfg(target_os = "linux")]
+    {
+        use winit::platform::wayland::EventLoopExtWayland;
+        if event_loop.is_wayland() {
+            return "wayland".into();
         }
     }
-    Ok(())
+    let _ = event_loop;
+    String::new()
 }

@@ -2,7 +2,7 @@
   <h1><img src="assets/icon.svg" width="36" height="36" alt=""> ScreenFling</h1>
   <p><strong>Show your coding agent what you see.</strong><br>
   Select part of the screen, then copy it or send it straight to your coding agent.</p>
-  <p><strong>Rust</strong> · egui · SDL3 / OpenGL · Windows / macOS / Linux</p>
+  <p><strong>Rust</strong> · winit · CPU-drawn · about 700 KB download · Windows / macOS / Linux</p>
   <p><a href="#try-it">Build & run</a> · <a href="#how-it-is-built">How it is built</a> · <a href="docs/USAGE.md">User guide</a></p>
 </div>
 
@@ -26,13 +26,14 @@ There are no agent plugins, accounts, saved screenshot files or uploads. The cli
 
 - **One state machine.** Capturing → Selecting → Sending. Each stage owns exactly the data it needs, so a stale, cancelled or replaced image cannot be delivered. A late capture result for a cancelled capture is discarded by its generation id. [app.rs](src/app.rs)
 - **One image model.** Native Windows, macOS, X11 and Wayland capture adapters produce the same RGBA pixels. A selection maps to the captured pixels using the real image size, never an assumed scale factor, so crops stay exact at fractional display scaling. [capture](src/capture/) · [model.rs](src/model.rs)
+- **No GPU, no GUI toolkit.** The overlay is a frozen picture with a box on it, so it is drawn on the CPU straight into the window's pixels (winit + softbuffer, text from a bundled subset of Inter). That leaves no OpenGL requirement or graphics-driver quirks, and no C build. The app is a tray icon plus that overlay. [canvas.rs](src/canvas.rs) · [overlay.rs](src/overlay.rs)
 - **One verified paste.** Send ranks agent windows by the desktop's own most-recently-used order, with no background tracking. It checks that the chosen window has focus and that the clipboard still holds this image, then sends one chord and never retries. Keyboard actions wait until every key is released, so a held Enter or Ctrl+C cannot leak into your agent. [send.rs](src/send.rs) · [clipboard.rs](src/clipboard.rs)
 
 [CI](.github/workflows/check.yml) builds and packages all three platforms. Fixtures compare every cropped pixel on X11 and Wayland at 125% scale, read the native clipboard from a separate process, and check that Send reaches only the original terminal with exactly one paste and no Enter. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
 
 ## Try it
 
-Install **Rust, CMake and a native C/C++ toolchain**, plus the [platform prerequisites](docs/DEVELOPMENT.md#build-prerequisites).
+Install **Rust** and the [platform prerequisites](docs/DEVELOPMENT.md#build-prerequisites). On Linux, Wayland capture also needs the PipeWire development files.
 
 ```sh
 git clone https://github.com/d-sandhu/screenfling.git
@@ -40,7 +41,7 @@ cd screenfling
 cargo run --release --locked
 ```
 
-Keep it running in the tray, then use the shortcut from any app.
+ScreenFling lives in the tray: left-click it to capture, or right-click for Change shortcut…, Start at login and Quit. Launching it again, or running `screenfling --capture`, starts a capture in the copy already running. That lets any launcher, key binding or script trigger one.
 
 ## Status
 

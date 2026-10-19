@@ -68,8 +68,6 @@ def third_party_notices() -> tuple[str, int]:
                  (p.name.lower().startswith(('license', 'licence', 'copying', 'notice',
                                              'ofl', 'ufl', 'copyright')) or
                   any(part.lower() in ('licenses', 'licences') for part in p.relative_to(root).parts[:-1]))}
-        if package['name'] == 'epaint_default_fonts':
-            files.update((root / 'fonts').glob('*.txt'))
         if package.get('license_file'):
             explicit = root / package['license_file']
             if explicit.is_file():
@@ -102,6 +100,11 @@ def third_party_notices() -> tuple[str, int]:
             parts.append(f'\n--- {name} ---\n{text}\n')
     if missing:
         raise RuntimeError('Missing packaged license text: ' + ', '.join(missing))
+    # The interface font is embedded in the executable, not a Cargo package.
+    font_license = (ROOT / 'assets' / 'Inter-LICENSE.txt').read_text(encoding='utf-8')
+    parts.append(f"\n{'=' * 72}\nInter 4.1 (font, Regular, subset)\n"
+                 "Declared license: OFL-1.1\nSource: https://github.com/rsms/inter\n"
+                 f"\n--- Inter-LICENSE.txt ---\n{font_license}\n")
     return ''.join(parts), len(packages)
 
 
@@ -120,7 +123,8 @@ def verify_runtime(binary: Path, system: str, version: str) -> list[str]:
     """Check actual link imports and launch the staged binary outside the checkout.
 
     These are loader checks on the build host, not clean-machine GUI acceptance.
-    SDL's optional dlopen desktop integrations still require platform acceptance.
+    X11, Wayland and xkbcommon are opened at runtime (dlopen), so they never
+    appear here; desktop acceptance covers them.
     """
     def read(*args):
         return subprocess.check_output(args, text=True, errors='replace', timeout=30)
@@ -159,8 +163,8 @@ def verify_runtime(binary: Path, system: str, version: str) -> list[str]:
             if not any(Path(path).resolve().is_relative_to(root)
                        for root in ('/lib', '/lib64', '/usr/lib', '/usr/lib64')):
                 raise RuntimeError(f'Non-system Linux runtime library: {name}: {path}')
-    if not libraries or any('sdl' in name.lower() for name in libraries):
-        raise RuntimeError('Could not verify the statically linked SDL runtime.')
+    if not libraries:
+        raise RuntimeError("Could not read the executable's linked libraries.")
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(('LD_', 'DYLD_')) and key not in ('DISPLAY', 'WAYLAND_DISPLAY', 'WAYLAND_SOCKET')}
     result = subprocess.run([str(binary), '--version'], cwd=binary.parent, env=env,

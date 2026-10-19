@@ -21,7 +21,8 @@ def main():
     if not private:
         raise SystemExit('Refusing to run outside a private Xvfb display.')
     env = dict(os.environ)
-    for name in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET'):
+    # No session bus means no tray, so the app shows its home panel.
+    for name in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DBUS_SESSION_BUS_ADDRESS'):
         env.pop(name, None)
     processes = []
     with tempfile.TemporaryDirectory(prefix='screenfling-paste-') as directory:
@@ -84,7 +85,7 @@ while time.monotonic() < end:
                     if app.poll() is not None: raise RuntimeError('ScreenFling exited')
                     time.sleep(0.05)
                 raise RuntimeError(f'Window not found: {title}')
-            window('^ScreenFling$')
+            window('^ScreenFling$')  # the home panel
             original = sp.check_output(['xdotool', 'search', '--name', names[0]], env=env).splitlines()[0]
             sp.run(['xdotool', 'windowactivate', '--sync', original], env=env, check=True)
             sp.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9'], env=env, check=True)

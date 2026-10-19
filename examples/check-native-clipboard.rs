@@ -82,64 +82,109 @@ fn check(operation: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Show the expected pixels in a borderless window drawn the same way the app
+/// draws (winit + softbuffer), then capture and crop it through production code.
 #[cfg(target_os = "windows")]
 fn capture_fixture(
     expected: &screenfling::model::Pixels,
 ) -> Result<screenfling::model::Pixels, String> {
     use screenfling::{capture, model::map_crop};
-    use sdl3_sys::{surface::*, video::*};
     use std::{
-        ptr,
+        num::NonZeroU32,
+        rc::Rc,
         sync::atomic::AtomicBool,
         time::{Duration, Instant},
     };
+    use winit::{
+        application::ApplicationHandler,
+        dpi::{PhysicalPosition, PhysicalSize},
+        event::WindowEvent,
+        event_loop::{ActiveEventLoop, EventLoop},
+        platform::pump_events::EventLoopExtPumpEvents,
+        window::{Window, WindowId, WindowLevel},
+    };
 
-    sdl3::hint::set("SDL_VIDEO_ALLOW_SCREENSAVER", "1");
-    sdl3::hint::set("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
-    let sdl = sdl3::init().map_err(|error| error.to_string())?;
-    let video = sdl.video().map_err(|error| error.to_string())?;
-    let window = video
-        .window(
-            "ScreenFling synthetic capture check",
-            expected.width,
-            expected.height,
-        )
-        .position(80, 80)
-        .borderless()
-        .build()
-        .map_err(|error| error.to_string())?;
-    let mut events = sdl.event_pump().map_err(|error| error.to_string())?;
-    let mut bytes = expected.rgba.clone();
+    struct Fixture {
+        pixels: Vec<u32>,
+        size: [u32; 2],
+        window: Option<Rc<Window>>,
+        surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
+    }
+    impl Fixture {
+        fn paint(&mut self) {
+            let (Some(surface), [w, h]) = (&mut self.surface, self.size) else {
+                return;
+            };
+            let (Some(w), Some(h)) = (NonZeroU32::new(w), NonZeroU32::new(h)) else {
+                return;
+            };
+            if surface.resize(w, h).is_ok()
+                && let Ok(mut buffer) = surface.buffer_mut()
+            {
+                buffer.copy_from_slice(&self.pixels);
+                let _ = buffer.present();
+            }
+        }
+    }
+    impl ApplicationHandler for Fixture {
+        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            if self.window.is_some() {
+                return;
+            }
+            let attributes = Window::default_attributes()
+                .with_title("ScreenFling synthetic capture check")
+                .with_decorations(false)
+                .with_resizable(false)
+                .with_window_level(WindowLevel::AlwaysOnTop)
+                .with_position(PhysicalPosition::new(80, 80))
+                .with_inner_size(PhysicalSize::new(self.size[0], self.size[1]));
+            let Ok(window) = event_loop.create_window(attributes) else {
+                return;
+            };
+            let window = Rc::new(window);
+            if let Ok(context) = softbuffer::Context::new(window.clone()) {
+                self.surface = softbuffer::Surface::new(&context, window.clone()).ok();
+            }
+            self.window = Some(window);
+            self.paint();
+        }
+        fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+            if event == WindowEvent::RedrawRequested {
+                self.paint();
+            }
+        }
+    }
+
+    let mut event_loop = EventLoop::new().map_err(|error| error.to_string())?;
+    let mut fixture = Fixture {
+        pixels: expected
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|p| u32::from(p[0]) << 16 | u32::from(p[1]) << 8 | u32::from(p[2]))
+            .collect(),
+        size: [expected.width, expected.height],
+        window: None,
+        surface: None,
+    };
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
-        for _ in events.poll_iter() {}
-        // The source bytes stay alive until the surface is destroyed. The
-        // destination surface belongs to SDL and is never freed here.
-        let painted = unsafe {
-            let source = SDL_CreateSurfaceFrom(
-                expected.width as i32,
-                expected.height as i32,
-                sdl3_sys::pixels::SDL_PIXELFORMAT_RGBA32,
-                bytes.as_mut_ptr().cast(),
-                expected.width as i32 * 4,
-            );
-            if source.is_null() {
-                return Err("Could not create the synthetic image surface.".into());
-            }
-            let destination = SDL_GetWindowSurface(window.raw());
-            let painted = SDL_SetWindowAlwaysOnTop(window.raw(), true)
-                && !destination.is_null()
-                && SDL_BlitSurface(source, ptr::null(), destination, ptr::null())
-                && SDL_UpdateWindowSurface(window.raw());
-            SDL_DestroySurface(source);
-            painted
-        };
-        if !painted {
-            return Err("Could not paint the synthetic capture window.".into());
-        }
+        let _ = event_loop.pump_app_events(Some(Duration::from_millis(50)), &mut fixture);
+        fixture.paint();
         // Wait for the disposable desktop compositor, not an application action.
         std::thread::sleep(Duration::from_millis(100));
-        let (x, y) = window.position();
+        let Some(position) = fixture
+            .window
+            .as_ref()
+            .and_then(|w| w.inner_position().ok())
+        else {
+            if Instant::now() >= deadline {
+                return Err("Could not show the synthetic capture window.".into());
+            }
+            continue;
+        };
+        let (x, y) = (position.x, position.y);
         let frame = capture::capture([x + 1, y + 1], &AtomicBool::new(false))?;
         let [left, top, width, height] = frame.bounds.ok_or("Missing display geometry.")?;
         let crop = frame.pixels.crop(map_crop(
