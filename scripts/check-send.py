@@ -103,26 +103,21 @@ while time.monotonic() < end:
             dimensions = sp.check_output(['identify', '-format', '%wx%h', str(files[0].with_suffix('.png'))], env=env).decode()
             assert dimensions == '1280x800', dimensions
             assert files[1].read_bytes() == bytes([22])
-            # Send loop: a successful Send leaves the window hidden, the shortcut
-            # starts the next capture, and Escape returns there too. Match the
-            # app's WM_CLASS instance: the fixture terminal titles contain 'screenfling'.
-            def hidden():
-                deadline = time.monotonic() + 5
-                while True:
-                    visible = sp.run(['xdotool', 'search', '--onlyvisible', '--classname', '^screenfling$'], env=env, capture_output=True).stdout.splitlines()
-                    if not visible:
-                        return
-                    if time.monotonic() >= deadline:
-                        raise RuntimeError(f'Window did not stay out of the way; visible={visible}')
-                    time.sleep(0.05)
-            hidden()
-            sp.run(['xdotool', 'windowactivate', '--sync', original], env=env, check=True)
+            # Send loop: after Send, and after cancelling the next capture, focus
+            # stays in the original terminal so typing continues there. This
+            # fixture has no tray, so the window may reappear, but never active.
+            def focus_stays():
+                time.sleep(0.5)
+                active = sp.run(['xdotool', 'getactivewindow'], env=env, capture_output=True).stdout.strip()
+                if active != original:
+                    raise RuntimeError(f'Focus left the original terminal: {active} != {original}')
+            focus_stays()
             sp.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9'], env=env, check=True)
             window('Select region$')
             sp.run(['xdotool', 'key', 'Escape'], env=env, check=True)
-            hidden()
+            focus_stays()
             assert files[0].read_bytes() == bytes([22,22]), 'Cancel must not paste'
-            report = {'scope': 'Two synthetic receivers in Xfce Terminal; no real agent attachment claim', 'checks': ['remembered origin overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'no Enter', 'other receiver untouched', 'real app: shortcut, Space, Enter sends the full display', 'window stays hidden after Send and after cancel, and the shortcut reopens capture']}
+            report = {'scope': 'Two synthetic receivers in Xfce Terminal; no real agent attachment claim', 'checks': ['remembered origin overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'no Enter', 'other receiver untouched', 'real app: shortcut, Space, Enter sends the full display', 'focus stays in the terminal after Send and after cancel, and the shortcut reopens capture']}
             (ROOT/'dist').mkdir(exist_ok=True)
             (ROOT/'dist/smoke-send.json').write_text(json.dumps(report, indent=2)+'\n')
             print(json.dumps(report))

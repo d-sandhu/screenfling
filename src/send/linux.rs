@@ -73,6 +73,9 @@ fn valid(conn: &RustConnection, target: &Target) -> bool {
     values(conn, target.window, b"_NET_WM_PID").is_ok_and(|v| v.first() == Some(&target.pid))
         && process(target.pid).is_some_and(|(_, started)| started == target.started)
 }
+pub fn authorize() -> Result<()> {
+    Ok(())
+}
 pub fn activate(target: &Target) -> Result<()> {
     let (conn, screen) = connection()?;
     if !valid(&conn, target) {
@@ -107,11 +110,8 @@ pub fn focused(target: &Target) -> bool {
             .is_ok_and(|v| v.first() == Some(&target.window))
     })
 }
-pub fn paste(target: &Target, _: Modifier) -> Result<()> {
+pub fn paste(_: &Target, _: Modifier) -> Result<()> {
     let (conn, _) = connection()?;
-    if !focused(target) {
-        return Err("The selected window lost focus. Nothing was pasted.".into());
-    }
     conn.xtest_get_version(2, 2)
         .map_err(|_| "This desktop does not allow a paste request.")?
         .reply()

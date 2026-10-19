@@ -116,7 +116,7 @@ def main():
             def window(title, focus=False):
                 deadline = time.monotonic() + 12
                 # xdotool defaults to OR matching: PID alone would otherwise let
-                # an earlier phase satisfy a wait for a later review/result title.
+                # an earlier stage satisfy a wait for a later title.
                 search = ('xdotool', 'search', '--all', '--onlyvisible', '--pid', str(app.pid), '--name', title)
                 while time.monotonic() < deadline:
                     assert app.poll() is None, 'Application exited unexpectedly'

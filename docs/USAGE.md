@@ -33,7 +33,7 @@ The paste key depends on where it lands:
 
 Coding agents in a terminal read image paste from their own key, because the terminal keeps its paste shortcut for text. Claude Code and Codex use Alt+V on Windows and Ctrl+V on macOS and Linux. OpenCode uses Ctrl+V.
 
-Send never presses Enter. After a successful Send, ScreenFling stays out of the way, so the shortcut starts the next capture right away. If anything changed first (the window closed, focus moved, or the clipboard was replaced), nothing is pasted and the image stays copied.
+Send never presses Enter. Afterwards, and after Copy or Esc, focus goes back to the window you came from, so the shortcut starts the next capture right away. ScreenFling hides to its tray icon; on a desktop without a tray, its window stays open behind yours so you can still reach Settings and Quit. If anything changed first (the window closed, focus moved, or the clipboard was replaced), nothing is pasted and the image stays copied.
 
 **Where Send cannot help:**
 
@@ -42,6 +42,7 @@ Send never presses Enter. After a successful Send, ScreenFling stays out of the 
 - **SSH, WSL and remote sessions.** A remote agent reads the remote machine's clipboard, not yours.
 - **Elevated windows on Windows.** Windows blocks input from a normal app to an administrator window.
 - **Wayland.** Apps cannot return focus to another window or press keys there. Copy works.
+- **Non-QWERTY layouts on macOS.** Send presses the key in the V position of a US layout. With Dvorak or similar layouts, use Copy.
 
 ## Shortcuts
 

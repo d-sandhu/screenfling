@@ -64,7 +64,7 @@ impl Pixels {
                 self.height,
                 image::ExtendedColorType::Rgba8,
             )
-            .map_err(|_| "The reviewed image could not be encoded.".to_string())?;
+            .map_err(|_| "The image could not be encoded.".to_string())?;
         Ok(out)
     }
 }

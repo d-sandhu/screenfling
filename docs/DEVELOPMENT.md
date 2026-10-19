@@ -43,7 +43,9 @@ The GUI requires OpenGL 3.2. Wayland capture also needs PipeWire and the composi
 
 On Windows the overlay is one row taller than its monitor. Drivers promote a borderless OpenGL window that exactly covers a monitor to an uncomposited present. The compositor, screen capture and screen sharing then keep showing the first frame, so the selection appears frozen, and entering that mode can flicker. The extra row keeps the window composited, and the top-left anchoring keeps every captured pixel visible and selectable.
 
-**Delivery.** Copy writes the clipboard and reads it back before reporting success. A failed write leaves the selection in place, so retrying is one key. Send also activates the remembered window, then polls for up to 2 s until that window owns focus. It checks again that focus and clipboard are unchanged and sends one chord. It never retries, because an OS acknowledgment is not proof of attachment and a repeated chord could paste twice. Keyboard-triggered actions wait until every key is released, so no held or auto-repeating key reaches the destination.
+**Delivery.** Copy writes the clipboard and reads it back before reporting success. A failed write leaves the selection in place, so retrying is one key. Send also activates the remembered window, then polls for up to 2 s until that window owns focus. It checks again that focus and clipboard are unchanged and sends one chord. It never retries, because an OS acknowledgment is not proof of attachment and a repeated chord could paste twice. Keyboard-triggered actions, Esc included, wait until every key is released, so no held or auto-repeating key reaches the destination. Key state comes from SDL, because egui-sdl3 0.4 never reports modifier releases; `main.rs` also corrects egui's modifier state from SDL each frame.
+
+**Returning.** Finishing returns to where the user was. A capture begun in ScreenFling's window shows that window again. Otherwise focus is handed back to the remembered window explicitly, because hiding a window does not move focus on every platform: on macOS the app would stay active. The window then hides to the tray. Without a tray, a hidden window could never be reopened or quit, so it is shown behind without taking focus, and focus is handed back again for window managers that focus new windows. Errors always show the window.
 
 **Paste chord.** Each adapter classifies the window it remembered:
 
@@ -102,7 +104,7 @@ xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-send.py
   - cancelling and selecting leave the clipboard unchanged;
   - Enter copies a region whose every pixel matches the frozen frame, even after the live desktop changes.
 - **Wayland smoke.** Does the same inside headless Sway with the real ScreenCast portal and PipeWire, at 125% scale. It also checks recovery after the display chooser is declined. The container command is in `.github/workflows/check.yml`.
-- **Send.** Starts two raw-input receivers in real Xfce Terminal windows. It remembers one, focuses the other, then sends. The original must receive exactly Ctrl+V and the exact PNG bytes, with no Enter; the other must receive nothing. The real app is then driven through shortcut, Space and Enter, and must stay hidden after Send and after cancel. No receiver pretends to be a coding agent: this checks delivery, not attachment.
+- **Send.** Starts two raw-input receivers in real Xfce Terminal windows. It remembers one, focuses the other, then sends. The original must receive exactly Ctrl+V and the exact PNG bytes, with no Enter; the other must receive nothing. The real app is then driven through shortcut, Space and Enter. Focus must stay in the original terminal after Send and after cancel, even though this desktop has no tray. No receiver pretends to be a coding agent: this checks delivery, not attachment.
 
 On Windows and macOS, a separate-process clipboard check writes a synthetic image and reads all of its pixels back from another process. It then confirms that verification rejects a one-pixel replacement. On Windows it also captures a synthetic window through the production capture path. **It replaces the clipboard, so run it only on a disposable desktop:**
 
@@ -146,6 +148,10 @@ v0.1.0 is: capture, select, then Copy or Send, with Send returning to any app.
   - the attachment appears in Claude Code and Codex.
 - [ ] Attachment in more agents on Windows: Codex in Windows Terminal; Claude desktop or a browser chat.
 - [ ] Tag v0.1.0. Packages stay ad-hoc signed or unsigned, with the recovery steps in USAGE.md.
+
+Known limits:
+- macOS posts the V key by its US-layout key code. On Dvorak and similar layouts Send produces a different chord.
+- The Windows overlay's extra row covers the top pixel row of a monitor stacked directly below, while selecting.
 
 Out of scope for v0.1.0: signing and notarization, installers, annotation, image history, saved files, choosing a destination other than the original window, and any form of submission.
 

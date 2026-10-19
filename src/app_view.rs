@@ -77,15 +77,15 @@ fn primary(text: &str) -> Button<'_> {
 }
 
 pub(super) fn show(app: &mut App, ui: &mut Ui) -> Action {
+    if let Stage::Selecting(selection) = &mut app.stage {
+        return select(selection, &app.status, ui);
+    }
     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
         return match app.stage {
             Stage::Idle => Action::Hide,
-            Stage::Sending { .. } => Action::None,
-            _ => Action::Cancel,
+            Stage::Capturing { .. } => Action::Cancel,
+            _ => Action::None,
         };
-    }
-    if let Stage::Selecting(selection) = &mut app.stage {
-        return select(selection, &app.status, ui);
     }
     home(app, ui)
 }
@@ -142,7 +142,7 @@ fn home(app: &mut App, ui: &mut Ui) -> Action {
                 "Selecting: drag · Space whole display · Enter send or copy · {COPY_KEY} copy · Esc cancel"
             ),
         );
-        if !send_available() {
+        if capture::is_wayland() {
             muted(ui, "Wayland apps cannot return focus to another window, so Send is unavailable. Copy works everywhere.");
         }
         ui.add_space(8.0);
@@ -156,10 +156,6 @@ fn home(app: &mut App, ui: &mut Ui) -> Action {
         });
     });
     action
-}
-
-fn send_available() -> bool {
-    !capture::is_wayland()
 }
 
 fn select(selection: &mut Selection, status: &str, ui: &mut Ui) -> Action {
@@ -207,34 +203,41 @@ fn select(selection: &mut Selection, status: &str, ui: &mut Ui) -> Action {
     let crop = selection
         .region
         .and_then(|region| crop_for(region, image, pixels).ok());
+    let target = selection.target.as_ref();
+    let (escape, copy, enter) = ui.input(|i| {
+        (
+            i.key_pressed(egui::Key::Escape),
+            i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
+            i.key_pressed(egui::Key::Enter),
+        )
+    });
+    if escape {
+        selection.armed = Some(Intent::Cancel);
+    } else if !dragging && crop.is_some() {
+        if copy {
+            selection.armed = Some(Intent::Deliver(Delivery::Copy));
+        } else if enter {
+            selection.armed = Some(Intent::Deliver(if target.is_some() {
+                Delivery::Send
+            } else {
+                Delivery::Copy
+            }));
+        }
+    }
     let mut action = Action::None;
+    // Act only once every key is up, so nothing held or auto-repeating reaches
+    // the window that gets focus next. Each key-up wakes the event loop.
+    if desktop::keys_released() {
+        match (selection.armed.take(), crop) {
+            (Some(Intent::Cancel), _) => action = Action::Cancel,
+            (Some(Intent::Deliver(delivery)), Some(crop)) => {
+                action = Action::Deliver(delivery, crop)
+            }
+            _ => {}
+        }
+    }
     if let (Some(region), Some(crop)) = (selection.region, crop) {
         outline(ui, region, image);
-        let target = selection.target.as_ref().filter(|_| send_available());
-        if !dragging {
-            let (copy, enter, released) = ui.input(|i| {
-                (
-                    i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
-                    i.key_pressed(egui::Key::Enter),
-                    i.keys_down.is_empty() && i.modifiers.is_none(),
-                )
-            });
-            if copy {
-                selection.armed = Some(Delivery::Copy);
-            } else if enter {
-                selection.armed = Some(if target.is_some() {
-                    Delivery::Send
-                } else {
-                    Delivery::Copy
-                });
-            } else if released && let Some(delivery) = selection.armed.take() {
-                action = Action::Deliver(delivery, crop);
-            }
-            if selection.armed.is_some() {
-                // A press and release can arrive in one frame; check again.
-                ui.ctx().request_repaint();
-            }
-        }
         if let Some(clicked) = toolbar(ui, region, image, crop, target, dragging) {
             action = Action::Deliver(clicked, crop);
         }
