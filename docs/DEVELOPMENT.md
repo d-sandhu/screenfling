@@ -147,6 +147,8 @@ xvfb-run -a -s '-screen 0 1280x800x24 -noreset' python3 scripts/check-send.py
 - **Wayland smoke.** Does the same inside headless Sway with the real ScreenCast portal and PipeWire, at 125% scale. Captures start the way any launcher can: a second `screenfling --capture` hands over to the running copy. It also checks recovery after the display chooser is declined. The container command is in `.github/workflows/check.yml`.
 - **Send.** Starts two raw-input receivers in real Xfce Terminal windows. It remembers one, focuses the other, then sends. The original must receive exactly Ctrl+V and the exact PNG bytes, with no Enter; the other must receive nothing. The real app is then driven through shortcut, Space and Enter. Focus must stay in the original terminal after Send and after cancel, even though this desktop has no tray. No receiver pretends to be a coding agent: this checks delivery, not attachment.
 
+Set `SCREENFLING_TRACE=1` to log the overlay's window and input events to stderr; the Linux fixtures do, so a failure shows what the app received.
+
 On Windows and macOS, a separate-process clipboard check writes a synthetic image and reads all of its pixels back from another process. It then confirms that verification rejects a one-pixel replacement. On Windows it also shows a synthetic window, drawn the way the app draws, and captures it through the production capture path. **It replaces the clipboard, so run it only on a disposable desktop:**
 
 ```sh
@@ -185,7 +187,8 @@ v0.1.0 is: capture, select, then Copy or Send, with Send returning to any app.
 - [x] Windows, keyboard: Ctrl+C copies, and Esc cancels and returns focus. Holding Enter does nothing until release, then pastes once.
 - [x] Windows, destinations: capturing from Chrome sends to the most recently used terminal, and Chrome receives nothing. Tab picks another window, and the choice stays the default. Copy returns to Chrome. In one Windows Terminal window with two tabs, Tab then Enter selects the other tab and delivers exactly one Alt+V there.
 - [x] Windows, the CPU-drawn rebuild: the overlay updates live under normal screen capture. A second launch, or `--capture`, opens a focused overlay in the running copy and exits. The startup notice shows without taking focus. Start at login round-trips through the Run key.
-- [x] Linux: CI pixel, cancel and Send fixtures on X11, and pixel fixtures on Wayland.
+- [x] Linux: CI pixel, cancel and Send fixtures on X11, and pixel fixtures on Wayland, driven by a real virtual pointer. The home panel stands in for the tray there.
+- [ ] Linux desktop with a tray host (KDE, or GNOME with AppIndicator): the ksni tray menu and start at login.
 - [ ] macOS, physical desktop:
   - capture across display scales and multiple displays;
   - Screen Recording and Accessibility grant, deny and revoke;
