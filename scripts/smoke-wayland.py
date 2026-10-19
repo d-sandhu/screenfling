@@ -200,12 +200,13 @@ def session():
         sway('output HEADLESS-1 bg #112233 solid_color')
         # Logical points map through 125% display scaling to the physical
         # (100, 100)..(300, 250) reference crop. Never loosen pixel equality.
-        sway('seat seat0 cursor set 80 80')
-        sway('seat seat0 cursor press button1')
-        time.sleep(0.15)
-        sway('seat seat0 cursor set 240 200')
-        time.sleep(0.15)
-        sway('seat seat0 cursor release button1')
+        # Real pointer events from the virtual pointer, as a mouse sends them.
+        def mouse(*lines):
+            for line in lines:
+                pointer.stdin.write((line + chr(10)).encode())
+                pointer.stdin.flush()
+                time.sleep(0.15)
+        mouse('move 80 80', 'down', 'move 160 140', 'move 240 200', 'up')
         # Choosing a region copies nothing; only the explicit action does.
         time.sleep(0.2)
         unchanged()
