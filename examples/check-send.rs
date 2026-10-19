@@ -1,4 +1,4 @@
-//! Opt-in X11 paste check, launched only by scripts/check-send.py on private Xvfb.
+//! Opt-in X11 Send check, launched only by scripts/check-send.py on private Xvfb.
 #[cfg(target_os = "linux")]
 #[path = "../src/clipboard.rs"]
 mod clipboard;
@@ -65,7 +65,7 @@ fn main() -> Result<(), String> {
         for _ in events.poll_iter() {}
         std::thread::sleep(Duration::from_millis(10));
     }
-    let pending = send::Pending::start(target, true)?;
+    let pending = send::Pending::start(target)?;
     loop {
         for _ in events.poll_iter() {}
         if let Some(result) = pending.poll(|| clipboard.matches(&crop)) {

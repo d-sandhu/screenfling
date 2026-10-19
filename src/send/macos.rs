@@ -1,4 +1,4 @@
-//! Remember the frontmost terminal app without requesting Accessibility access.
+//! Remember the frontmost app without requesting Accessibility access.
 use super::*;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
@@ -17,34 +17,44 @@ unsafe extern "C" {
 #[derive(Clone, Debug)]
 pub struct Target(Retained<NSRunningApplication>);
 
+/// Terminal hosts forward Control+V to the program inside; GUI apps paste with Command+V.
+const TERMINALS: &[&str] = &[
+    "com.mitchellh.ghostty",
+    "com.apple.Terminal",
+    "com.googlecode.iterm2",
+    "com.github.wez.wezterm",
+    "net.kovidgoyal.kitty",
+    "org.alacritty",
+    "dev.warp.Warp-Stable",
+];
+
 pub fn remember() -> Option<super::Target> {
     let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
-    let bundle = app.bundleIdentifier()?.to_string();
-    if !matches!(
-        bundle.as_str(),
-        "com.mitchellh.ghostty"
-            | "com.apple.Terminal"
-            | "com.googlecode.iterm2"
-            | "com.github.wez.wezterm"
-            | "net.kovidgoyal.kitty"
-            | "org.alacritty"
-    ) {
+    if app.processIdentifier() == std::process::id() as i32 {
         return None;
     }
+    let terminal = app
+        .bundleIdentifier()
+        .is_some_and(|bundle| TERMINALS.contains(&bundle.to_string().as_str()));
     Some(super::Target {
         application: app
             .localizedName()
             .map(|s| s.to_string())
-            .unwrap_or_else(|| "Terminal".into()),
+            .unwrap_or_else(|| "the previous app".into()),
+        modifier: if terminal {
+            Modifier::Control
+        } else {
+            Modifier::Command
+        },
         native: Target(app),
     })
 }
 
 pub fn activate(target: &Target) -> Result<()> {
     if target.0.isTerminated() {
-        return Err("Your terminal closed. The image is copied; paste it manually.".into());
+        return Err("That app closed. The image is copied; paste it manually.".into());
     }
-    // Ask only after an explicit Paste back click, never on capture or startup.
+    // Ask only after an explicit Send, never on capture or startup.
     static PROMPTED: AtomicBool = AtomicBool::new(false);
     let prompt = CFString::from_str("AXTrustedCheckOptionPrompt");
     let options = CFDictionary::from_slices(
@@ -52,25 +62,23 @@ pub fn activate(target: &Target) -> Result<()> {
         &[CFBoolean::new(!PROMPTED.swap(true, Ordering::Relaxed))],
     );
     if !unsafe { AXIsProcessTrustedWithOptions((&*options as *const CFDictionary<_, _>).cast()) } {
-        return Err("Paste back needs Accessibility access. Enable ScreenFling in System Settings > Privacy & Security > Accessibility. The image is already copied; you can also switch to your agent and press Ctrl+V.".into());
+        return Err("Send needs Accessibility access. Enable ScreenFling in System Settings > Privacy & Security > Accessibility. The image is already copied; you can paste it manually.".into());
     }
     #[allow(deprecated)]
     if !target
         .0
         .activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps)
     {
-        return Err(
-            "Could not return to your terminal. The image is copied; paste it manually.".into(),
-        );
+        return Err("Could not return to that app. The image is copied; paste it manually.".into());
     }
     Ok(())
 }
 pub fn focused(target: &Target) -> bool {
     !target.0.isTerminated() && target.0.isActive()
 }
-pub fn paste(target: &Target) -> Result<()> {
+pub fn paste(target: &Target, modifier: Modifier) -> Result<()> {
     if !focused(target) {
-        return Err("Your terminal lost focus. Nothing was pasted.".into());
+        return Err("That app lost focus. Nothing was pasted.".into());
     }
     let modifiers = CGEventFlags::MaskShift
         | CGEventFlags::MaskControl
@@ -84,8 +92,12 @@ pub fn paste(target: &Target) -> Result<()> {
         CGEvent::new_keyboard_event(None, 9, true).ok_or("Could not create the paste request.")?;
     let up =
         CGEvent::new_keyboard_event(None, 9, false).ok_or("Could not finish the paste request.")?;
-    CGEvent::set_flags(Some(&down), CGEventFlags::MaskControl);
-    CGEvent::set_flags(Some(&up), CGEventFlags::MaskControl);
+    let flags = match modifier {
+        Modifier::Command => CGEventFlags::MaskCommand,
+        _ => CGEventFlags::MaskControl,
+    };
+    CGEvent::set_flags(Some(&down), flags);
+    CGEvent::set_flags(Some(&up), flags);
     CGEvent::post_to_pid(target.0.processIdentifier(), Some(&down));
     CGEvent::post_to_pid(target.0.processIdentifier(), Some(&up));
     Ok(())

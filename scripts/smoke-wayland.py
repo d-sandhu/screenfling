@@ -68,7 +68,9 @@ def session():
     portal_config.mkdir()
     (portal_config / 'portals.conf').write_text('[preferred]\ndefault=wlr\n')
     chooser = home / 'choose'
-    chooser.write_text(f'#!/bin/sh\n[ -e {shlex.quote(str(home / "deny"))} ] && exit 1\nprintf "HEADLESS-1\\n"\n')
+    # Recording each request lets the controller wait for the portal, not a sleep.
+    chooser.write_text(f'#!/bin/sh\ntouch {shlex.quote(str(home / "asked"))}\n'
+                       f'[ -e {shlex.quote(str(home / "deny"))} ] && exit 1\nprintf "HEADLESS-1\\n"\n')
     backend_config = home / 'config' / 'xdg-desktop-portal-wlr'
     backend_config.mkdir()
     xdpw_config = backend_config / 'config'
@@ -174,16 +176,17 @@ def session():
         # A declined chooser must return control without replacing the clipboard.
         (home / 'deny').touch()
         key('ScreenFling', 'F8')
-        window('Result')
+        wait_for((home / 'asked').exists, 'declined display chooser')
+        window('ScreenFling')
         unchanged()
         (home / 'deny').unlink()
-        key('Result', 'F8')
+        key('ScreenFling', 'F8')
         key('Select region', 'Escape')
         window('ScreenFling')
         unchanged()
         key('ScreenFling', 'F8')
         key('Select region', 'space')
-        key('Review crop', 'Escape')
+        key('Select region', 'Escape')
         window('ScreenFling')
         unchanged()
         key('ScreenFling', 'F8')
@@ -197,18 +200,19 @@ def session():
         sway('seat seat0 cursor set 240 200')
         time.sleep(0.15)
         sway('seat seat0 cursor release button1')
-        window('Review crop')
+        # Choosing a region copies nothing; only the explicit action does.
+        time.sleep(0.2)
         unchanged()
-        key('Review crop', 'F6')
-        window('Result')
+        key('Select region', 'Return')
+        window('ScreenFling')
         copied = command('wl-paste', '--type', 'image/png').stdout
         dimensions = fixture['check_png'](copied, reference)
         assert not list((home / 'config' / 'screenfling').glob('*.png')), 'Unexpected stored screenshot'
         result = {'environment': 'Isolated headless Sway, real ScreenCast portal/PipeWire, software rendering',
                   'output_scale': 1.25,
                   'checks': ['portal chooser rejection preserves clipboard', 'capture recovers after rejection',
-                             'selection and whole-display review cancellation preserve clipboard',
-                             'native Wayland fractional-scale region selection',
+                             'selection and whole-display cancellation preserve clipboard',
+                             'native Wayland fractional-scale region selection', 'Enter copies the region',
                              'every copied pixel matches an independent frozen desktop reference'],
                   'copied_dimensions': dimensions}
         (ROOT / 'dist' / 'smoke-wayland.json').write_text(json.dumps(result, indent=2) + '\n')

@@ -62,7 +62,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
         .set_context_profile(sdl3::video::GLProfile::Core);
     video.gl_attr().set_context_version(3, 2);
     let mut window = video
-        .window("ScreenFling", 1000, 740)
+        .window("ScreenFling", desktop::SIZE[0], desktop::SIZE[1])
         .opengl()
         .high_pixel_density()
         .resizable()
@@ -71,7 +71,11 @@ fn run(capture_on_start: bool) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     unsafe {
-        sdl3_sys::video::SDL_SetWindowMinimumSize(window.raw(), 640, 480);
+        sdl3_sys::video::SDL_SetWindowMinimumSize(
+            window.raw(),
+            desktop::MIN_SIZE[0] as i32,
+            desktop::MIN_SIZE[1] as i32,
+        );
     }
     let gl_context = window.gl_create_context().map_err(|e| e.to_string())?;
     let glow = Arc::new(unsafe {
@@ -96,7 +100,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
     let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
     let mut deadline = Instant::now();
     let mut first_frame = true;
-    let mut title_phase = None;
+    let mut title = "";
     while !app.quit {
         let scheduled = app
             .next_deadline()
@@ -149,18 +153,9 @@ fn run(capture_on_start: bool) -> Result<(), String> {
                 .gl_make_current(&gl_context)
                 .map_err(|e| e.to_string())?;
         }
-        if title_phase != Some(app.flow.phase()) {
-            use screenfling::model::Phase;
-            let title = match app.flow.phase() {
-                Phase::Capturing => "ScreenFling — Capturing",
-                Phase::Selecting => "ScreenFling — Select region",
-                Phase::Review => "ScreenFling — Review crop",
-                Phase::Delivering => "ScreenFling — Sending",
-                Phase::Result => "ScreenFling — Result",
-                Phase::Idle => "ScreenFling",
-            };
+        if title != app.title() {
+            title = app.title();
             window.set_title(title).map_err(|e| e.to_string())?;
-            title_phase = Some(app.flow.phase());
         }
         gui.state.sync_window_size(&window);
         let mut input = gui.state.take_egui_input();
@@ -184,10 +179,7 @@ fn run(capture_on_start: bool) -> Result<(), String> {
             }
         }
         let mut action = app::Action::None;
-        let output = gui.ctx.run_ui(input, |ui| {
-            dismiss_menu_escape(ui);
-            action = app.ui(ui);
-        });
+        let output = gui.ctx.run_ui(input, |ui| action = app.ui(ui));
         let repaint = output
             .viewport_output
             .get(&egui::ViewportId::ROOT)
@@ -241,43 +233,4 @@ fn sync_text_input(window: &sdl3::video::Window, wanted: bool) -> Result<(), Str
         }
     }
     Ok(())
-}
-
-fn dismiss_menu_escape(ui: &mut egui::Ui) {
-    // A popup owns Escape before the underlying page can cancel or hide.
-    if egui::Popup::is_any_open(ui.ctx())
-        && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
-    {
-        egui::Popup::close_all(ui.ctx());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn escape_dismisses_only_the_open_menu() {
-        let ctx = egui::Context::default();
-        let input = egui::RawInput {
-            events: vec![egui::Event::Key {
-                key: egui::Key::Escape,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-            ..Default::default()
-        };
-        let _ = ctx.run_ui(input.clone(), |ui| {
-            egui::Popup::open_id(ui.ctx(), egui::Id::new("menu-test"));
-            dismiss_menu_escape(ui);
-            assert!(!egui::Popup::is_any_open(ui.ctx()));
-            assert!(!ui.input(|input| input.key_pressed(egui::Key::Escape)));
-        });
-        let _ = ctx.run_ui(input, |ui| {
-            dismiss_menu_escape(ui);
-            assert!(ui.input(|input| input.key_pressed(egui::Key::Escape)));
-        });
-    }
 }

@@ -1,8 +1,9 @@
-//! Presentation only. Delivery, clipboard access and routing remain in App actions.
+//! Presentation only. Clipboard, capture and input injection stay in App actions.
 use super::*;
 use egui::{
-    Align, Button, FontFamily, FontId, Frame, Label, Layout, RichText, Stroke, Ui, UiBuilder,
+    Align2, Button, Color32, FontFamily, FontId, Frame, Label, RichText, Sense, Stroke, Ui, Vec2,
 };
+use screenfling::model;
 
 const BACKGROUND: Color32 = Color32::from_rgb(12, 17, 27);
 const SURFACE: Color32 = Color32::from_rgb(21, 29, 42);
@@ -15,6 +16,11 @@ const ACCENT: Color32 = Color32::from_rgb(132, 198, 255);
 const ACCENT_DARK: Color32 = Color32::from_rgb(25, 49, 74);
 const INK: Color32 = Color32::from_rgb(8, 24, 40);
 const ERROR: Color32 = Color32::from_rgb(255, 174, 185);
+const COPY_KEY: &str = if cfg!(target_os = "macos") {
+    "Cmd+C"
+} else {
+    "Ctrl+C"
+};
 
 pub fn configure(ctx: &egui::Context) {
     ctx.set_visuals(egui::Visuals::dark());
@@ -33,14 +39,12 @@ pub fn configure(ctx: &egui::Context) {
             .text_styles
             .insert(egui::TextStyle::Monospace, FontId::monospace(13.0));
         style.spacing.item_spacing = Vec2::new(10.0, 10.0);
-        style.spacing.scroll = egui::style::ScrollStyle::solid();
         style.spacing.button_padding = Vec2::new(14.0, 9.0);
         style.spacing.interact_size = Vec2::new(36.0, 36.0);
         style.visuals.panel_fill = BACKGROUND;
         style.visuals.window_fill = SURFACE;
         style.visuals.extreme_bg_color = FIELD;
         style.visuals.faint_bg_color = SURFACE;
-        style.visuals.hyperlink_color = ACCENT;
         style.visuals.error_fg_color = ERROR;
         style.visuals.selection.bg_fill = ACCENT_DARK;
         style.visuals.selection.stroke = Stroke::new(2.0_f32, ACCENT);
@@ -68,404 +72,344 @@ pub fn configure(ctx: &egui::Context) {
 fn muted(ui: &mut Ui, text: impl Into<String>) {
     ui.add(Label::new(RichText::new(text).color(MUTED)).wrap());
 }
-fn heading(ui: &mut Ui, text: &str) {
-    ui.add(Label::new(RichText::new(text).size(22.0).strong().color(TEXT)).wrap());
-}
-fn card() -> Frame {
-    Frame::new()
-        .fill(SURFACE)
-        .stroke(Stroke::new(1.0_f32, LINE))
-        .corner_radius(12)
-        .inner_margin(16)
-}
 fn primary(text: &str) -> Button<'_> {
-    Button::new(RichText::new(text).color(INK).strong())
-        .fill(ACCENT)
-        .min_size(Vec2::new(148.0, 40.0))
-}
-fn region(ui: &mut Ui, rect: Rect, content: impl FnOnce(&mut Ui)) {
-    ui.scope_builder(
-        UiBuilder::new()
-            .max_rect(rect)
-            .layout(Layout::top_down(Align::Min)),
-        |ui| {
-            ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-            ui.set_width(rect.width());
-            content(ui);
-        },
-    );
-}
-
-// A fixed action area cannot disappear below a long note, pane title or settings form.
-fn regions(screen: Rect, settings: bool) -> [Rect; 4] {
-    let margin = if screen.width() < 720.0 { 16.0 } else { 24.0 };
-    let inner = screen.shrink(margin);
-    let header = Rect::from_min_size(inner.min, Vec2::new(inner.width(), 44.0));
-    let steps = Rect::from_min_size(
-        Pos2::new(inner.min.x, header.max.y + 12.0),
-        Vec2::new(inner.width(), 32.0),
-    );
-    let footer_height = if inner.width() < 470.0 { 136.0 } else { 96.0 };
-    let footer = Rect::from_min_max(
-        Pos2::new(inner.min.x, inner.max.y - footer_height),
-        inner.max,
-    );
-    let top = if settings {
-        header.max.y + 20.0
-    } else {
-        steps.max.y + 20.0
-    };
-    let body = Rect::from_min_max(
-        Pos2::new(inner.min.x, top),
-        Pos2::new(inner.max.x, (footer.min.y - 16.0).max(top + 1.0)),
-    );
-    [header, steps, body, footer]
+    Button::new(RichText::new(text).color(INK).strong()).fill(ACCENT)
 }
 
 pub(super) fn show(app: &mut App, ui: &mut Ui) -> Action {
-    let phase = app.flow.phase();
     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-        if app.settings_open && phase != Phase::Delivering {
-            app.settings_open = false;
-        } else {
-            return if matches!(phase, Phase::Capturing | Phase::Selecting | Phase::Review) {
-                Action::Cancel
-            } else if phase == Phase::Delivering {
-                Action::None
-            } else {
-                Action::Hide
-            };
-        }
+        return match app.stage {
+            Stage::Idle => Action::Hide,
+            Stage::Sending { .. } => Action::None,
+            _ => Action::Cancel,
+        };
     }
-    if phase == Phase::Selecting {
-        return app.selection_ui(ui);
+    if let Stage::Selecting(selection) = &mut app.stage {
+        return select(selection, &app.status, ui);
     }
-    if phase != Phase::Delivering && ui.input(|i| i.key_pressed(egui::Key::F10)) {
-        app.settings_open = !app.settings_open;
-    }
-    if !app.settings_open {
-        if matches!(phase, Phase::Idle | Phase::Result)
-            && ui.input(|i| i.key_pressed(egui::Key::F8))
-        {
-            return Action::Capture;
-        }
-        if phase == Phase::Review && ui.input(|i| i.key_pressed(egui::Key::F6)) {
-            return Action::Copy;
-        }
-    }
+    home(app, ui)
+}
+
+fn home(app: &mut App, ui: &mut Ui) -> Action {
     let mut action = Action::None;
-    let screen = ui.max_rect();
-    ui.painter().rect_filled(screen, 0.0, BACKGROUND);
-    let [header_rect, steps_rect, _, _] = regions(screen, app.settings_open);
-    region(ui, header_rect, |ui| header(app, ui, &mut action));
-    // A header click can change settings on this frame. Recompute before laying out content.
-    let [_, _, body_rect, footer_rect] = regions(screen, app.settings_open);
-    if !app.settings_open {
-        region(ui, steps_rect, |ui| steps(ui, phase));
+    let idle = matches!(app.stage, Stage::Idle);
+    let editing = ui.ctx().egui_wants_keyboard_input();
+    if idle && !editing && ui.input(|i| i.key_pressed(egui::Key::F8)) {
+        action = Action::Capture;
     }
-    region(ui, body_rect, |ui| {
-        if app.settings_open {
-            egui::ScrollArea::vertical()
-                .id_salt("settings-page")
-                .auto_shrink([false, false])
-                .show(ui, |ui| settings(app, ui, &mut action));
-        } else if phase == Phase::Review {
-            review(app, ui);
-        } else {
-            egui::ScrollArea::vertical()
-                .id_salt("overview-page")
-                .auto_shrink([false, false])
-                .show(ui, |ui| overview(app, ui));
-        }
-    });
-    region(ui, footer_rect, |ui| footer(app, ui, &mut action));
-    action
-}
-
-fn header(app: &mut App, ui: &mut Ui, action: &mut Action) {
-    ui.horizontal(|ui| {
-        let (mark, _) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::hover());
-        corner_mark(ui, mark.shrink(4.0), ACCENT);
-        ui.label(RichText::new("ScreenFling").size(22.0).strong().color(TEXT));
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.add_enabled_ui(app.flow.phase() != Phase::Delivering, |ui| {
-                ui.menu_button("More", |ui| {
-                    if app.tray_available && ui.button("Hide to tray").clicked() {
-                        *action = Action::Hide;
-                    }
-                    if ui.button("Quit ScreenFling").clicked() {
-                        *action = Action::Quit;
-                    }
-                });
-                if ui
-                    .add(Button::new("Settings").selected(app.settings_open))
-                    .on_hover_text("Settings (F10)")
-                    .clicked()
-                {
-                    app.settings_open = !app.settings_open;
-                }
-            });
+    ui.painter().rect_filled(ui.max_rect(), 0.0, BACKGROUND);
+    Frame::new().inner_margin(24).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            let (mark, _) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::hover());
+            corner_mark(ui, mark.shrink(3.0), ACCENT);
+            ui.label(RichText::new("ScreenFling").size(22.0).strong().color(TEXT));
         });
-    });
-}
-fn steps(ui: &mut Ui, phase: Phase) {
-    let current = match phase {
-        Phase::Idle | Phase::Capturing | Phase::Selecting => 0,
-        Phase::Review => 1,
-        Phase::Delivering | Phase::Result => 2,
-    };
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 12.0;
-        for (index, label) in ["Capture", "Review", "Send"].into_iter().enumerate() {
-            if index > 0 {
-                ui.label(RichText::new("/").color(MUTED));
+        muted(
+            ui,
+            "Select part of the screen, then copy it or send it straight back to the app you came from.",
+        );
+        ui.add_space(4.0);
+        ui.add_enabled_ui(idle, |ui| {
+            if ui
+                .add(primary("Capture region   F8").min_size(Vec2::new(200.0, 40.0)))
+                .clicked()
+            {
+                action = Action::Capture;
             }
-            let color = if index == current { ACCENT } else { MUTED };
-            ui.label(
-                RichText::new(format!("{}  {label}", index + 1))
-                    .color(color)
-                    .strong(),
-            );
-        }
-    });
-}
-fn overview(app: &App, ui: &mut Ui) {
-    ui.add_space(12.0);
-    match app.flow.phase() {
-        Phase::Idle => {
-            ui.add(
-                Label::new(
-                    RichText::new("Show your agent.")
-                        .size(32.0)
-                        .strong()
-                        .color(TEXT),
-                )
-                .wrap(),
-            );
-            ui.add_space(6.0);
-            muted(
-                ui,
-                "Capture a region and paste the image into your coding agent.",
-            );
-            ui.add_space(16.0);
-            card().show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                ui.label(RichText::new("Capture / review / send").strong());
-                muted(ui, "Copy the image and press Ctrl+V in your agent. Capture from your terminal to use Paste back.");
-            });
-            ui.add_space(12.0);
-            muted(ui, &app.shortcut_status);
-            if capture::is_wayland() {
-                muted(
-                    ui,
-                    "Wayland asks which display to share before region selection.",
-                );
-            }
-            if !app.status.is_empty() {
-                muted(ui, &app.status);
-            }
-        }
-        Phase::Result => {
-            heading(
-                ui,
-                if app.copied {
-                    "Ready to paste"
-                } else {
-                    "Result"
-                },
-            );
-            ui.add_space(8.0);
-            card().show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                ui.add(Label::new(RichText::new(&app.status).size(16.0)).wrap());
-            });
-        }
-        Phase::Capturing | Phase::Delivering => {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                heading(
-                    ui,
-                    if app.flow.phase() == Phase::Delivering {
-                        "Sending once"
-                    } else {
-                        "Preparing your capture"
-                    },
-                );
-            });
-            ui.add_space(12.0);
-            card().show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                muted(ui, &app.status);
-            });
-            if app.flow.phase() == Phase::Delivering {
-                ui.add_space(12.0);
-                muted(
-                    ui,
-                    "Delivery is pending. Do not paste or retry. The result will say what is known; image attachment still needs your inspection.",
-                );
-            }
-        }
-        _ => {}
-    }
-}
-
-fn review(app: &mut App, ui: &mut Ui) {
-    egui::ScrollArea::vertical()
-        .id_salt("review-image")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            preview(app, ui);
-            ui.add_space(8.0);
-            muted(ui, &app.status);
         });
-}
-fn preview(app: &mut App, ui: &mut Ui) {
-    heading(ui, "Review crop");
-    muted(ui, "Check the image before sending.");
-    ui.add_space(4.0);
-    card().show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Preview").strong());
-            ui.selectable_value(&mut app.preview_native, false, "Fit");
-            ui.selectable_value(&mut app.preview_native, true, "1:1 pixels");
-        });
-        if let (Some(texture), Some(crop)) = (&app.texture, &app.crop) {
-            let native = texture.size_vec2() / ui.ctx().pixels_per_point();
-            let height = (ui.available_height() - 112.0).clamp(120.0, 420.0);
-            Frame::new()
-                .fill(FIELD)
-                .corner_radius(8)
-                .inner_margin(10)
-                .show(ui, |ui| {
-                    if app.preview_native {
-                        egui::ScrollArea::both()
-                            .id_salt("native-pixel-preview")
-                            .max_height(height)
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                ui.image((texture.id(), native));
-                            });
-                    } else {
-                        let size = fit_size(native, Vec2::new(ui.available_width(), height));
-                        let (rect, _) = ui.allocate_exact_size(
-                            Vec2::new(ui.available_width(), height),
-                            Sense::hover(),
-                        );
-                        ui.painter().image(
-                            texture.id(),
-                            Rect::from_center_size(rect.center(), size),
-                            Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                            Color32::WHITE,
-                        );
-                    }
-                });
-            muted(
-                ui,
-                format!("{} × {} pixels · original crop", crop.width, crop.height),
-            );
-        } else {
-            muted(
-                ui,
-                "The reviewed image is unavailable. Cancel and capture again.",
-            );
+        if !app.status.is_empty() {
+            ui.add(Label::new(RichText::new(&app.status).color(TEXT)).wrap());
         }
-    });
-    ui.add_space(6.0);
-    muted(ui, "Your screenshot keeps its original pixels.");
-}
-fn settings(app: &mut App, ui: &mut Ui, action: &mut Action) {
-    heading(ui, "Settings");
-    muted(
-        ui,
-        "Choose your capture shortcut. No terminal configuration is needed to send or copy.",
-    );
-    ui.add_space(8.0);
-    card().show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.label(RichText::new("Capture shortcut").size(18.0).strong());
-        ui.add_enabled_ui(!capture::is_wayland(), |ui| {
+        ui.add_space(8.0);
+        ui.separator();
+        ui.label(RichText::new("Capture shortcut").strong());
+        ui.add_enabled_ui(idle && !capture::is_wayland(), |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut app.settings.shortcut).margin(egui::Margin::symmetric(9, 8)).desired_width(250.0));
-                if ui.button("Apply shortcut").clicked() { *action = Action::ApplyShortcut; }
+                ui.add(
+                    egui::TextEdit::singleline(&mut app.settings.shortcut)
+                        .margin(egui::Margin::symmetric(9, 8))
+                        .desired_width(240.0),
+                );
+                if ui.button("Apply").clicked() {
+                    action = Action::ApplyShortcut;
+                }
             });
         });
         muted(ui, &app.shortcut_status);
-        if capture::is_wayland() {
-            muted(ui, "Wayland shortcuts are managed by the desktop portal. Capture remains available in the app.");
-        }
-        muted(ui, "In the app: F8 capture · F6 copy reviewed image · F10 settings · Esc back or cancel.");
-    });
-    ui.add_space(12.0);
-    muted(ui, &app.status);
-}
-fn footer(app: &mut App, ui: &mut Ui, action: &mut Action) {
-    ui.separator();
-    ui.add_space(6.0);
-    if app.settings_open {
-        if ui
-            .button(if app.flow.phase() == Phase::Review {
-                "Back to review"
-            } else {
-                "Back to capture"
-            })
-            .clicked()
-        {
-            app.settings_open = false;
-        }
-        muted(ui, "Going back keeps your current capture.");
-        return;
-    }
-    match app.flow.phase() {
-        Phase::Review => {
-            ui.horizontal_wrapped(|ui| {
-                if ui.add(primary("Copy image  F6")).clicked() {
-                    *action = Action::Copy;
-                }
-                if let Some(target) = &app.destination
-                    && ui
-                        .button(format!("Paste back to {}", target.application))
-                        .clicked()
-                {
-                    *action = Action::Send;
-                }
-                if ui.button("Cancel").clicked() {
-                    *action = Action::Cancel;
-                }
-            });
-            muted(
-                ui,
-                if app.destination.is_some() {
-                    "Paste back returns to your terminal and presses Ctrl+V. You submit when ready."
-                } else {
-                    "Copy the image, switch to your agent, then press Ctrl+V."
-                },
-            );
-        }
-        Phase::Idle | Phase::Result => {
-            ui.horizontal_wrapped(|ui| {
-                if ui.add(primary("Capture region  F8")).clicked() {
-                    *action = Action::Capture;
-                }
-            });
-            muted(
-                ui,
-                "Nothing is copied until you review the crop. Your prompt is never submitted.",
-            );
-        }
-        Phase::Capturing => {
-            if ui.button("Cancel capture").clicked() {
-                *action = Action::Cancel;
-            }
-            muted(ui, "Cancellation leaves the existing clipboard unchanged.");
-        }
-        Phase::Delivering => muted(
+        muted(
             ui,
-            "Sending is pending. Controls return when the result is known.",
-        ),
-        Phase::Selecting => {}
-    }
+            format!(
+                "Selecting: drag · Space whole display · Enter send or copy · {COPY_KEY} copy · Esc cancel"
+            ),
+        );
+        if !send_available() {
+            muted(ui, "Wayland apps cannot return focus to another window, so Send is unavailable. Copy works everywhere.");
+        }
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if app.tray_available && ui.button("Hide to tray").clicked() {
+                action = Action::Hide;
+            }
+            if ui.button("Quit").clicked() {
+                action = Action::Quit;
+            }
+        });
+    });
+    action
 }
+
+fn send_available() -> bool {
+    !capture::is_wayland()
+}
+
+fn select(selection: &mut Selection, status: &str, ui: &mut Ui) -> Action {
+    let screen = ui.max_rect();
+    // Anchored at the origin: the overlay starts at the display's corner, and
+    // centering would offset a 1:1 image by half a pixel when sizes differ.
+    let image = Rect::from_min_size(
+        screen.min,
+        fit(selection.texture.size_vec2(), screen.size()),
+    );
+    let pixels = [selection.pixels.width, selection.pixels.height];
+    let painter = ui.painter();
+    painter.rect_filled(screen, 0.0, Color32::BLACK);
+    painter.image(
+        selection.texture.id(),
+        image,
+        Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+        Color32::WHITE,
+    );
+    let response = ui
+        .interact(image, ui.id().with("frozen-display"), Sense::drag())
+        .on_hover_cursor(egui::CursorIcon::Crosshair);
+    if response.drag_started() {
+        selection.armed = None;
+        selection.anchor = ui
+            .input(|i| i.pointer.press_origin())
+            .map(|p| p.clamp(image.min, image.max));
+    }
+    if let (Some(anchor), Some(pointer)) =
+        (selection.anchor, ui.input(|i| i.pointer.interact_pos()))
+    {
+        selection.region = Some(Rect::from_two_pos(
+            anchor,
+            pointer.clamp(image.min, image.max),
+        ));
+    }
+    if response.drag_stopped() {
+        selection.anchor = None;
+        selection.region = selection.region.filter(|r| r.area() > 0.0);
+    }
+    let dragging = selection.anchor.is_some();
+    if !dragging && ui.input(|i| i.key_pressed(egui::Key::Space)) {
+        selection.region = Some(image);
+    }
+    let crop = selection
+        .region
+        .and_then(|region| crop_for(region, image, pixels).ok());
+    let mut action = Action::None;
+    if let (Some(region), Some(crop)) = (selection.region, crop) {
+        outline(ui, region, image);
+        let target = selection.target.as_ref().filter(|_| send_available());
+        if !dragging {
+            let (copy, enter, released) = ui.input(|i| {
+                (
+                    i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
+                    i.key_pressed(egui::Key::Enter),
+                    i.keys_down.is_empty() && i.modifiers.is_none(),
+                )
+            });
+            if copy {
+                selection.armed = Some(Delivery::Copy);
+            } else if enter {
+                selection.armed = Some(if target.is_some() {
+                    Delivery::Send
+                } else {
+                    Delivery::Copy
+                });
+            } else if released && let Some(delivery) = selection.armed.take() {
+                action = Action::Deliver(delivery, crop);
+            }
+            if selection.armed.is_some() {
+                // A press and release can arrive in one frame; check again.
+                ui.ctx().request_repaint();
+            }
+        }
+        if let Some(clicked) = toolbar(ui, region, image, crop, target, dragging) {
+            action = Action::Deliver(clicked, crop);
+        }
+    }
+    hint(ui, screen, status);
+    action
+}
+
+/// Overlay points to captured pixels, using the image's real size rather than
+/// an assumed display scale.
+fn crop_for(region: Rect, image: Rect, pixels: [u32; 2]) -> Result<Crop> {
+    // Widen before subtracting: rounded f32 extents can put a valid edge
+    // selection one ulp outside the image once map_crop adds origin and width.
+    model::map_crop(
+        [
+            region.min.x as f64 - image.min.x as f64,
+            region.min.y as f64 - image.min.y as f64,
+            region.max.x as f64 - region.min.x as f64,
+            region.max.y as f64 - region.min.y as f64,
+        ],
+        [
+            image.max.x as f64 - image.min.x as f64,
+            image.max.y as f64 - image.min.y as f64,
+        ],
+        pixels,
+    )
+}
+
+fn fit(source: Vec2, available: Vec2) -> Vec2 {
+    source
+        * (available.x / source.x)
+            .min(available.y / source.y)
+            .clamp(0.001, 1.0)
+}
+
+fn outline(ui: &Ui, region: Rect, image: Rect) {
+    let painter = ui.painter();
+    let dim = Color32::from_black_alpha(115);
+    for rect in [
+        Rect::from_min_max(image.min, Pos2::new(image.max.x, region.min.y)),
+        Rect::from_min_max(Pos2::new(image.min.x, region.max.y), image.max),
+        Rect::from_min_max(
+            Pos2::new(image.min.x, region.min.y),
+            Pos2::new(region.min.x, region.max.y),
+        ),
+        Rect::from_min_max(
+            Pos2::new(region.max.x, region.min.y),
+            Pos2::new(image.max.x, region.max.y),
+        ),
+    ] {
+        painter.rect_filled(rect, 0.0, dim);
+    }
+    // The two-tone edge stays visible on both light and dark captures.
+    painter.rect_stroke(
+        region,
+        0.0,
+        Stroke::new(3.0_f32, Color32::BLACK),
+        egui::StrokeKind::Outside,
+    );
+    painter.rect_stroke(
+        region,
+        0.0,
+        Stroke::new(1.5_f32, Color32::WHITE),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// Size while dragging; the actions once the region is chosen. Placed below the
+/// region, above it when there is no room, or inside it for a full-display region.
+fn toolbar(
+    ui: &Ui,
+    region: Rect,
+    image: Rect,
+    crop: Crop,
+    target: Option<&send::Target>,
+    dragging: bool,
+) -> Option<Delivery> {
+    const GAP: f32 = 8.0;
+    const HEIGHT: f32 = 52.0;
+    let (anchor, pivot) = if region.max.y + GAP + HEIGHT <= image.max.y {
+        (
+            Pos2::new(region.max.x, region.max.y + GAP),
+            Align2::RIGHT_TOP,
+        )
+    } else if region.min.y - GAP - HEIGHT >= image.min.y {
+        (
+            Pos2::new(region.max.x, region.min.y - GAP),
+            Align2::RIGHT_BOTTOM,
+        )
+    } else {
+        (region.max - Vec2::splat(12.0), Align2::RIGHT_BOTTOM)
+    };
+    let mut clicked = None;
+    egui::Area::new(ui.id().with("selection-toolbar"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(anchor)
+        .pivot(pivot)
+        .constrain_to(image)
+        .show(ui.ctx(), |ui| {
+            Frame::new()
+                .fill(BACKGROUND)
+                .stroke(Stroke::new(1.0_f32, BORDER))
+                .corner_radius(10)
+                .inner_margin(6)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{} × {}", crop.width, crop.height))
+                                .monospace()
+                                .color(MUTED),
+                        );
+                        if dragging {
+                            return;
+                        }
+                        let copy = match target {
+                            Some(_) => format!("Copy  {COPY_KEY}"),
+                            None => "Copy  Enter".to_owned(),
+                        };
+                        let copy = if target.is_some() {
+                            ui.button(copy)
+                        } else {
+                            ui.add(primary(&copy))
+                        };
+                        if copy.clicked() {
+                            clicked = Some(Delivery::Copy);
+                        }
+                        if let Some(target) = target
+                            && ui
+                                .add(primary(&format!("Send to {}  Enter", target.application)))
+                                .on_hover_text(format!(
+                                    "Return to {} and press {} once. Nothing is submitted.",
+                                    target.application,
+                                    target.chord()
+                                ))
+                                .clicked()
+                        {
+                            clicked = Some(Delivery::Send);
+                        }
+                    });
+                });
+        });
+    clicked
+}
+
+fn hint(ui: &Ui, screen: Rect, status: &str) {
+    let text = if status.is_empty() {
+        "Drag a region  ·  Space whole display  ·  Esc cancel".to_owned()
+    } else {
+        status.to_owned()
+    };
+    let color = if status.is_empty() { TEXT } else { ERROR };
+    let galley = ui.painter().layout(
+        text,
+        FontId::proportional(14.0),
+        color,
+        (screen.width() - 64.0).max(64.0),
+    );
+    let rect = Rect::from_center_size(
+        Pos2::new(
+            screen.center().x,
+            screen.min.y + 16.0 + (galley.size().y + 20.0) / 2.0,
+        ),
+        galley.size() + Vec2::new(28.0, 20.0),
+    );
+    ui.painter().rect_filled(rect, 10.0, BACKGROUND);
+    ui.painter().rect_stroke(
+        rect,
+        10.0,
+        Stroke::new(1.0_f32, BORDER),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter()
+        .galley(rect.min + Vec2::new(14.0, 10.0), galley, color);
+}
+
 fn corner_mark(ui: &Ui, rect: Rect, color: Color32) {
     let length = rect.width() * 0.3;
     for (corner, dx, dy) in [
@@ -484,148 +428,33 @@ fn corner_mark(ui: &Ui, rect: Rect, color: Color32) {
         );
     }
 }
-pub(super) fn selection_hint(ui: &Ui, screen: Rect) {
-    let text = if screen.width() < 580.0 {
-        "Drag a region\nSpace: whole display · Esc: cancel"
-    } else {
-        "Drag a region  ·  Space: whole display  ·  Esc: cancel"
-    };
-    let galley = ui.painter().layout(
-        text.into(),
-        FontId::proportional(14.0),
-        TEXT,
-        (screen.width() - 64.0).max(64.0),
-    );
-    let rect = Rect::from_center_size(
-        Pos2::new(
-            screen.center().x,
-            screen.min.y + 16.0 + (galley.size().y + 20.0) / 2.0,
-        ),
-        galley.size() + Vec2::new(28.0, 20.0),
-    );
-    ui.painter().rect_filled(rect, 10.0, BACKGROUND);
-    ui.painter().rect_stroke(
-        rect,
-        10.0,
-        Stroke::new(1.0_f32, BORDER),
-        egui::StrokeKind::Inside,
-    );
-    ui.painter()
-        .galley(rect.min + Vec2::new(14.0, 10.0), galley, TEXT);
-}
-pub(super) fn selection_badge(ui: &Ui, selection: Rect, image: Rect, pixels: [u32; 2]) {
-    let Action::Crop(rect, size) = crop_action(selection, image) else {
-        return;
-    };
-    let Ok(crop) = model::map_crop(rect, size, pixels) else {
-        return;
-    };
-    let galley = ui.painter().layout_no_wrap(
-        format!("{} × {} px", crop.width, crop.height),
-        FontId::monospace(13.0),
-        TEXT,
-    );
-    let size = galley.size() + Vec2::new(20.0, 14.0);
-    let x = (selection.max.x - size.x).clamp(image.min.x, (image.max.x - size.x).max(image.min.x));
-    let y = if selection.max.y + 8.0 + size.y <= image.max.y {
-        selection.max.y + 8.0
-    } else {
-        (selection.min.y - size.y - 8.0).max(image.min.y)
-    };
-    let rect = Rect::from_min_size(Pos2::new(x, y), size);
-    ui.painter().rect_filled(rect, 6.0, BACKGROUND);
-    ui.painter()
-        .galley(rect.min + Vec2::new(10.0, 7.0), galley, TEXT);
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn readable_palette_and_reserved_actions() {
-        fn luminance(c: Color32) -> f32 {
-            let linear = |v: u8| {
-                let s = v as f32 / 255.0;
-                if s <= 0.04045 {
-                    s / 12.92
-                } else {
-                    ((s + 0.055) / 1.055).powf(2.4)
-                }
-            };
-            0.2126 * linear(c.r()) + 0.7152 * linear(c.g()) + 0.0722 * linear(c.b())
-        }
-        for (fg, bg, minimum) in [
-            (TEXT, SURFACE, 4.5),
-            (MUTED, SURFACE, 4.5),
-            (MUTED, BACKGROUND, 4.5),
-            (INK, ACCENT, 4.5),
-            (TEXT, ACCENT_DARK, 4.5),
-            (ERROR, SURFACE, 4.5),
-            (BORDER, FIELD, 3.0),
-        ] {
-            let a = luminance(fg);
-            let b = luminance(bg);
-            assert!((a.max(b) + 0.05) / (a.min(b) + 0.05) >= minimum);
-        }
-        for size in [
-            Vec2::new(640.0, 480.0),
-            Vec2::new(1000.0, 740.0),
-            Vec2::new(1280.0, 800.0),
-            Vec2::new(500.0, 370.0),
-        ] {
-            for settings in [true, false] {
-                let screen = Rect::from_min_size(Pos2::ZERO, size);
-                let [header, _, body, footer] = regions(screen, settings);
-                assert!(
-                    screen.contains_rect(header)
-                        && screen.contains_rect(body)
-                        && screen.contains_rect(footer)
-                );
-                assert!(header.max.y < body.min.y && body.max.y < footer.min.y);
+    fn fractional_scale_edge_selection_stays_in_bounds() {
+        let image = Rect::from_min_max(Pos2::ZERO, Pos2::new(640.0, 400.0));
+        let region = Rect::from_min_max(Pos2::new(4.0 / 3.0, 2.0 / 3.0), image.max);
+        assert_eq!(
+            crop_for(region, image, [960, 600]).unwrap(),
+            Crop {
+                x: 2,
+                y: 1,
+                width: 958,
+                height: 599,
             }
-        }
-    }
-
-    #[test]
-    fn settings_escape_preserves_review_and_copy_stays_explicit() {
-        let ctx = egui::Context::default();
-        configure(&ctx);
-        let mut app = App::new(
-            Settings::default(),
-            String::new(),
-            desktop::Shortcut::default(),
-            String::new(),
         );
-        let id = app.flow.start().unwrap();
-        app.flow
-            .advance(id, Phase::Capturing, Phase::Selecting)
-            .unwrap();
-        app.flow
-            .advance(id, Phase::Selecting, Phase::Review)
-            .unwrap();
-        app.settings_open = true;
-        let mut action = Action::None;
-        let key_input = |key| egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(640.0, 480.0))),
-            events: vec![egui::Event::Key {
-                key,
-                physical_key: None,
-                pressed: true,
-                repeat: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-            ..Default::default()
-        };
-        let _ = ctx.run_ui(key_input(egui::Key::Escape), |ui| {
-            action = show(&mut app, ui);
-        });
-        assert!(matches!(action, Action::None));
-        assert!(!app.settings_open && app.flow.is_current(id, Phase::Review));
-        let _ = ctx.run_ui(key_input(egui::Key::F6), |ui| {
-            action = show(&mut app, ui);
-        });
-        assert!(matches!(action, Action::Copy));
-        assert!(app.clipboard.is_none());
+        // The whole image maps to every captured pixel.
+        assert_eq!(
+            crop_for(image, image, [960, 600]).unwrap(),
+            Crop {
+                x: 0,
+                y: 0,
+                width: 960,
+                height: 600,
+            }
+        );
     }
 }

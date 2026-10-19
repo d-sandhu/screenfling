@@ -1,7 +1,7 @@
 //! Parse launch options before initializing the desktop or requesting capture.
 use std::ffi::OsString;
 
-pub const HELP: &str = "ScreenFling - capture, review, and send a screenshot.
+pub const HELP: &str = "ScreenFling - select part of the screen, then copy it or send it back.
 
 Usage: screenfling [--capture | --help | --version]
 
@@ -11,7 +11,7 @@ Usage: screenfling [--capture | --help | --version]
 
 With no option, open ScreenFling. Keep one copy running and use its tray or
 capture shortcut. --capture does not activate an existing application.
-Nothing is copied until you review the crop and choose an action.";
+Nothing is copied until you choose Copy or Send.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Startup {

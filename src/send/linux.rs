@@ -13,7 +13,10 @@ pub struct Target {
 }
 fn connection() -> Result<(RustConnection, usize)> {
     if screenfling::capture::is_wayland() {
-        return Err("This Wayland desktop does not support Paste back. Copy the image and paste it into your session.".into());
+        return Err(
+            "Wayland does not let apps return focus or press keys. Copy the image and paste it."
+                .into(),
+        );
     }
     x11rb::connect(None).map_err(|_| "Could not connect to the X11 desktop.".into())
 }
@@ -55,24 +58,10 @@ pub fn remember() -> Option<super::Target> {
         return None;
     }
     let (name, started) = process(pid)?;
-    if !matches!(
-        name.to_lowercase().as_str(),
-        "ghostty"
-            | "wezterm-gui"
-            | "kitty"
-            | "alacritty"
-            | "xterm"
-            | "xfce4-terminal"
-            | "gnome-terminal-server"
-            | "konsole"
-            | "tilix"
-            | "foot"
-            | "footclient"
-    ) {
-        return None;
-    }
+    // X11 terminals forward Control+V to the program inside, and GUI apps paste with it.
     Some(super::Target {
         application: name,
+        modifier: Modifier::Control,
         native: Target {
             window,
             pid,
@@ -87,7 +76,7 @@ fn valid(conn: &RustConnection, target: &Target) -> bool {
 pub fn activate(target: &Target) -> Result<()> {
     let (conn, screen) = connection()?;
     if !valid(&conn, target) {
-        return Err("Your terminal closed. The image is copied; paste it manually.".into());
+        return Err("That window closed. The image is copied; paste it manually.".into());
     }
     let event = ClientMessageEvent::new(
         32,
@@ -118,7 +107,7 @@ pub fn focused(target: &Target) -> bool {
             .is_ok_and(|v| v.first() == Some(&target.window))
     })
 }
-pub fn paste(target: &Target) -> Result<()> {
+pub fn paste(target: &Target, _: Modifier) -> Result<()> {
     let (conn, _) = connection()?;
     if !focused(target) {
         return Err("The selected window lost focus. Nothing was pasted.".into());
