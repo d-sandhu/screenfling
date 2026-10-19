@@ -52,6 +52,12 @@ pub fn remember() -> Option<Target> {
     native::remember()
 }
 
+/// Give focus back to the window capture started from, without pasting.
+pub fn return_to(target: &Target) {
+    // Best effort: if it closed, focus is wherever the desktop put it.
+    let _ = native::activate(&target.native);
+}
+
 /// Activation is asynchronous: wait for the target to own focus, then paste once.
 pub struct Pending {
     target: Target,
@@ -59,11 +65,15 @@ pub struct Pending {
 }
 impl Pending {
     pub fn start(target: Target) -> Result<Self> {
+        native::authorize()?;
         native::activate(&target.native)?;
         Ok(Self {
             target,
             deadline: Instant::now() + Duration::from_secs(2),
         })
+    }
+    pub fn into_target(self) -> Target {
+        self.target
     }
     pub fn poll(&self, clipboard_matches: impl FnOnce() -> bool) -> Option<Result<String>> {
         if !native::focused(&self.target.native) {
@@ -79,11 +89,20 @@ impl Pending {
             checked_paste(
                 clipboard_matches(),
                 || native::focused(&self.target.native),
-                || native::paste(&self.target.native, self.target.modifier),
+                || paste(&self.target),
             )
             .map(|()| format!("Pasted into {}.", self.target.application)),
         )
     }
+}
+
+#[cfg(target_os = "windows")]
+fn paste(target: &Target) -> Result<()> {
+    native::paste(target.modifier)
+}
+#[cfg(not(target_os = "windows"))]
+fn paste(target: &Target) -> Result<()> {
+    native::paste(&target.native, target.modifier)
 }
 
 fn checked_paste(

@@ -50,10 +50,8 @@ pub fn remember() -> Option<super::Target> {
     })
 }
 
-pub fn activate(target: &Target) -> Result<()> {
-    if target.0.isTerminated() {
-        return Err("That app closed. The image is copied; paste it manually.".into());
-    }
+/// Posting key events needs Accessibility; activating an app does not.
+pub fn authorize() -> Result<()> {
     // Ask only after an explicit Send, never on capture or startup.
     static PROMPTED: AtomicBool = AtomicBool::new(false);
     let prompt = CFString::from_str("AXTrustedCheckOptionPrompt");
@@ -63,6 +61,13 @@ pub fn activate(target: &Target) -> Result<()> {
     );
     if !unsafe { AXIsProcessTrustedWithOptions((&*options as *const CFDictionary<_, _>).cast()) } {
         return Err("Send needs Accessibility access. Enable ScreenFling in System Settings > Privacy & Security > Accessibility. The image is already copied; you can paste it manually.".into());
+    }
+    Ok(())
+}
+
+pub fn activate(target: &Target) -> Result<()> {
+    if target.0.isTerminated() {
+        return Err("That app closed. The image is copied; paste it manually.".into());
     }
     #[allow(deprecated)]
     if !target
@@ -77,9 +82,6 @@ pub fn focused(target: &Target) -> bool {
     !target.0.isTerminated() && target.0.isActive()
 }
 pub fn paste(target: &Target, modifier: Modifier) -> Result<()> {
-    if !focused(target) {
-        return Err("That app lost focus. Nothing was pasted.".into());
-    }
     let modifiers = CGEventFlags::MaskShift
         | CGEventFlags::MaskControl
         | CGEventFlags::MaskAlternate

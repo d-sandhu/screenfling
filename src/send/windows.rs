@@ -53,33 +53,40 @@ fn stem(path: &[u16]) -> String {
 
 /// The executable's FileDescription, the name Task Manager shows.
 fn description(path: &[u16]) -> Option<String> {
-    let query = |data: &[u8], key: &str| -> Option<&[u16]> {
-        let key: Vec<u16> = key.encode_utf16().chain([0]).collect();
-        let mut value = std::ptr::null_mut();
-        let mut length = 0u32;
-        // The returned pointer lies inside `data`, so it lives as long as it.
-        let found =
-            unsafe { VerQueryValueW(data.as_ptr().cast(), key.as_ptr(), &mut value, &mut length) };
-        (found != 0 && !value.is_null() && length > 0)
-            .then(|| unsafe { std::slice::from_raw_parts(value.cast::<u16>(), length as usize) })
-    };
     let size = unsafe { GetFileVersionInfoSizeW(path.as_ptr(), std::ptr::null_mut()) };
     if size == 0 {
         return None;
     }
-    let mut data = vec![0u8; size as usize];
+    // u32 storage keeps the block, and the UTF-16 values inside it, aligned.
+    let mut data = vec![0u32; (size as usize).div_ceil(4)];
     if unsafe { GetFileVersionInfoW(path.as_ptr(), 0, size, data.as_mut_ptr().cast()) } == 0 {
         return None;
     }
-    let translation = query(&data, r"\VarFileInfo\Translation")?;
+    // Translation is an array of (language, code page) u16 pairs; its length is
+    // in bytes. String values report their length in UTF-16 units.
+    let translation = query(&data, r"\VarFileInfo\Translation", 2)?;
     let [language, codepage] = [*translation.first()?, *translation.get(1)?];
-    let text = query(
-        &data,
-        &format!(r"\StringFileInfo\{language:04x}{codepage:04x}\FileDescription"),
-    )?;
-    let text = String::from_utf16_lossy(text);
+    let key = format!(r"\StringFileInfo\{language:04x}{codepage:04x}\FileDescription");
+    let text = String::from_utf16_lossy(query(&data, &key, 1)?);
     let text = text.trim_end_matches('\0').trim();
     (!text.is_empty() && text.chars().count() <= 40).then(|| text.to_owned())
+}
+
+/// A value inside a version-info block, as UTF-16 units. `unit` is the size
+/// in bytes of one unit of the reported length.
+fn query<'a>(data: &'a [u32], key: &str, unit: usize) -> Option<&'a [u16]> {
+    let key: Vec<u16> = key.encode_utf16().chain([0]).collect();
+    let mut value = std::ptr::null_mut();
+    let mut length = 0u32;
+    let found =
+        unsafe { VerQueryValueW(data.as_ptr().cast(), key.as_ptr(), &mut value, &mut length) };
+    let units = length as usize * unit / 2;
+    let start = data.as_ptr() as usize;
+    let end = start + std::mem::size_of_val(data);
+    // VerQueryValueW points into `data`; check that before borrowing from it.
+    let inside = (value as usize) >= start && (value as usize) + units * 2 <= end;
+    (found != 0 && units > 0 && inside)
+        .then(|| unsafe { std::slice::from_raw_parts(value.cast::<u16>(), units) })
 }
 
 /// Terminal windows bind Ctrl+V to text paste and never forward it, so console
@@ -145,6 +152,9 @@ fn valid(target: &Target) -> bool {
     unsafe { GetWindowThreadProcessId(target.window as HWND, &mut pid) };
     pid == target.pid && process(pid).is_some_and(|(_, started)| started == target.started)
 }
+pub fn authorize() -> Result<()> {
+    Ok(())
+}
 pub fn activate(target: &Target) -> Result<()> {
     if !valid(target) {
         return Err("That window closed. The image is copied; paste it manually.".into());
@@ -179,17 +189,13 @@ fn key(code: u16, up: bool) -> INPUT {
         },
     }
 }
-pub fn paste(target: &Target, modifier: Modifier) -> Result<()> {
-    if !focused(target) {
-        return Err("The selected window lost focus. Nothing was pasted.".into());
-    }
-    for modifier in [VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN] {
-        if unsafe { GetAsyncKeyState(modifier as i32) } < 0 {
-            return Err(
-                "Release modifier keys before sending. The image is copied; paste it manually."
-                    .into(),
-            );
-        }
+pub fn paste(modifier: Modifier) -> Result<()> {
+    // A held key would combine with the chord or repeat into the target.
+    // Virtual keys below 0x08 are mouse buttons.
+    if (0x08..=0xFE).any(|key| unsafe { GetAsyncKeyState(key) } < 0) {
+        return Err(
+            "Release all keys before sending. The image is copied; paste it manually.".into(),
+        );
     }
     let held = match modifier {
         Modifier::Alt => VK_MENU,

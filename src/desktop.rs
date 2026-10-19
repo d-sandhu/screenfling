@@ -52,6 +52,18 @@ pub fn post(message: Message) {
 pub fn shutdown() {
     ACTIVE.store(false, Ordering::Release);
 }
+/// Every key, modifiers included, is up. Read from SDL: egui-sdl3 does not
+/// report modifier releases, and macOS drops key-ups while Command is held.
+pub fn keys_released() -> bool {
+    let mut count = 0;
+    let state = unsafe { sdl3_sys::keyboard::SDL_GetKeyboardState(&mut count) };
+    // SDL owns this array of `count` flags for the life of the application.
+    state.is_null()
+        || unsafe { std::slice::from_raw_parts(state, count.max(0) as usize) }
+            .iter()
+            .all(|down| !down)
+}
+
 /// Normal window size and its minimum, in window coordinates.
 pub const SIZE: [u32; 2] = [560, 440];
 pub const MIN_SIZE: [u32; 2] = [480, 380];

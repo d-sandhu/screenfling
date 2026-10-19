@@ -159,6 +159,26 @@ fn run(capture_on_start: bool) -> Result<(), String> {
         }
         gui.state.sync_window_size(&window);
         let mut input = gui.state.take_egui_input();
+        // egui-sdl3 0.4 updates modifiers only on key events it maps, which
+        // excludes the modifier keys, so a released Ctrl or Cmd stays held.
+        // SDL's own state is the truth.
+        {
+            use sdl3_sys::keycode::*;
+            let held =
+                |mask: SDL_Keymod| (unsafe { sdl3_sys::keyboard::SDL_GetModState() } & mask).0 != 0;
+            let (ctrl, gui_key) = (held(SDL_KMOD_CTRL), held(SDL_KMOD_GUI));
+            input.modifiers = egui::Modifiers {
+                alt: held(SDL_KMOD_ALT),
+                ctrl,
+                shift: held(SDL_KMOD_SHIFT),
+                mac_cmd: cfg!(target_os = "macos") && gui_key,
+                command: if cfg!(target_os = "macos") {
+                    gui_key
+                } else {
+                    ctrl
+                },
+            };
+        }
         // egui-sdl3 0.4 lays out in drawable pixels / pixels-per-point, but
         // divides window-coordinate mouse/touch positions by that same factor
         // without first applying pixel density. Correct only its position events;

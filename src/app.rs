@@ -65,6 +65,13 @@ pub enum Stage {
     },
 }
 
+#[derive(Clone, Copy)]
+enum Present {
+    Focused,
+    /// Visible but without taking focus from the window the user is in.
+    Behind,
+}
+
 pub struct Selection {
     pixels: Pixels,
     texture: TextureHandle,
@@ -75,7 +82,14 @@ pub struct Selection {
     region: Option<Rect>,
     /// A keyboard action waiting for every key to be released, so no held or
     /// repeating key can reach the window that receives focus next.
-    armed: Option<Delivery>,
+    armed: Option<Intent>,
+}
+
+/// What a key asked for in the overlay, carried out once the key is up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Intent {
+    Deliver(Delivery),
+    Cancel,
 }
 
 pub struct App {
@@ -91,7 +105,10 @@ pub struct App {
     restore: [i32; 4],
     /// Capture began in our own window, so finishing returns to it.
     reopen: bool,
-    show_after_paint: bool,
+    /// How to show the window once the next frame is painted.
+    present: Option<Present>,
+    /// The window to give focus back to once ours has stepped aside.
+    origin: Option<send::Target>,
     pub tray_available: bool,
     pub quit: bool,
 }
@@ -114,7 +131,8 @@ impl App {
             worker: None,
             restore: [100, 100, desktop::SIZE[0] as i32, desktop::SIZE[1] as i32],
             reopen: true,
-            show_after_paint: false,
+            present: None,
+            origin: None,
             tray_available: false,
             quit: false,
         }
@@ -153,11 +171,6 @@ impl App {
         }
     }
 
-    /// Hide only when a path back exists: a tray icon or a registered shortcut.
-    fn can_hide(&self) -> bool {
-        self.tray_available || !self.shortcut.current().is_empty()
-    }
-
     pub fn tick(&mut self, window: &mut Window) {
         match &mut self.stage {
             Stage::Sending { pending, image } => {
@@ -165,10 +178,14 @@ impl App {
                 if let Some(result) =
                     pending.poll(|| clipboard.as_mut().is_some_and(|c| c.matches(image)))
                 {
-                    self.stage = Stage::Idle;
+                    let Stage::Sending { pending, .. } =
+                        std::mem::replace(&mut self.stage, Stage::Idle)
+                    else {
+                        unreachable!()
+                    };
                     match result {
-                        Ok(status) => self.finish(window, status, true),
-                        Err(error) => self.finish(window, error, false),
+                        Ok(status) => self.finish(window, status, Some(pending.into_target())),
+                        Err(error) => self.fail(error),
                     }
                 }
             }
@@ -179,25 +196,19 @@ impl App {
                     && Instant::now() >= when
                 {
                     *due = None;
+                    // capture() reaped the previous worker before entering this stage.
                     let (id, cancelled) = (*id, cancelled.clone());
-                    if !self.reap() {
-                        desktop::post(Message::Captured(
+                    match std::thread::Builder::new()
+                        .name("screenfling-capture".into())
+                        .spawn(move || {
+                            let result = capture::capture(pointer, &cancelled);
+                            desktop::post(Message::Captured(id, result));
+                        }) {
+                        Ok(worker) => self.worker = Some(worker),
+                        Err(_) => desktop::post(Message::Captured(
                             id,
-                            Err("The previous capture is still ending. Try again.".into()),
-                        ));
-                    } else {
-                        match std::thread::Builder::new()
-                            .name("screenfling-capture".into())
-                            .spawn(move || {
-                                let result = capture::capture(pointer, &cancelled);
-                                desktop::post(Message::Captured(id, result));
-                            }) {
-                            Ok(worker) => self.worker = Some(worker),
-                            Err(_) => desktop::post(Message::Captured(
-                                id,
-                                Err("Could not start the capture.".into()),
-                            )),
-                        }
+                            Err("Could not start the capture.".into()),
+                        )),
                     }
                 }
             }
@@ -207,35 +218,76 @@ impl App {
     }
 
     pub fn after_paint(&mut self, window: &mut Window) {
-        if self.show_after_paint {
-            self.show_after_paint = false;
-            window.show();
-            window.raise();
+        match self.present.take() {
+            Some(Present::Focused) => {
+                window.show();
+                window.raise();
+            }
+            Some(Present::Behind) => {
+                sdl3::hint::set("SDL_WINDOW_ACTIVATE_WHEN_SHOWN", "0");
+                window.show();
+                sdl3::hint::set("SDL_WINDOW_ACTIVATE_WHEN_SHOWN", "1");
+                // Some window managers focus any newly mapped window regardless.
+                self.return_focus();
+            }
+            None => {}
         }
     }
 
-    /// End a capture. Success returns to where the user was; anything else
-    /// shows the window so the message is seen.
-    fn finish(&mut self, window: &mut Window, status: String, ok: bool) {
-        self.status = status;
-        if ok && !self.reopen && self.can_hide() {
-            window.hide();
-        } else {
-            self.show_after_paint = true;
+    fn return_focus(&mut self) {
+        if let Some(origin) = self.origin.take() {
+            send::return_to(&origin);
         }
+    }
+
+    /// End a capture and return to where the user was. A capture begun in
+    /// our own window shows it again. Otherwise focus goes back to the window
+    /// capture started from, and ours hides to the tray; without a tray, where
+    /// a hidden window could not be reopened or quit, it reappears behind.
+    fn finish(&mut self, window: &mut Window, status: String, origin: Option<send::Target>) {
+        self.status = status;
+        if self.reopen {
+            self.present = Some(Present::Focused);
+            return;
+        }
+        self.origin = origin;
+        if self.tray_available {
+            window.hide();
+            self.return_focus();
+        } else {
+            self.present = Some(Present::Behind);
+        }
+    }
+
+    /// Show the window so an error is seen.
+    fn fail(&mut self, error: String) {
+        self.status = error;
+        self.present = Some(Present::Focused);
     }
 
     /// Leave the in-progress capture, if any, without delivering anything.
     fn stop(&mut self, window: &mut Window, status: &str, ok: bool) {
-        match std::mem::replace(&mut self.stage, Stage::Idle) {
-            Stage::Capturing { cancelled, .. } => cancelled.store(true, Ordering::Release),
-            Stage::Selecting(_) => close_overlay(window, self.restore),
+        let origin = match std::mem::replace(&mut self.stage, Stage::Idle) {
+            Stage::Capturing {
+                cancelled, target, ..
+            } => {
+                cancelled.store(true, Ordering::Release);
+                target
+            }
+            Stage::Selecting(selection) => {
+                close_overlay(window, self.restore);
+                selection.target
+            }
             other => {
                 self.stage = other;
                 return;
             }
+        };
+        if ok {
+            self.finish(window, status.into(), origin);
+        } else {
+            self.fail(status.into());
         }
-        self.finish(window, status.into(), ok);
     }
 
     pub fn topology_changed(&mut self, window: &mut Window) {
@@ -285,11 +337,11 @@ impl App {
         };
         let captured = match result {
             Ok(captured) => captured,
-            Err(error) => return self.finish(window, error, false),
+            Err(error) => return self.fail(error),
         };
         if let Err(error) = desktop::overlay(window, captured.bounds) {
             close_overlay(window, self.restore);
-            return self.finish(window, error, false);
+            return self.fail(error);
         }
         let texture = ctx.load_texture(
             "capture",
@@ -311,7 +363,7 @@ impl App {
             region: None,
             armed: None,
         });
-        self.show_after_paint = true;
+        self.present = Some(Present::Focused);
     }
 
     pub fn action(&mut self, action: Action, ctx: &egui::Context, window: &mut Window) {
@@ -426,7 +478,7 @@ impl App {
                 close_overlay(window, self.restore);
                 match started {
                     Ok(pending) => self.stage = Stage::Sending { pending, image },
-                    Err(error) => self.finish(window, error, false),
+                    Err(error) => self.fail(error),
                 }
             }
             (_, target) => {
@@ -437,7 +489,7 @@ impl App {
                     }
                     None => PASTE.to_owned(),
                 };
-                self.finish(window, format!("Copied {summary}. {hint}"), true);
+                self.finish(window, format!("Copied {summary}. {hint}"), target);
             }
         }
         Ok(())
