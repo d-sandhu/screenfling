@@ -729,6 +729,12 @@ impl App {
     // ---- Overlay input ----
 
     fn overlay_event(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) {
+        if !matches!(
+            event,
+            WindowEvent::RedrawRequested | WindowEvent::CursorMoved { .. }
+        ) {
+            trace(format_args!("overlay {event:?}"));
+        }
         let Stage::Selecting(selection) = &mut self.stage else {
             return;
         };
@@ -829,6 +835,15 @@ impl App {
             if let Some(overlay) = &self.overlay {
                 overlay.window.request_redraw();
             }
+        }
+        if let Stage::Selecting(selection) = &self.stage {
+            trace(format_args!(
+                "keys={:?} armed={:?} crop={:?} dragging={}",
+                self.keys,
+                selection.armed,
+                selection.crop(),
+                selection.dragging()
+            ));
         }
         // Act only once every key is up, so nothing held or auto-repeating
         // reaches the window that gets focus next. Modifier keys are physical
@@ -1046,4 +1061,12 @@ fn show_without_focus(window: &Window) {
         }
     }
     window.set_visible(true);
+}
+
+/// Event tracing for diagnosing desktop behaviour, on stderr when the
+/// SCREENFLING_TRACE environment variable is set.
+fn trace(args: std::fmt::Arguments) {
+    if std::env::var_os("SCREENFLING_TRACE").is_some() {
+        eprintln!("trace: {args}");
+    }
 }

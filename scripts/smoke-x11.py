@@ -97,6 +97,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='sf-smoke-') as config, tempfile.TemporaryFile() as log:
         env = os.environ.copy()
         env['XDG_CONFIG_HOME'] = config
+        env['SCREENFLING_TRACE'] = '1'
         # No session bus, so no tray: the controls live in the home panel, and
         # closing it must exit rather than strand a hidden app.
         env['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + str(Path(config) / 'no-session-bus')
