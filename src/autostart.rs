@@ -160,18 +160,24 @@ mod native {
         )
     }
 
-    /// Desktop Entry `Exec`: the program as one quoted argument, escaping the
-    /// characters the specification reserves inside quotes.
+    /// Desktop Entry `Exec`: the program as one quoted argument. The spec
+    /// escapes `"`, backtick, `$` and backslash with a backslash inside quotes,
+    /// and then applies string escaping, which doubles every backslash.
+    /// `%` is doubled because it starts field codes.
     pub(super) fn desktop_entry(program: &str) -> String {
         let mut quoted = String::from('"');
         for c in program.chars() {
-            if matches!(c, '"' | '`' | '$' | '\\') {
-                quoted.push('\\');
+            match c {
+                // Quoting gives `\c`; string escaping then doubles the backslash.
+                '"' | '`' | '$' => {
+                    quoted.push_str(r"\\");
+                    quoted.push(c);
+                }
+                // Quoting gives `\\`; string escaping doubles both.
+                '\\' => quoted.push_str(r"\\\\"),
+                '%' => quoted.push_str("%%"),
+                _ => quoted.push(c),
             }
-            if c == '%' {
-                quoted.push('%');
-            }
-            quoted.push(c);
         }
         quoted.push('"');
         format!(
@@ -184,7 +190,9 @@ mod native {
         #[test]
         fn exec_quotes_reserved_characters() {
             let entry = super::desktop_entry("/opt/My $App/screen\"fling%");
-            assert!(entry.contains(r#"Exec="/opt/My \$App/screen\"fling%%""#));
+            assert!(entry.contains(r#"Exec="/opt/My \\$App/screen\\"fling%%""#));
+            let backslash = super::desktop_entry(r"/opt/a\b");
+            assert!(backslash.contains(r#"Exec="/opt/a\\\\b""#));
         }
     }
 }

@@ -161,7 +161,7 @@ impl Canvas<'_> {
         let baseline = y + ascent;
         let mut pen = x;
         for c in text.chars() {
-            let (metrics, coverage) = fonts.glyph(c, size).clone();
+            let (metrics, coverage) = fonts.glyph(c, size);
             let left = (pen + metrics.xmin as f32).round() as isize;
             let top = (baseline - metrics.height as f32 - metrics.ymin as f32).round() as isize;
             for row in 0..metrics.height {

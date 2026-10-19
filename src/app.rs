@@ -134,6 +134,15 @@ pub struct App {
     modifiers: ModifiersState,
     capture_on_start: bool,
     started: bool,
+    /// winit is on Wayland, where windows are hidden by dropping them.
+    wayland: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Which {
+    Overlay,
+    Notice,
+    Panel,
 }
 
 impl App {
@@ -163,6 +172,7 @@ impl App {
             modifiers: ModifiersState::empty(),
             capture_on_start,
             started: false,
+            wayland: false,
         }
     }
 
@@ -170,13 +180,13 @@ impl App {
         if capture::is_wayland() {
             "your desktop's ScreenFling shortcut".into()
         } else if self.shortcut.current().is_empty() {
-            "the tray's Capture".into()
+            "the tray icon".into()
         } else {
             panel::readable(self.shortcut.current())
         }
     }
 
-    fn start(&mut self, event_loop: &ActiveEventLoop) {
+    fn overlay_attributes() -> winit::window::WindowAttributes {
         let overlay = window_attributes()
             .with_title("ScreenFling — Select region")
             .with_visible(false)
@@ -187,7 +197,31 @@ impl App {
             use winit::platform::windows::WindowAttributesExtWindows;
             overlay.with_skip_taskbar(true)
         };
-        self.overlay = Surface::new(event_loop, overlay);
+        overlay
+    }
+
+    /// Hide a window. Wayland cannot unmap one (winit's `set_visible` does
+    /// nothing there), so the window is dropped and created again when needed.
+    fn hide(&mut self, which: Which) {
+        let slot = match which {
+            Which::Overlay => &mut self.overlay,
+            Which::Notice => &mut self.notice,
+            Which::Panel => &mut self.panel,
+        };
+        if self.wayland {
+            *slot = None;
+        } else if let Some(surface) = slot {
+            surface.window.set_visible(false);
+        }
+    }
+
+    fn start(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "linux")]
+        {
+            use winit::platform::wayland::ActiveEventLoopExtWayland;
+            self.wayland = event_loop.is_wayland();
+        }
+        self.overlay = Surface::new(event_loop, Self::overlay_attributes());
         let (shortcut, status) = desktop::Shortcut::new(&self.settings.shortcut);
         self.shortcut = shortcut;
         if !status.is_empty() && self.shortcut_status.is_empty() {
@@ -233,6 +267,8 @@ impl App {
     // ---- Notices: brief messages that never take focus ----
 
     fn notify(&mut self, event_loop: &ActiveEventLoop, message: String) {
+        // Also on stderr, where a terminal or a test fixture can read it.
+        eprintln!("ScreenFling: {message}");
         if self.mode == Some(Mode::Home) {
             // The home panel shows messages itself.
             self.shortcut_status = message;
@@ -300,9 +336,7 @@ impl App {
     }
 
     fn hide_notice(&mut self) {
-        if let Some(notice) = &self.notice {
-            notice.window.set_visible(false);
-        }
+        self.hide(Which::Notice);
         self.notice_text = None;
         self.notice_until = None;
     }
@@ -315,7 +349,8 @@ impl App {
             let attributes = window_attributes()
                 .with_title("ScreenFling")
                 .with_visible(false)
-                .with_resizable(false);
+                .with_resizable(false)
+                .with_active(false);
             #[cfg(windows)]
             let attributes = {
                 use winit::platform::windows::WindowAttributesExtWindows;
@@ -368,9 +403,7 @@ impl App {
     }
 
     fn hide_panel(&mut self) {
-        if let Some(panel) = &self.panel {
-            panel.window.set_visible(false);
-        }
+        self.hide(Which::Panel);
         self.mode = None;
     }
 
@@ -472,7 +505,9 @@ impl App {
         // Copy and Cancel return, and the window order ranks Send destinations.
         let origin = send::remember();
         let agents = send::agents();
-        self.restore_home = self.mode == Some(Mode::Home);
+        // Without a tray the home panel is the only way back; restore it even
+        // if the capture interrupted the shortcut prompt.
+        self.restore_home = self.tray.is_none();
         self.home_was_active = self.restore_home && origin.is_none();
         self.hide_panel();
         self.hide_notice();
@@ -509,8 +544,16 @@ impl App {
             .as_ref()
             .and_then(|last| agents.iter().position(|agent| agent.same(last)))
             .unwrap_or(0);
+        if self.overlay.is_none() {
+            self.overlay = Surface::new(event_loop, Self::overlay_attributes());
+        }
         let Some(overlay) = &self.overlay else {
-            return;
+            return self.finish(
+                event_loop,
+                Some("Could not open the capture window.".into()),
+                origin,
+                false,
+            );
         };
         place_overlay(event_loop, &overlay.window, captured.bounds);
         overlay.window.set_cursor(CursorIcon::Crosshair);
@@ -518,6 +561,7 @@ impl App {
         overlay.window.focus_window();
         overlay.window.request_redraw();
         self.keys.clear();
+        self.modifiers = ModifiersState::empty();
         self.stage = Stage::Selecting(Box::new(Selection::new(
             captured.pixels,
             origin,
@@ -535,11 +579,9 @@ impl App {
         focus: Option<send::Target>,
         sent: bool,
     ) {
-        if let Some(overlay) = &self.overlay {
-            // Stay fullscreen while hidden: leaving fullscreen restores, and
-            // so shows, the window on Windows. The next capture re-places it.
-            overlay.window.set_visible(false);
-        }
+        // Stay fullscreen while hidden: leaving fullscreen restores, and so
+        // shows, the window on Windows. The next capture re-places it.
+        self.hide(Which::Overlay);
         if std::mem::take(&mut self.restore_home) {
             self.show_panel(event_loop, Mode::Home, false);
         }
@@ -597,9 +639,7 @@ impl App {
                 self.last_sent = Some(target.clone());
                 // Activate while we still own the foreground, then step aside.
                 let started = send::Pending::start(target);
-                if let Some(overlay) = &self.overlay {
-                    overlay.window.set_visible(false);
-                }
+                self.hide(Which::Overlay);
                 match started {
                     Ok(pending) => self.stage = Stage::Sending { pending, image },
                     Err(error) => self.finish(event_loop, Some(error), selection.origin, false),
@@ -704,8 +744,9 @@ impl App {
                 overlay.present(|canvas| selection.draw(canvas, text, ""));
             }
             WindowEvent::CursorMoved { position, .. } => {
-                selection.pointer_moved([position.x as f32, position.y as f32]);
-                if let Some(overlay) = &self.overlay {
+                if selection.pointer_moved([position.x as f32, position.y as f32], &mut self.text)
+                    && let Some(overlay) = &self.overlay
+                {
                     overlay.window.request_redraw();
                 }
             }
@@ -728,7 +769,6 @@ impl App {
                     self.deliver(event_loop, delivery, crop);
                 }
             }
-            WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::Focused(false) => {
                 // macOS and Wayland do not report releases for keys held as
                 // focus leaves; forget them rather than wait forever.
@@ -791,8 +831,10 @@ impl App {
             }
         }
         // Act only once every key is up, so nothing held or auto-repeating
-        // reaches the window that gets focus next.
-        if !self.keys.is_empty() || !self.modifiers.is_empty() {
+        // reaches the window that gets focus next. Modifier keys are physical
+        // keys too; their modifier state arrives in a different order per
+        // platform, so it is not part of this test.
+        if !self.keys.is_empty() {
             return;
         }
         let Stage::Selecting(selection) = &mut self.stage else {
@@ -834,7 +876,6 @@ impl App {
                     self.control(event_loop, control);
                 }
             }
-            WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -873,6 +914,9 @@ impl App {
                     self.control(event_loop, Control::Quit);
                 } else {
                     self.hide_panel();
+                    if self.tray.is_none() {
+                        self.show_panel(event_loop, Mode::Home, true);
+                    }
                 }
             }
             _ => {}
@@ -909,6 +953,10 @@ impl ApplicationHandler<Message> for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        // Modifier state belongs to the keyboard, not to one window or stage.
+        if let WindowEvent::ModifiersChanged(modifiers) = &event {
+            self.modifiers = modifiers.state();
+        }
         if self.overlay.as_ref().is_some_and(|o| o.id() == id) {
             self.overlay_event(event_loop, event);
         } else if self.panel.as_ref().is_some_and(|p| p.id() == id) {
@@ -979,35 +1027,23 @@ fn window_attributes() -> winit::window::WindowAttributes {
 }
 
 /// Show a window without activating it, so focus stays in the user's app.
-/// winit honours this only for a window's first show, and not on Linux.
+/// Windows: the window was created inactive, which winit honours on every
+/// show. X11: notices are override-redirect, which the window manager never
+/// focuses. Wayland leaves focus to the compositor. macOS needs AppKit.
 fn show_without_focus(window: &Window) {
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(target_os = "macos")]
     {
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        if let Ok(handle) = window.window_handle() {
-            match handle.as_raw() {
-                #[cfg(windows)]
-                RawWindowHandle::Win32(handle) => {
-                    use windows_sys::Win32::UI::WindowsAndMessaging::{
-                        SW_SHOWNOACTIVATE, ShowWindow,
-                    };
-                    unsafe { ShowWindow(handle.hwnd.get() as _, SW_SHOWNOACTIVATE) };
-                    return;
-                }
-                #[cfg(target_os = "macos")]
-                RawWindowHandle::AppKit(handle) => {
-                    // SAFETY: winit's AppKit handle is a live NSView on the main thread.
-                    let view: &objc2_app_kit::NSView = unsafe { handle.ns_view.cast().as_ref() };
-                    if let Some(ns_window) = view.window() {
-                        ns_window.orderFrontRegardless();
-                        return;
-                    }
-                }
-                _ => {}
+        if let Ok(handle) = window.window_handle()
+            && let RawWindowHandle::AppKit(handle) = handle.as_raw()
+        {
+            // SAFETY: winit's AppKit handle is a live NSView on the main thread.
+            let view: &objc2_app_kit::NSView = unsafe { handle.ns_view.cast().as_ref() };
+            if let Some(ns_window) = view.window() {
+                ns_window.orderFrontRegardless();
+                return;
             }
         }
     }
-    // X11 notices are override-redirect, which the window manager never
-    // focuses; Wayland leaves focus to the compositor.
     window.set_visible(true);
 }

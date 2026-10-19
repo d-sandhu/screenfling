@@ -151,13 +151,19 @@ impl Selection {
         std::mem::take(&mut self.menu)
     }
 
-    pub fn pointer_moved(&mut self, p: [f32; 2]) {
+    /// Follow the pointer. Returns whether the overlay needs repainting: while
+    /// dragging, or when the hovered control changes; a full-display repaint
+    /// for every mouse move would be wasted work at 4K.
+    pub fn pointer_moved(&mut self, p: [f32; 2], text: &mut Text) -> bool {
+        let before = self.hit(text);
         self.pointer = p;
         if let Some(anchor) = self.anchor {
             let b = self.bounds();
             let clamp = |p: [f32; 2]| [p[0].clamp(0.0, b.w), p[1].clamp(0.0, b.h)];
             self.region = Some(Rect::from_points(clamp(anchor), clamp(p)));
+            return true;
         }
+        self.hit(text) != before
     }
 
     /// A press either hits the toolbar or starts a new region.
@@ -504,12 +510,12 @@ mod tests {
     fn a_drag_is_clamped_and_a_click_is_not_a_region() {
         let mut text = Text::new();
         let mut s = selection(100, 100, [100, 100]);
-        s.pointer_moved([90.0, 90.0]);
+        s.pointer_moved([90.0, 90.0], &mut text);
         s.pressed(&mut text);
-        s.pointer_moved([150.0, -20.0]);
+        s.pointer_moved([150.0, -20.0], &mut text);
         assert_eq!(s.released(&mut text), None);
         assert_eq!(s.region, Some(Rect::new(90.0, 0.0, 10.0, 90.0)));
-        s.pointer_moved([5.0, 5.0]);
+        s.pointer_moved([5.0, 5.0], &mut text);
         s.pressed(&mut text);
         s.released(&mut text);
         assert_eq!(s.region, None);
@@ -524,10 +530,13 @@ mod tests {
         let b = s.bounds();
         assert!(layout.bar.x >= 0.0 && layout.bar.right() <= b.w);
         assert!(layout.bar.y >= 0.0 && layout.bar.bottom() <= b.h);
-        s.pointer_moved([
-            layout.copy.x + layout.copy.w / 2.0,
-            layout.copy.y + layout.copy.h / 2.0,
-        ]);
+        s.pointer_moved(
+            [
+                layout.copy.x + layout.copy.w / 2.0,
+                layout.copy.y + layout.copy.h / 2.0,
+            ],
+            &mut text,
+        );
         s.pressed(&mut text);
         assert_eq!(s.released(&mut text), Some(Delivery::Copy));
         assert!(s.region.is_some());

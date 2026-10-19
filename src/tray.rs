@@ -99,7 +99,11 @@ mod native {
     }
 
     fn capture_label(shortcut: &str) -> String {
-        format!("Capture  ({shortcut})")
+        if shortcut.starts_with("the ") || shortcut.starts_with("your ") {
+            "Capture".into()
+        } else {
+            format!("Capture  ({shortcut})")
+        }
     }
 }
 

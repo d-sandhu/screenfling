@@ -11,11 +11,7 @@ Install the pinned Rust toolchain and a native linker (MSVC on Windows, Xcode Co
 - **Linux:** packages target Ubuntu 24.04 x86-64. Other distributions may need different package names.
 
 ```sh
-sudo apt-get install build-essential cmake pkg-config clang libclang-dev \
-  libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
-  libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-  libegl1-mesa-dev libgl1-mesa-dev libdrm-dev libgbm-dev libdecor-0-dev \
-  libpipewire-0.3-dev libdbus-1-dev
+sudo apt-get install build-essential pkg-config libclang-dev libpipewire-0.3-dev
 cargo run --release --locked
 ```
 
@@ -49,15 +45,24 @@ No GPU is used. X11 (libX11, libX11-xcb, libXcursor, libXi), Wayland and xkbcomm
 - a notice, which never takes focus;
 - a panel, for the shortcut prompt and, without a tray, the controls.
 
-All of them are drawn on the CPU and presented with softbuffer, which uses GDI on Windows, CoreGraphics on macOS, and shared memory on X11 and Wayland. A frozen screenshot with a box on it needs no GPU. This also avoids a real failure seen with the earlier OpenGL overlay: Windows drivers promote a GPU window that exactly covers a monitor to an uncomposited present, so screen capture and sharing saw a frozen frame. The frame is resampled to the window once per capture; each redraw is two row copies and a few rectangles.
+All of them are drawn on the CPU and presented with softbuffer, which uses GDI on Windows, CoreGraphics on macOS, and shared memory on X11 and Wayland. A frozen screenshot with a box on it needs no GPU. This also avoids a real failure seen with the earlier OpenGL overlay: Windows drivers promote a GPU window that exactly covers a monitor to an uncomposited present, so screen capture and sharing saw a frozen frame. The frame and its dimmed copy are made once per capture. A redraw copies the dimmed frame, copies the region's rows over it, and draws a few rectangles and labels. A pointer move redraws only while dragging or when the hovered control changes.
 
-**Capture.** The notice hides, then after 100 ms a single worker reads the display under the pointer. The overlay then covers that display: borderless fullscreen on its monitor (Windows, X11, Wayland), or a window above the menu bar and Dock on every Space (macOS, set through NSWindow). The overlay stays fullscreen while hidden, because leaving fullscreen restores, and so shows, a window on Windows. Selections map to pixels through the captured image's real size (`model::map_crop`), which stays exact at fractional scaling.
+**Hiding windows.**
+- **Wayland:** a window cannot be unmapped (winit's `set_visible` does nothing there), so hiding drops the window, and it is created again when needed.
+- **Windows:** the notice and panel are created with "do not activate", which winit applies on every show, so they appear without taking focus.
+- **macOS:** they are ordered front without activating the app.
 
-**Delivery.** Copy writes the clipboard and reads it back before reporting success. A failed write leaves the selection in place, so retrying is one key. Send also activates the remembered window, then polls for up to 2 s until that window owns focus. It checks again that focus and clipboard are unchanged and sends one chord. It never retries, because an OS acknowledgment is not proof of attachment and a repeated chord could paste twice. Keyboard-triggered actions, Esc included, wait until every key is released, so no held or auto-repeating key reaches the destination. Key state is tracked from winit's key events. macOS and Wayland do not report releases for keys held as focus leaves, so losing focus clears it.
+**Capture.** Notices hide, then after 100 ms a single worker reads the display under the pointer. The overlay then covers that display: borderless fullscreen on its monitor (Windows, X11, Wayland), or a window above the menu bar and Dock on every Space (macOS, set through NSWindow). The overlay stays fullscreen while hidden, because leaving fullscreen restores, and so shows, a window on Windows. Selections map to pixels through the captured image's real size (`model::map_crop`), which stays exact at fractional scaling.
+
+**Delivery.** Copy writes the clipboard and reads it back before reporting success. A failed write leaves the selection in place, so retrying is one key. Send also activates the remembered window, then polls for up to 2 s until that window owns focus. It checks again that focus and clipboard are unchanged and sends one chord. It never retries, because an OS acknowledgment is not proof of attachment and a repeated chord could paste twice. Keyboard-triggered actions, Esc included, wait until every key is released, so no held or auto-repeating key reaches the destination. Key state is the set of physical keys held, modifier keys included, tracked from winit's key events. It does not depend on modifier-state events, which arrive in a different order on each platform. macOS and Wayland do not report releases for keys held as focus leaves, so losing focus clears the set.
 
 **Returning.** Finishing returns to where the user was: the agent after Send, otherwise the window capture started from. Focus is handed back explicitly, because hiding a window does not move it on every platform (macOS would keep ScreenFling active). Without a tray, the home panel reappears behind without taking focus, unless the capture began from it. Errors appear in a notice.
 
-**One copy.** The first launch listens on a per-user Unix socket (`$XDG_RUNTIME_DIR` or macOS `$TMPDIR`) or named pipe. A later launch connects, asks for a capture and exits. On Windows the pipe is created with `FILE_FLAG_FIRST_PIPE_INSTANCE`, so detecting a running copy is atomic. The later launch passes its right to bring a window forward to the running copy (`AllowSetForegroundWindow`), so the overlay gets keyboard focus.
+**One copy.** A later launch connects to the running copy, asks for a capture and exits.
+- **macOS and Linux:** the running copy is whoever holds an `flock` on a lock file in the user's runtime directory (`$XDG_RUNTIME_DIR`, macOS `$TMPDIR`). The kernel grants it to exactly one process and releases it when that process exits. That process binds the socket beside it; a copy that is still starting is waited for briefly.
+- **Windows:** the named pipe carries the user's SID and login session, and its DACL admits only that user. It is created with `FILE_FLAG_FIRST_PIPE_INSTANCE`, and that one instance is reused for every client, so the name never lapses. A launch checks that the pipe's server runs as the same user before trusting it. It then passes on its right to bring a window forward (`AllowSetForegroundWindow`), so the overlay gets keyboard focus.
+
+On macOS, opening the app bundle again only brings the running copy forward: Launch Services does not start a second process. There, run `screenfling --capture`.
 
 **Tray and settings.**
 - **Menu:** Capture, Change shortcut…, Start at login, Quit.

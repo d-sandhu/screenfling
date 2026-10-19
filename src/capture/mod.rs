@@ -25,9 +25,9 @@ pub struct Captured {
 static WAYLAND_SESSION: OnceLock<bool> = OnceLock::new();
 
 /// Read the chosen video driver on the main thread, before starting workers.
-/// A Wayland session still needs portals when SDL is running through XWayland.
-pub fn initialize_session(video_driver: &str) {
-    let _ = WAYLAND_SESSION.set(detect_wayland(video_driver));
+/// A Wayland session still needs portals when the app runs through XWayland.
+pub fn initialize_session(backend: &str) {
+    let _ = WAYLAND_SESSION.set(detect_wayland(backend));
 }
 
 pub fn is_wayland() -> bool {
@@ -37,10 +37,10 @@ pub fn is_wayland() -> bool {
         .unwrap_or_else(|| detect_wayland(""))
 }
 
-fn detect_wayland(video_driver: &str) -> bool {
+fn detect_wayland(backend: &str) -> bool {
     cfg!(target_os = "linux")
         && needs_portal(
-            video_driver,
+            backend,
             std::env::var_os("WAYLAND_DISPLAY").as_deref(),
             std::env::var_os("WAYLAND_SOCKET").as_deref(),
             std::env::var_os("XDG_SESSION_TYPE").as_deref(),
@@ -48,12 +48,12 @@ fn detect_wayland(video_driver: &str) -> bool {
 }
 
 fn needs_portal(
-    video_driver: &str,
+    backend: &str,
     display: Option<&OsStr>,
     socket: Option<&OsStr>,
     session: Option<&OsStr>,
 ) -> bool {
-    video_driver == "wayland"
+    backend == "wayland"
         || display.is_some_and(|value| !value.is_empty())
         || socket.is_some_and(|value| !value.is_empty())
         || session == Some(OsStr::new("wayland"))

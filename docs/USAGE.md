@@ -86,7 +86,7 @@ ScreenFling has no main window. A notice says it is running, and its tray icon h
 - **Start at login**: uses the system's own login items, so the system settings show it too.
 - **Quit ScreenFling.**
 
-Only one copy runs. Launching it again, or running `screenfling --capture`, starts a capture in the copy that is already running, so a launcher, key binding or script can trigger one. On desktops without a tray, such as GNOME without the AppIndicator extension, a small ScreenFling window holds the same controls; closing it quits.
+Only one copy runs. Launching it again, or running `screenfling --capture`, starts a capture in the copy that is already running, so a launcher, key binding or script can trigger one. On macOS, opening the app again only brings it forward; use `screenfling --capture` (inside `ScreenFling.app/Contents/MacOS/`) for that. On desktops without a tray, such as GNOME without the AppIndicator extension, a small ScreenFling window holds the same controls; closing it quits.
 
 ## Privacy and settings
 

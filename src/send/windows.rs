@@ -337,7 +337,7 @@ mod tabs {
 
     fn items(window: usize) -> Option<Vec<IUIAutomationElement>> {
         unsafe {
-            // SDL may already have initialized COM on this thread; either way
+            // winit has already initialized COM (OLE) on this thread; either way
             // the thread can create the in-process automation client.
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             let automation: IUIAutomation =
