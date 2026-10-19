@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Remember the original terminal, change focus, paste back, and verify the image."""
+"""Remember the original window, change focus, Send, and verify the image arrives once."""
 import json
 import os
 from pathlib import Path
@@ -89,16 +89,13 @@ while time.monotonic() < end:
             sp.run(['xdotool', 'windowactivate', '--sync', original], env=env, check=True)
             sp.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9'], env=env, check=True)
             window('Select region$')
+            # Space selects the whole display; Enter sends to the remembered window.
             sp.run(['xdotool', 'key', 'space'], env=env, check=True)
-            review = window('Review crop$')
-            # Allow the title change to be painted before recording the real UI.
             time.sleep(0.2)
-            (ROOT/'dist').mkdir(exist_ok=True)
-            sp.run(['import', '-window', review, str(ROOT/'dist/paste-back-review.png')], env=env, check=True)
-            sp.run(['xdotool', 'mousemove', '--window', review, '290', '660', 'click', '1'], env=env, check=True)
+            sp.run(['xdotool', 'key', 'Return'], env=env, check=True)
             deadline = time.monotonic() + 5
             while files[0].read_bytes() != bytes([22,22]):
-                if time.monotonic() >= deadline: raise RuntimeError('App Paste back did not reach the original terminal')
+                if time.monotonic() >= deadline: raise RuntimeError('Send did not reach the original terminal')
                 time.sleep(0.02)
             while files[0].with_suffix('.png').stat().st_size == (home/'expected-0.png').stat().st_size:
                 if time.monotonic() >= deadline: raise RuntimeError('App image was not read by the receiver')
@@ -106,24 +103,26 @@ while time.monotonic() < end:
             dimensions = sp.check_output(['identify', '-format', '%wx%h', str(files[0].with_suffix('.png'))], env=env).decode()
             assert dimensions == '1280x800', dimensions
             assert files[1].read_bytes() == bytes([22])
-            # Send loop: a successful Paste back hides the window, and the
-            # global shortcut starts the next capture from the terminal.
-            # Match the app's WM_CLASS instance name: the fixture terminals
-            # carry 'screenfling' in their titles and must not match.
-            deadline = time.monotonic() + 5
-            while True:
-                visible = sp.run(['xdotool', 'search', '--onlyvisible', '--classname', '^screenfling$'], env=env, capture_output=True).stdout.splitlines()
-                if not visible:
-                    break
-                if time.monotonic() >= deadline:
-                    raise RuntimeError(f'Window did not hide after a successful Paste back; visible={visible}')
-                time.sleep(0.05)
+            # Send loop: a successful Send leaves the window hidden, the shortcut
+            # starts the next capture, and Escape returns there too. Match the
+            # app's WM_CLASS instance: the fixture terminal titles contain 'screenfling'.
+            def hidden():
+                deadline = time.monotonic() + 5
+                while True:
+                    visible = sp.run(['xdotool', 'search', '--onlyvisible', '--classname', '^screenfling$'], env=env, capture_output=True).stdout.splitlines()
+                    if not visible:
+                        return
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(f'Window did not stay out of the way; visible={visible}')
+                    time.sleep(0.05)
+            hidden()
             sp.run(['xdotool', 'windowactivate', '--sync', original], env=env, check=True)
             sp.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9'], env=env, check=True)
             window('Select region$')
             sp.run(['xdotool', 'key', 'Escape'], env=env, check=True)
-            window('^ScreenFling$')
-            report = {'scope': 'Two synthetic receivers in Xfce Terminal; no real agent attachment claim', 'checks': ['remembered origin overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'no Enter', 'other receiver untouched', 'real app global capture and Paste back deliver the full image', 'window hides after a successful Paste back and the shortcut reopens capture']}
+            hidden()
+            assert files[0].read_bytes() == bytes([22,22]), 'Cancel must not paste'
+            report = {'scope': 'Two synthetic receivers in Xfce Terminal; no real agent attachment claim', 'checks': ['remembered origin overrides misleading focus', 'Ctrl+V and exact PNG image bytes', 'no Enter', 'other receiver untouched', 'real app: shortcut, Space, Enter sends the full display', 'window stays hidden after Send and after cancel, and the shortcut reopens capture']}
             (ROOT/'dist').mkdir(exist_ok=True)
             (ROOT/'dist/smoke-send.json').write_text(json.dumps(report, indent=2)+'\n')
             print(json.dumps(report))

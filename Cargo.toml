@@ -3,7 +3,7 @@ name = "screenfling"
 version = "0.2.0"
 edition = "2024"
 license = "MIT"
-description = "Capture a region and paste the image into your coding session."
+description = "Select part of the screen, then copy it or send it back to the app you came from."
 repository = "https://github.com/d-sandhu/screenfling"
 readme = "README.md"
 publish = false
@@ -22,10 +22,11 @@ global-hotkey = "0.8"
 arboard = { version = "3.6.1", default-features = false, features = ["image-data"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "tiff"] }
 objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication", "NSPasteboard", "NSPasteboardItem"] }
 block2 = "0.6.2"
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSError"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSData", "NSError"] }
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
 objc2-screen-capture-kit = { version = "0.3.2", default-features = false, features = ["std", "SCShareableContent", "SCStream", "SCScreenshotManager", "block2", "objc2-core-graphics", "objc2-core-foundation"] }

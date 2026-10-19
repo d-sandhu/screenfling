@@ -72,7 +72,7 @@ impl Settings {
         if data.len() as u64 > MAX_SETTINGS_BYTES {
             return Err("Settings are too large.".into());
         }
-        // Old connection fields are ignored, preserving the user's capture shortcut.
+        // Unknown fields from older versions are ignored.
         let settings: Self = serde_json::from_slice(&data).map_err(|_| "Settings are invalid.")?;
         settings.validate()?;
         Ok(Some(settings))
@@ -123,23 +123,25 @@ impl Settings {
 mod tests {
     use super::*;
     #[test]
-    fn legacy_preferences_migrate_and_failed_saves_preserve_the_shortcut() {
+    fn saves_atomically_and_rejects_invalid_files() {
         let dir = std::env::temp_dir().join(format!("screenfling-settings-{}", nonce().unwrap()));
         fs::create_dir(&dir).unwrap();
         let path = dir.join("settings.json");
-        fs::write(&path, br#"{"version":1,"shortcut":"Control+Shift+KeyF","connection":{"socket":"old","executable":"old","paste_confirmed":true}}"#).unwrap();
-        let settings = Settings::read(&path).unwrap().unwrap();
-        assert_eq!(settings.shortcut, "Control+Shift+KeyF");
+        let settings = Settings {
+            shortcut: "Control+Shift+KeyF".into(),
+            ..Settings::default()
+        };
         settings.save_to(&dir).unwrap();
         assert_eq!(Settings::read(&path).unwrap(), Some(settings.clone()));
-        assert!(!fs::read_to_string(&path).unwrap().contains("connection"));
-        let mut invalid = settings.clone();
-        invalid.shortcut = "x".repeat(81);
+        // An invalid value is rejected before it can replace the saved file.
+        let invalid = Settings {
+            shortcut: "x".repeat(81),
+            ..settings.clone()
+        };
         assert!(invalid.save_to(&dir).is_err());
         assert_eq!(Settings::read(&path).unwrap(), Some(settings));
         fs::write(&path, vec![b' '; MAX_SETTINGS_BYTES as usize + 1]).unwrap();
         assert!(Settings::read(&path).is_err());
-        fs::remove_file(path).unwrap();
-        fs::remove_dir(dir).unwrap();
+        fs::remove_dir_all(dir).unwrap();
     }
 }

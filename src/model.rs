@@ -1,4 +1,4 @@
-//! Pure workflow and image invariants. No operating-system side effects live here.
+//! Pure image invariants. No operating-system side effects live here.
 use image::{ImageEncoder, codecs::png::PngEncoder};
 
 pub type Result<T> = std::result::Result<T, String>;
@@ -112,86 +112,6 @@ pub fn map_crop(rect: [f64; 4], display: [f64; 2], pixels: [u32; 2]) -> Result<C
     })
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Phase {
-    Idle,
-    Capturing,
-    Selecting,
-    Review,
-    Delivering,
-    Result,
-}
-
-#[derive(Debug)]
-pub struct Flow {
-    generation: u64,
-    phase: Phase,
-}
-impl Default for Flow {
-    fn default() -> Self {
-        Self {
-            generation: 0,
-            phase: Phase::Idle,
-        }
-    }
-}
-impl Flow {
-    pub fn generation(&self) -> u64 {
-        self.generation
-    }
-    pub fn phase(&self) -> Phase {
-        self.phase
-    }
-    pub fn is_current(&self, generation: u64, phase: Phase) -> bool {
-        generation == self.generation && phase == self.phase
-    }
-    pub fn start(&mut self) -> Result<u64> {
-        if !matches!(self.phase, Phase::Idle | Phase::Result) {
-            return Err("Finish or cancel the current capture first.".into());
-        }
-        self.generation = self
-            .generation
-            .checked_add(1)
-            .ok_or("Restart ScreenFling before another capture.")?;
-        self.phase = Phase::Capturing;
-        Ok(self.generation)
-    }
-    pub fn advance(&mut self, generation: u64, from: Phase, to: Phase) -> Result<()> {
-        let permitted = matches!(
-            (from, to),
-            (Phase::Capturing, Phase::Selecting)
-                | (Phase::Selecting, Phase::Review)
-                | (Phase::Review, Phase::Delivering)
-                | (Phase::Delivering, Phase::Result)
-                | (Phase::Delivering, Phase::Review)
-        );
-        if !permitted || !self.is_current(generation, from) {
-            return Err("This action is no longer current.".into());
-        }
-        self.phase = to;
-        Ok(())
-    }
-    pub fn cancel(&mut self, generation: u64) -> bool {
-        if generation != self.generation
-            || !matches!(
-                self.phase,
-                Phase::Capturing | Phase::Selecting | Phase::Review
-            )
-        {
-            return false;
-        }
-        self.phase = Phase::Idle;
-        true
-    }
-    pub fn fail(&mut self, generation: u64) -> bool {
-        if generation != self.generation || matches!(self.phase, Phase::Idle | Phase::Result) {
-            return false;
-        }
-        self.phase = Phase::Result;
-        true
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,33 +169,5 @@ mod tests {
                 })
                 .is_err()
         );
-    }
-    #[test]
-    fn current_review_is_required_for_one_delivery() {
-        let mut flow = Flow::default();
-        let old = flow.start().unwrap();
-        assert!(flow.cancel(old));
-        let id = flow.start().unwrap();
-        assert!(!flow.cancel(old));
-        assert!(!flow.fail(old));
-        assert!(
-            flow.advance(old, Phase::Capturing, Phase::Selecting)
-                .is_err()
-        );
-        assert!(
-            flow.advance(id, Phase::Capturing, Phase::Delivering)
-                .is_err()
-        );
-        for (from, to) in [
-            (Phase::Capturing, Phase::Selecting),
-            (Phase::Selecting, Phase::Review),
-            (Phase::Review, Phase::Delivering),
-        ] {
-            flow.advance(id, from, to).unwrap();
-        }
-        assert!(!flow.cancel(id));
-        assert!(flow.advance(id, Phase::Review, Phase::Delivering).is_err());
-        flow.advance(id, Phase::Delivering, Phase::Result).unwrap();
-        assert!(flow.advance(id, Phase::Result, Phase::Delivering).is_err());
     }
 }
