@@ -1,6 +1,6 @@
 [package]
 name = "screenfling"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "Select part of the screen, then copy it or send it back to the app you came from."
