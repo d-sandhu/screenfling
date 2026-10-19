@@ -140,13 +140,15 @@ v0.1.0 is: capture, select, then Copy or Send, with Send returning to any app.
 
 - [x] Windows, physical desktop: Send into Windows Terminal delivers one Alt+V and no Enter. Send into a GUI window delivers Ctrl+V. Copy sends no keys. Cancel leaves focus in the original window. The clipboard image reads through the .NET API Claude Code uses.
 - [x] Windows, real agent: Send attaches `[Image #1]` to a Claude Code 2.1 prompt in Windows Terminal, without submitting it.
+- [x] Windows, Chromium: Send into a local Chrome page delivers the image through an ordinary Ctrl+V paste event. VS Code, Cursor and Claude desktop read the clipboard the same way.
+- [x] Windows, keyboard: Ctrl+C copies, and Esc cancels and returns focus. Holding Enter does nothing until release, then pastes once.
 - [x] Linux: CI pixel, cancel and Send fixtures on X11, and pixel fixtures on Wayland.
 - [ ] macOS, physical desktop:
   - capture across display scales and multiple displays;
   - Screen Recording and Accessibility grant, deny and revoke;
   - Send into Terminal and Ghostty (Ctrl+V) and into a GUI app (Cmd+V);
   - the attachment appears in Claude Code and Codex.
-- [ ] Attachment in more agents on Windows: Codex in Windows Terminal; Claude desktop or a browser chat.
+- [ ] Attachment in Codex in Windows Terminal (not installed on the test machine).
 - [ ] Tag v0.1.0. Packages stay ad-hoc signed or unsigned, with the recovery steps in USAGE.md.
 
 Known limits:

@@ -64,10 +64,10 @@ fn description(path: &[u16]) -> Option<String> {
     }
     // Translation is an array of (language, code page) u16 pairs; its length is
     // in bytes. String values report their length in UTF-16 units.
-    let translation = query(&data, r"\VarFileInfo\Translation", 2)?;
+    let translation = query(&data, r"\VarFileInfo\Translation", 1)?;
     let [language, codepage] = [*translation.first()?, *translation.get(1)?];
     let key = format!(r"\StringFileInfo\{language:04x}{codepage:04x}\FileDescription");
-    let text = String::from_utf16_lossy(query(&data, &key, 1)?);
+    let text = String::from_utf16_lossy(query(&data, &key, 2)?);
     let text = text.trim_end_matches('\0').trim();
     (!text.is_empty() && text.chars().count() <= 40).then(|| text.to_owned())
 }
