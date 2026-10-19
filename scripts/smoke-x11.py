@@ -19,11 +19,6 @@ def command(*args, check=True):
     return result
 
 
-def cpu_ticks(pid):
-    fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
-    return int(fields[11]) + int(fields[12])
-
-
 def marked(x, y):
     # An asymmetric tile catches wrong crop origins, channel order, and flipped rows.
     x, y = x % 19, y % 17
@@ -116,13 +111,12 @@ def main():
             install_pattern(config)
             time.sleep(0.2)
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
-            start = time.monotonic()
             app = sp.Popen(['target/release/screenfling'], env=env, stdout=log, stderr=log)
 
             def window(title, focus=False):
                 deadline = time.monotonic() + 12
                 # xdotool defaults to OR matching: PID alone would otherwise let
-                # an earlier phase satisfy a wait for a later review/result title.
+                # an earlier stage satisfy a wait for a later title.
                 search = ('xdotool', 'search', '--all', '--onlyvisible', '--pid', str(app.pid), '--name', title)
                 while time.monotonic() < deadline:
                     assert app.poll() is None, 'Application exited unexpectedly'
@@ -154,14 +148,6 @@ def main():
                 raise AssertionError(f'Window did not reach {expected}: {actual}')
 
             handle = window('^ScreenFling$')
-            startup_ms = round((time.monotonic() - start) * 1000, 1)
-            time.sleep(1)
-            before = cpu_ticks(app.pid)
-            sample = time.monotonic()
-            time.sleep(2)
-            idle_cpu = 100 * (cpu_ticks(app.pid) - before) / os.sysconf('SC_CLK_TCK') / (time.monotonic() - sample)
-            status = dict(line.split(':', 1) for line in Path(f'/proc/{app.pid}/status').read_text().splitlines() if ':' in line)
-            children = Path(f'/proc/{app.pid}/task/{app.pid}/children').read_text().split()
             command('wmctrl', '-ir', handle, '-b', 'add,maximized_vert,maximized_horz')
             state(handle, '_NET_WM_STATE', ['_NET_WM_STATE_MAXIMIZED_VERT', '_NET_WM_STATE_MAXIMIZED_HORZ'])
             command('xdotool', 'mousemove', '0', '0')
@@ -179,35 +165,30 @@ def main():
             state(handle, 'WM_STATE', ['Iconic'])
             command('xdotool', 'key', '--clearmodifiers', 'ctrl+shift+9')
             key('Select region$', 'space')
-            key('Review crop$', 'Escape')
+            key('Select region$', 'Escape')
             window('^ScreenFling$')
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
             key('^ScreenFling$', 'F8')
             window('Select region$', focus=True)
-            # Changing the desktop now must not change the frozen capture being reviewed.
+            # Changing the desktop now must not change the frozen capture.
             command('xsetroot', '-solid', '#112233')
             command('xdotool', 'mousemove', '100', '100', 'mousedown', '1', 'sleep', '0.15',
                     'mousemove', '300', '250', 'sleep', '0.15', 'mouseup', '1')
-            window('Review crop$')
+            time.sleep(0.2)
+            # Choosing a region copies nothing; only the explicit action does.
             assert command('xclip', '-selection', 'clipboard', '-out').stdout == sentinel
-            key('Review crop$', 'F6')
-            handle = window('Result$')
+            key('Select region$', 'Return')
+            handle = window('^ScreenFling$')
             png = command('xclip', '-selection', 'clipboard', '-out', '-target', 'image/png').stdout
             size = check_png(png)
             command('wmctrl', '-ic', handle)
             assert app.wait(timeout=8) == 0, 'Closing without a tray did not exit cleanly'
             result = {
-                'environment': 'GitHub Linux runner / Xvfb / Openbox / software OpenGL; not a hardware benchmark',
-                'startup_to_visible_window_ms': startup_ms,
-                'idle_cpu_percent_of_one_core': round(idle_cpu, 2),
-                'idle_rss_kib': int(status['VmRSS'].split()[0]),
-                'idle_threads': int(status['Threads'].strip()),
-                'idle_child_processes': len(children),
-                'checks': ['start', 'maximized capture uses exact display bounds', 'cancel keeps clipboard',
+                'checks': ['maximized capture uses exact display bounds', 'cancel keeps clipboard',
                            'native global shortcut restores minimized capture',
-                           'whole-display review cancellation keeps clipboard',
-                           'frozen crop review keeps clipboard',
-                           'explicit Copy serves every expected pixel from the original frozen frame',
+                           'whole-display cancellation keeps clipboard',
+                           'selecting a region keeps clipboard',
+                           'Enter copies every expected pixel from the original frozen frame',
                            'close without a tray exits cleanly'],
                 'copied_dimensions': size,
             }

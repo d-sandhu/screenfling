@@ -52,6 +52,22 @@ pub fn post(message: Message) {
 pub fn shutdown() {
     ACTIVE.store(false, Ordering::Release);
 }
+/// Every key, modifiers included, is up. Read from SDL: egui-sdl3 does not
+/// report modifier releases, and macOS drops key-ups while Command is held.
+pub fn keys_released() -> bool {
+    let mut count = 0;
+    let state = unsafe { sdl3_sys::keyboard::SDL_GetKeyboardState(&mut count) };
+    // SDL owns this array of `count` flags for the life of the application.
+    state.is_null()
+        || unsafe { std::slice::from_raw_parts(state, count.max(0) as usize) }
+            .iter()
+            .all(|down| !down)
+}
+
+/// Normal window size and its minimum, in window coordinates.
+pub const SIZE: [u32; 2] = [560, 440];
+pub const MIN_SIZE: [u32; 2] = [480, 380];
+
 pub fn pointer() -> [i32; 2] {
     let (mut x, mut y) = (0.0f32, 0.0f32);
     unsafe {
@@ -78,10 +94,17 @@ pub fn overlay(window: &mut Window, bounds: Option<[i32; 4]>) -> Result<()> {
         SDL_SetWindowBordered(window.raw(), false);
         SDL_SetWindowAlwaysOnTop(window.raw(), true);
         if let Some([x, y, width, height]) = bounds {
+            // Windows drivers promote a borderless OpenGL window that exactly
+            // covers a monitor to an uncomposited present: the compositor,
+            // screen capture and sharing then keep showing a stale frame, and
+            // entering that mode can flicker. One extra row below the monitor
+            // keeps the window composited; the frozen image is drawn at the
+            // top-left, so every captured pixel stays visible and selectable.
+            let extra = i32::from(cfg!(windows));
             if width <= 0
                 || height <= 0
                 || !SDL_SetWindowPosition(window.raw(), x, y)
-                || !SDL_SetWindowSize(window.raw(), width, height)
+                || !SDL_SetWindowSize(window.raw(), width, height + extra)
                 || !SDL_SyncWindow(window.raw())
             {
                 return Err(
@@ -100,14 +123,15 @@ pub fn restore(window: &mut Window, [x, y, width, height]: [i32; 4]) {
     use sdl3_sys::video::*;
     unsafe {
         SDL_SetWindowFullscreen(window.raw(), false);
-        // Review and capture errors return to a visible, normally sized window,
-        // even when a global shortcut started capture from a minimized window.
+        // Results and errors return to a normally sized window, even when a
+        // global shortcut started capture from a minimized window.
         SDL_RestoreWindow(window.raw());
         SDL_SetWindowAlwaysOnTop(window.raw(), false);
         SDL_SetWindowBordered(window.raw(), true);
         SDL_SetWindowResizable(window.raw(), true);
-        SDL_SetWindowMinimumSize(window.raw(), 640, 480);
-        SDL_SetWindowSize(window.raw(), width.max(640), height.max(480));
+        let [min_width, min_height] = MIN_SIZE.map(|v| v as i32);
+        SDL_SetWindowMinimumSize(window.raw(), min_width, min_height);
+        SDL_SetWindowSize(window.raw(), width.max(min_width), height.max(min_height));
         SDL_SetWindowPosition(window.raw(), x, y);
     }
 }
