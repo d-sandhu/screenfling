@@ -7,6 +7,8 @@
  * wlr-protocols/unstable/wlr-virtual-pointer-unstable-v1.xml.
  * The connection owns the device until this process receives EOF or exits.
  */
+/* clock_gettime is POSIX, which strict C11 hides unless requested. */
+#define _POSIX_C_SOURCE 199309L
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
