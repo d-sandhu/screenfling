@@ -1,60 +1,81 @@
 # Using ScreenFling
 
-**Capture → Review → Copy image → Ctrl+V in your coding agent.**
+**Shortcut → drag a region → Enter.** The image lands in the app you came from, ready for you to submit.
 
-Open the app, click **Capture region**, drag a rectangle, then choose **Copy image**. Switch to Claude Code, Codex, OpenCode or another agent that accepts clipboard images, and paste. On macOS these agents use **Control+V** for images. Check the attachment, then submit when ready.
+## Capture
 
-The image stays at its original resolution. ScreenFling does not upload it, type a file path, save a screenshot file or submit your prompt.
+Press the capture shortcut in any app: **Ctrl+Shift+9** on Windows and X11, **Cmd+Shift+9** on macOS. The screen under the pointer freezes. You can also use **Capture region** (F8) in the ScreenFling window, or **Capture** in its tray menu.
 
-## Paste back
+Drag a region. Drag again to replace it, or press **Space** to select the whole display. The selection shows its size in pixels, and the crop keeps the display's full resolution.
 
-For one less app switch, focus your coding-agent terminal and use the **global capture shortcut**. After review, choose **Paste back to [terminal]**. ScreenFling copies the image, returns to that terminal and presses Ctrl+V once. It does not identify the process inside your terminal or choose a different tab; keep the intended agent active there.
+When the region is right:
 
-Paste back appears only when capture starts from a supported terminal. Capturing from a browser or from ScreenFling itself still offers Copy image. Capture from any app when manual paste suits the task better.
+| Action | Key | What happens |
+| --- | --- | --- |
+| **Send** | Enter | Copies the image, returns to the app you came from and presses its image-paste key once. |
+| **Copy** | Ctrl+C (Cmd+C on macOS) | Copies the image. You switch apps and paste it yourself. |
+| Cancel | Esc | Nothing is copied. The clipboard is unchanged. |
 
-After a successful Paste back, ScreenFling hides so the capture shortcut can start the next capture right away. If the desktop has neither a tray icon nor a capture shortcut, the window stays open with the result instead.
+When there is no window to return to, Enter copies instead. That happens when capture starts from the ScreenFling window, and always on Wayland. Actions run when you release the key, so a held key never reaches the destination.
 
-macOS returns to the original terminal application’s active window/pane. Windows and X11 return to the original terminal window’s active tab/pane. Supported hosts include Ghostty, Terminal, iTerm2, WezTerm, Windows Terminal, classic Windows consoles, Alacritty and common X11 terminals, as applicable to each OS. Wayland offers Copy image because applications cannot freely activate another window or inject input there.
+## Send
 
-Your terminal must pass Ctrl+V to the agent. Custom bindings, terminal interception, elevated Windows applications, SSH and WSL can need manual paste or their own clipboard integration. ScreenFling does not change terminal settings. After an error the image remains available on the clipboard; inspect your agent before trying again.
+Send returns to the window that was active when you pressed the capture shortcut and pastes there. It does not choose an agent, tab or pane: keep the agent you want active in that window.
+
+The paste key depends on where it lands:
+
+| Destination | Key Send presses |
+| --- | --- |
+| Windows terminals: Windows Terminal, console windows, WezTerm, Alacritty, mintty, ConEmu, Tabby, Hyper, Warp | Alt+V |
+| macOS terminals: Terminal, iTerm2, Ghostty, WezTerm, kitty, Alacritty, Warp | Ctrl+V |
+| X11 terminals | Ctrl+V |
+| Other apps, such as browsers, Claude and ChatGPT desktop, VS Code and Cursor chat | Ctrl+V (Cmd+V on macOS) |
+
+Coding agents in a terminal read image paste from their own key, because the terminal keeps its paste shortcut for text. Claude Code and Codex use Alt+V on Windows and Ctrl+V on macOS and Linux. OpenCode uses Ctrl+V.
+
+Send never presses Enter. After a successful Send, ScreenFling stays out of the way, so the shortcut starts the next capture right away. If anything changed first (the window closed, focus moved, or the clipboard was replaced), nothing is pasted and the image stays copied.
+
+**Where Send cannot help:**
+
+- **Integrated terminals in an editor.** VS Code or Cursor count as a GUI app, so Send presses Ctrl+V there. A terminal agent inside them on Windows needs Alt+V: use Copy and press Alt+V.
+- **OpenCode in Windows Terminal.** Windows Terminal takes Ctrl+V for text paste. Use Copy and the paste method OpenCode documents for your terminal.
+- **SSH, WSL and remote sessions.** A remote agent reads the remote machine's clipboard, not yours.
+- **Elevated windows on Windows.** Windows blocks input from a normal app to an administrator window.
+- **Wayland.** Apps cannot return focus to another window or press keys there. Copy works.
 
 ## Shortcuts
 
 | Action | Shortcut |
 | --- | --- |
-| Capture from another app | Command+Shift+9 on macOS; Ctrl+Shift+9 on Windows/X11 |
-| Capture inside ScreenFling | F8 |
-| Select the entire display | Space while selecting |
-| Copy reviewed image | F6 |
-| Open/close Settings | F10 |
-| Cancel, or return from Settings | Escape |
+| Capture from any app | Ctrl+Shift+9 (Cmd+Shift+9 on macOS) |
+| Capture in the ScreenFling window | F8 |
+| Select the whole display | Space |
+| Send (or Copy without a destination) | Enter |
+| Copy | Ctrl+C (Cmd+C on macOS) |
+| Cancel, or hide the window | Esc |
 
-Wayland uses the shortcut chosen in the desktop portal. Settings contains only the capture shortcut. **More** contains Hide to tray and Quit. Keep one copy running. On Linux, keep it open until you paste so it can serve the clipboard image.
+Change the capture shortcut in the ScreenFling window, using names such as `Control+Shift+Digit9` or `Super+Shift+KeyS`. On Wayland the desktop's portal settings assign it.
 
 ## Install and permissions
 
-**macOS 14+.** Extract the archive, move `ScreenFling.app` to `~/Applications`, and launch that copy. Capture needs Screen Recording access; Paste back additionally needs Accessibility. Copy image does not need Accessibility. Permission is requested only for the action that needs it, at most once per launch.
+**Windows 10/11.** Extract the ZIP and run `screenfling.exe`. It needs OpenGL 3.2. Development packages are unsigned.
 
-If permission is enabled but capture fails after replacing a development build: quit ScreenFling, remove only its old entry in System Settings → Privacy & Security → Screen & System Audio Recording, and add the current installed app. Quit and reopen when requested. Accessibility can need the same recovery. Ad-hoc signing changes identity with the build; [stable local signing](DEVELOPMENT.md#macos-signing) avoids that build-hash identity change. It still requires initial consent.
+**macOS 14+.** Extract the archive, move `ScreenFling.app` to `~/Applications`, and open that copy. Capture needs **Screen Recording**. Send also needs **Accessibility**, which is requested the first time you send. Copy does not need it.
 
-CI packages are ad-hoc signed and not notarized. Verify the archive source before using macOS’s Open Anyway control. Keep one installed copy; avoid launching extracted build folders as well.
+After replacing a development build, macOS can keep a stale permission entry. Quit ScreenFling, remove its entry in System Settings → Privacy & Security, add the installed app again, and reopen it. Development packages are ad-hoc signed and not notarized; [stable local signing](DEVELOPMENT.md#macos-signing) avoids repeated prompts.
 
-**Windows 10/11.** Extract the ZIP and run `screenfling.exe`. Requires OpenGL 3.2. Development packages are unsigned. Paste back cannot inject into applications with higher privileges.
+**Linux.** Extract and run `./screenfling`. It needs the [runtime libraries](DEVELOPMENT.md#build-prerequisites). Wayland capture goes through the desktop's ScreenCast portal and PipeWire: pick one display in its dialog. Keep ScreenFling running until you paste, because on Linux the app serves the clipboard image itself.
 
-**Linux.** Extract and run `./screenfling`. Requires the [native runtime libraries](DEVELOPMENT.md#build-prerequisites). Wayland capture uses the desktop’s ScreenCast portal and PipeWire; choose one display in its sharing dialog. Global shortcut and tray availability depend on the desktop. The Capture button works without either.
+Keep one copy running. `screenfling --capture` starts a new copy and captures immediately. `--help` and `--version` print without opening a window.
 
-## Preferences and recovery
+## Privacy and settings
 
-Only the shortcut is saved in `settings.json`:
+ScreenFling saves no screenshots and uploads nothing. The image exists only in memory and on the clipboard; the receiving app may keep its own copy. The only saved setting is the capture shortcut, in `settings.json`:
 
 | Platform | Directory |
 | --- | --- |
-| macOS | `~/Library/Application Support/screenfling/` |
 | Windows | `%LOCALAPPDATA%\screenfling\` |
+| macOS | `~/Library/Application Support/screenfling/` |
 | Linux | `$XDG_CONFIG_HOME/screenfling/`, or `~/.config/screenfling/` |
 
-Older connection settings are ignored and disappear on the next save. PNGs saved by older versions are not deleted automatically. No new screenshot files are created by this version. The clipboard and receiving agent may retain images according to their own settings.
-
-`screenfling --help` and `--version` do not open the desktop. `--capture` launches a new instance with Capture; use the tray or shortcut when the app is already running.
-
-Report problems with the platform, build and error text. Do not include private screenshots or credentials.
+When you report a problem, include the platform, the build and the error text. Do not attach private screenshots.

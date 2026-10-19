@@ -1,38 +1,38 @@
 <div align="center">
   <h1><img src="assets/icon.svg" width="36" height="36" alt=""> ScreenFling</h1>
-  <p><strong>Show the problem. Keep your context.</strong><br>
-  Capture a screen region, review it, and bring it into your coding session.</p>
+  <p><strong>Show your coding agent what you see.</strong><br>
+  Select part of the screen, then copy it or send it straight back to the app you came from.</p>
   <p><strong>Rust</strong> · egui · SDL3 / OpenGL · Windows / macOS / Linux</p>
-  <p><a href="#try-it">Build & run</a> · <a href="#engineering">Engineering</a> · <a href="docs/USAGE.md">User guide</a></p>
+  <p><a href="#try-it">Build & run</a> · <a href="#how-it-is-built">How it is built</a> · <a href="docs/USAGE.md">User guide</a></p>
 </div>
 
-![ScreenFling reviewing a screenshot before sending it to a coding session](docs/preview.webp)
+![ScreenFling selecting a build error, with Copy and Send to Windows Terminal next to the selection](docs/preview.webp)
 
-*The actual native app, showing a synthetic deployment error.*
+*The real app on Windows, over a synthetic deployment page.*
 
-A screenshot often explains a bug faster than a paragraph. ScreenFling gives you a small, native capture-and-paste workflow for your coding agent.
+A screenshot often explains a bug faster than a paragraph. ScreenFling is a small native tool for getting one into Claude Code, Codex, OpenCode, Cursor, a browser chat, or anything else that accepts a pasted image.
 
 ## How it works
 
-1. **Capture** a region with the button or global shortcut.
-2. **Review** the image at Fit or 1:1 size.
-3. **Copy image**, switch to your agent, and press **Ctrl+V**.
+1. In your agent, press **Ctrl+Shift+9** (**Cmd+Shift+9** on macOS). The screen freezes.
+2. Drag a region, or press **Space** for the whole display.
+3. Press **Enter** to **Send**: ScreenFling returns to your agent and presses its image-paste key once. Or choose **Copy** (Ctrl+C / Cmd+C) and paste it yourself.
 
-Started capture from a terminal? **Paste back** returns to that terminal and presses Ctrl+V for you. You choose the agent by focusing it before capture. ScreenFling never presses Enter.
+Send never presses Enter, so you still review and submit the prompt. It works with terminals and GUI apps alike. Each gets the key it expects for an image: **Alt+V** in Windows terminals, **Ctrl+V** in macOS terminals, and the normal paste key elsewhere.
 
-No agent accounts, terminal plugins, socket configuration or saved image files. The clipboard is the handoff. Your agent must support clipboard images and your terminal must pass through its image-paste shortcut. [Usage and platform support](docs/USAGE.md).
+There are no agent plugins, accounts, saved screenshot files or uploads. The clipboard is the handoff. See [the user guide](docs/USAGE.md) for every key, platform limits and permissions.
 
-## Engineering
+## How it is built
 
-- **One image model.** Native Windows, macOS, X11 and Wayland capture adapters produce the same RGBA pixels. Selection preserves the original resolution, including fractional display scaling. [Capture](src/capture/) · [geometry](src/model.rs)
-- **Explicit state.** Capture → selection → review → delivery. Late capture results are discarded; cancelling leaves the clipboard unchanged. [Application](src/app.rs)
-- **Small platform boundaries.** Image clipboard access and optional focus/paste adapters stay separate from the UI. Paste checks focus and clipboard, sends once, and leaves submission to you. [Clipboard](src/clipboard.rs) · [paste back](src/send.rs)
+- **One state machine.** Capturing → Selecting → Sending. Each stage owns exactly the data it needs, so a stale, cancelled or replaced image cannot be delivered. A late capture result for a cancelled capture is discarded by its generation id. [app.rs](src/app.rs)
+- **One image model.** Native Windows, macOS, X11 and Wayland capture adapters produce the same RGBA pixels. A selection maps to the captured pixels using the real image size, never an assumed scale factor, so crops stay exact at fractional display scaling. [capture](src/capture/) · [model.rs](src/model.rs)
+- **One verified paste.** Send checks that the original window has focus and that the clipboard still holds this image, then sends one chord and never retries. Keyboard actions wait until every key is released, so a held Enter or Ctrl+C cannot leak into your agent. [send.rs](src/send.rs) · [clipboard.rs](src/clipboard.rs)
 
-[CI](.github/workflows/check.yml) builds and packages all three platforms. Tests compare every crop pixel on X11 and Wayland at 125% scale, read native clipboards from separate processes, and verify paste-back delivery in disposable terminals. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
+[CI](.github/workflows/check.yml) builds and packages all three platforms. Fixtures compare every cropped pixel on X11 and Wayland at 125% scale, read the native clipboard from a separate process, and check that Send reaches only the original terminal with exactly one paste and no Enter. [Reproduce the checks](docs/DEVELOPMENT.md#checks).
 
 ## Try it
 
-Install **Rust, CMake and a native C/C++ toolchain**. Follow the [platform prerequisites](docs/DEVELOPMENT.md#build-prerequisites), including Linux development libraries and macOS 14+.
+Install **Rust, CMake and a native C/C++ toolchain**, plus the [platform prerequisites](docs/DEVELOPMENT.md#build-prerequisites).
 
 ```sh
 git clone https://github.com/d-sandhu/screenfling.git
@@ -40,10 +40,10 @@ cd screenfling
 cargo run --release --locked
 ```
 
-Start with **Capture region** or **F8**. The [user guide](docs/USAGE.md) covers shortcuts, permissions and Paste back.
+Keep it running in the tray, then use the shortcut from any app.
 
 ## Status
 
-**Pre-release.** Automated checks cover Windows x86-64, macOS Apple Silicon and Linux x86-64. Physical desktop acceptance and real coding-agent attachment remain on the [v0.1.0 checklist](docs/DEVELOPMENT.md#remaining-release-acceptance); signing and notarization are deferred past the first release.
+**Pre-release.** Windows has been checked end to end on a physical desktop: Send attaches the image to a real Claude Code prompt in Windows Terminal and pastes into GUI apps, and Copy and cancel work. macOS and Linux are covered by CI. What remains before v0.1.0 is in the [release checklist](docs/DEVELOPMENT.md#release-checklist).
 
-[Development & contributing](docs/DEVELOPMENT.md) · [Visual design](docs/VISUALS.md) · [Report an issue](https://github.com/d-sandhu/screenfling/issues) · [MIT](LICENSE)
+[Development & contributing](docs/DEVELOPMENT.md) · [Report an issue](https://github.com/d-sandhu/screenfling/issues) · [MIT](LICENSE)
