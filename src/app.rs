@@ -200,15 +200,19 @@ impl App {
         overlay
     }
 
-    /// Hide a window. Wayland cannot unmap one (winit's `set_visible` does
-    /// nothing there), so the window is dropped and created again when needed.
+    /// Hide a window. Some are dropped instead and created again when needed:
+    /// - Wayland cannot unmap a window (winit's `set_visible` does nothing).
+    /// - X11 window managers clear a window's fullscreen state when it is
+    ///   unmapped, while winit still records it as fullscreen and would not
+    ///   apply it again; a fresh overlay per capture carries no stale state.
     fn hide(&mut self, which: Which) {
+        let drop = self.wayland || (cfg!(target_os = "linux") && matches!(which, Which::Overlay));
         let slot = match which {
             Which::Overlay => &mut self.overlay,
             Which::Notice => &mut self.notice,
             Which::Panel => &mut self.panel,
         };
-        if self.wayland {
+        if drop {
             *slot = None;
         } else if let Some(surface) = slot {
             surface.window.set_visible(false);
