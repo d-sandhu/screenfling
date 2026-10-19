@@ -32,7 +32,7 @@ use winit::{
     dpi::PhysicalPosition,
     event::{ElementState, KeyEvent, MouseButton, StartCause, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow},
-    keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey},
+    keyboard::{Key, ModifiersState, NamedKey, PhysicalKey},
     window::{CursorIcon, Fullscreen, Window, WindowId, WindowLevel},
 };
 
@@ -754,6 +754,9 @@ impl App {
                 overlay.present(|canvas| selection.draw(canvas, text, ""));
             }
             WindowEvent::CursorMoved { position, .. } => {
+                if selection.dragging() {
+                    trace(format_args!("drag to {position:?}"));
+                }
                 if selection.pointer_moved([position.x as f32, position.y as f32], &mut self.text)
                     && let Some(overlay) = &self.overlay
                 {
@@ -772,6 +775,11 @@ impl App {
                     }
                     ElementState::Released => selection.released(&mut self.text),
                 };
+                trace(format_args!(
+                    "{state:?}: dragging={} crop={:?}",
+                    selection.dragging(),
+                    selection.crop()
+                ));
                 if let Some(overlay) = &self.overlay {
                     overlay.window.request_redraw();
                 }
@@ -828,9 +836,10 @@ impl App {
                         Delivery::Copy
                     }));
                 }
-                _ if command
-                    && event.physical_key == PhysicalKey::Code(KeyCode::KeyC)
-                    && selection.crop().is_some() =>
+                // The key labelled C in the current layout; winit reports
+                // logical keys without Ctrl applied.
+                Key::Character(c)
+                    if command && c.eq_ignore_ascii_case("c") && selection.crop().is_some() =>
                 {
                     selection.armed = Some(Intent::Deliver(Delivery::Copy));
                 }
