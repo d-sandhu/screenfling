@@ -1,7 +1,8 @@
 //! Parse launch options before initializing the desktop or requesting capture.
 use std::ffi::OsString;
 
-pub const HELP: &str = "ScreenFling - select part of the screen, then copy it or send it back.
+pub const HELP: &str =
+    "ScreenFling - select part of the screen, then copy it or send it to your coding agent.
 
 Usage: screenfling [--capture | --help | --version]
 

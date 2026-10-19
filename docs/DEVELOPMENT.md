@@ -1,6 +1,6 @@
 # Developing ScreenFling
 
-ScreenFling has one image handoff: the OS clipboard. Send adds one step on top of it: return to the window that was active before capture and press that window's image-paste key once. There are no agent plugins, process scanners, sockets or screenshot files.
+ScreenFling has one image handoff: the OS clipboard. Send adds one step on top of it: activate an agent window and press its image-paste key once. There are no agent plugins, process scanners, sockets or screenshot files.
 
 ## Build prerequisites
 
@@ -32,7 +32,7 @@ The GUI requires OpenGL 3.2. Wayland capture also needs PipeWire and the composi
 | `model.rs`, `frame.rs` | Validated RGBA pixels, crop mapping, packed-buffer conversion |
 | `capture/` | Native capture: Windows, macOS ScreenCaptureKit, X11, Wayland portal + PipeWire |
 | `clipboard.rs` | Write and verify the image clipboard |
-| `send.rs`, `send/` | Remember the active window, return to it, verify focus, press one paste chord |
+| `send.rs`, `send/` | List agent windows by recency, remember the active window, activate, verify focus, press one paste chord |
 | `settings.rs` | The capture shortcut, read with bounds and saved atomically |
 
 ## Design
@@ -46,6 +46,17 @@ On Windows the overlay is one row taller than its monitor. Drivers promote a bor
 **Delivery.** Copy writes the clipboard and reads it back before reporting success. A failed write leaves the selection in place, so retrying is one key. Send also activates the remembered window, then polls for up to 2 s until that window owns focus. It checks again that focus and clipboard are unchanged and sends one chord. It never retries, because an OS acknowledgment is not proof of attachment and a repeated chord could paste twice. Keyboard-triggered actions, Esc included, wait until every key is released, so no held or auto-repeating key reaches the destination. Key state comes from SDL, because egui-sdl3 0.4 never reports modifier releases; `main.rs` also corrects egui's modifier state from SDL each frame.
 
 **Returning.** Finishing returns to where the user was. A capture begun in ScreenFling's window shows that window again. Otherwise focus is handed back to the remembered window explicitly, because hiding a window does not move focus on every platform: on macOS the app would stay active. The window then hides to the tray. Without a tray, a hidden window could never be reopened or quit, so it is shown behind without taking focus, and focus is handed back again for window managers that focus new windows. Errors always show the window.
+
+**Destinations.** Capture reads the desktop before ScreenFling's window hides. Two things come back:
+- the active window, which is where Copy and Cancel return focus;
+- the open agent windows, which are terminals and known agent apps, front to back.
+
+Front-to-back order is the desktop's own most-recently-used record, so nothing is tracked in the background:
+- **Windows:** `EnumWindows` z-order, keeping only visible, unowned, uncloaked windows.
+- **macOS:** `CGWindowListCopyWindowInfo`, layer 0, one entry per app, because macOS activates apps rather than windows.
+- **X11:** `_NET_CLIENT_LIST_STACKING`.
+
+The default destination is the last one sent to, if still open, otherwise the most recent agent window. Targets are windows; tabs inside a terminal are not addressed.
 
 **Paste chord.** Each adapter classifies the window it remembered:
 

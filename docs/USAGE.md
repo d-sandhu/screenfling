@@ -1,6 +1,6 @@
 # Using ScreenFling
 
-**Shortcut → drag a region → Enter.** The image lands in the app you came from, ready for you to submit.
+**Shortcut → drag a region → Enter.** The image lands in your coding agent, ready for you to submit.
 
 ## Capture
 
@@ -12,15 +12,22 @@ When the region is right:
 
 | Action | Key | What happens |
 | --- | --- | --- |
-| **Send** | Enter | Copies the image, returns to the app you came from and presses its image-paste key once. |
-| **Copy** | Ctrl+C (Cmd+C on macOS) | Copies the image. You switch apps and paste it yourself. |
+| **Send** | Enter | Copies the image, switches to your agent window and presses its image-paste key once. |
+| Choose the agent | Tab, or the ⏷ menu | Moves Send to the next open agent window. |
+| **Copy** | Ctrl+C (Cmd+C on macOS) | Copies the image and returns you to the app you were in. |
 | Cancel | Esc | Nothing is copied. The clipboard is unchanged. |
 
-When there is no window to return to, Enter copies instead. That happens when capture starts from the ScreenFling window, and always on Wayland. Actions run when you release the key, so a held key never reaches the destination.
+When no agent window is open, Enter copies instead, and on Wayland Copy is the only action. Actions run when you release the key, so a held key never reaches the destination.
 
 ## Send
 
-Send returns to the window that was active when you pressed the capture shortcut and pastes there. It does not choose an agent, tab or pane: keep the agent you want active in that window.
+Send goes to an **agent window**: a terminal, or an app such as Claude, ChatGPT or Codex desktop, Cursor, VS Code, Windsurf or Zed. You can capture from anywhere, such as a browser, a design tool or docs.
+
+- By default Send goes to the agent window you used most recently. If you capture from inside an agent window, that window is the most recent one.
+- The toolbar names the destination by its window title. Terminals show the active tab's title, which agents such as Claude Code set to the session name. Tab or the ⏷ menu picks another open agent window.
+- The last destination you sent to stays the default while it is open.
+
+Send targets a window. Inside a terminal window with several tabs, the image goes to the active tab. On macOS it targets the app's frontmost window.
 
 The paste key depends on where it lands:
 
@@ -33,7 +40,7 @@ The paste key depends on where it lands:
 
 Coding agents in a terminal read image paste from their own key, because the terminal keeps its paste shortcut for text. Claude Code and Codex use Alt+V on Windows and Ctrl+V on macOS and Linux. OpenCode uses Ctrl+V.
 
-Send never presses Enter. Afterwards, and after Copy or Esc, focus goes back to the window you came from, so the shortcut starts the next capture right away. ScreenFling hides to its tray icon; on a desktop without a tray, its window stays open behind yours so you can still reach Settings and Quit. If anything changed first (the window closed, focus moved, or the clipboard was replaced), nothing is pasted and the image stays copied.
+Send never presses Enter. Afterwards focus stays in your agent, ready for you to type. Copy and Esc return focus to the app you captured from. Either way, the shortcut starts the next capture right away. ScreenFling hides to its tray icon; on a desktop without a tray, its window stays open behind yours so you can still reach Settings and Quit. If anything changed first (the window closed, focus moved, or the clipboard was replaced), nothing is pasted and the image stays copied.
 
 **Where Send cannot help:**
 

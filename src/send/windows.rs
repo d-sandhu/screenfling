@@ -1,6 +1,7 @@
 use super::*;
 use windows_sys::Win32::{
-    Foundation::{CloseHandle, FILETIME, HWND},
+    Foundation::{CloseHandle, FILETIME, HWND, LPARAM},
+    Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute},
     Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW},
     System::Threading::{
         GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
@@ -8,7 +9,7 @@ use windows_sys::Win32::{
     UI::{Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
     window: usize,
     pid: u32,
@@ -104,6 +105,17 @@ const TERMINAL_APPS: &[&str] = &[
     "hyper",
     "warp",
 ];
+/// Coding agents with windows of their own, by executable name.
+const AGENT_APPS: &[&str] = &[
+    "claude",
+    "chatgpt",
+    "codex",
+    "cursor",
+    "code",
+    "code - insiders",
+    "windsurf",
+    "zed",
+];
 /// The desktop and taskbar are not paste destinations.
 const SHELL: &[&str] = &[
     "Progman",
@@ -118,8 +130,15 @@ fn class(window: HWND) -> String {
     String::from_utf16_lossy(&name[..length.max(0) as usize])
 }
 
-pub fn remember() -> Option<super::Target> {
-    let window = unsafe { GetForegroundWindow() };
+fn title(window: HWND) -> String {
+    let mut text = [0u16; 256];
+    let length = unsafe { GetWindowTextW(window, text.as_mut_ptr(), text.len() as i32) };
+    String::from_utf16_lossy(&text[..length.max(0) as usize])
+}
+
+/// A window as a destination, and whether it hosts a coding agent. `None`
+/// for the desktop, the taskbar and ScreenFling itself.
+fn describe(window: HWND) -> Option<(super::Target, bool)> {
     let class = class(window);
     if window.is_null() || SHELL.contains(&class.as_str()) {
         return None;
@@ -131,21 +150,66 @@ pub fn remember() -> Option<super::Target> {
     }
     let (path, started) = process(pid)?;
     let stem = stem(&path);
-    let terminal = TERMINAL_CLASSES.contains(&class.as_str())
-        || TERMINAL_APPS.contains(&stem.to_lowercase().as_str());
-    Some(super::Target {
-        application: description(&path).unwrap_or(stem),
-        modifier: if terminal {
-            Modifier::Alt
-        } else {
-            Modifier::Control
+    let name = stem.to_lowercase();
+    let terminal =
+        TERMINAL_CLASSES.contains(&class.as_str()) || TERMINAL_APPS.contains(&name.as_str());
+    let agent = terminal || AGENT_APPS.contains(&name.as_str());
+    Some((
+        super::Target {
+            application: description(&path).unwrap_or(stem),
+            title: title(window),
+            modifier: if terminal {
+                Modifier::Alt
+            } else {
+                Modifier::Control
+            },
+            native: Target {
+                window: window as usize,
+                pid,
+                started,
+            },
         },
-        native: Target {
-            window: window as usize,
-            pid,
-            started,
-        },
-    })
+        agent,
+    ))
+}
+
+pub fn remember() -> Option<super::Target> {
+    describe(unsafe { GetForegroundWindow() }).map(|(target, _)| target)
+}
+
+/// Agent windows, front to back. Z-order is the desktop's own record of
+/// which windows were used most recently.
+pub fn agents() -> Vec<super::Target> {
+    unsafe extern "system" fn collect(window: HWND, list: LPARAM) -> windows_sys::core::BOOL {
+        // SAFETY: `list` is the Vec passed to EnumWindows below, alive for the call.
+        unsafe { (*(list as *mut Vec<HWND>)).push(window) };
+        1
+    }
+    let mut windows: Vec<HWND> = Vec::new();
+    unsafe { EnumWindows(Some(collect), &mut windows as *mut Vec<HWND> as LPARAM) };
+    windows
+        .into_iter()
+        .filter(|&window| switchable(window))
+        .filter_map(describe)
+        .filter_map(|(target, agent)| agent.then_some(target))
+        .collect()
+}
+
+/// A window Alt+Tab would offer: visible, unowned, and not cloaked on another
+/// virtual desktop or suspended.
+fn switchable(window: HWND) -> bool {
+    let mut cloaked = 0u32;
+    unsafe {
+        IsWindowVisible(window) != 0
+            && GetWindow(window, GW_OWNER).is_null()
+            && (DwmGetWindowAttribute(
+                window,
+                DWMWA_CLOAKED as u32,
+                (&mut cloaked as *mut u32).cast(),
+                4,
+            ) != 0
+                || cloaked == 0)
+    }
 }
 fn valid(target: &Target) -> bool {
     let mut pid = 0;

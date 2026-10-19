@@ -5,7 +5,7 @@ use x11rb::{
     rust_connection::RustConnection,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
     window: u32,
     pid: u32,
@@ -49,25 +49,84 @@ fn process(pid: u32) -> Option<(String, u64)> {
         .ok()?;
     Some((name, started))
 }
-pub fn remember() -> Option<super::Target> {
-    let (conn, screen) = connection().ok()?;
-    let root = conn.setup().roots[screen].root;
-    let window = *values(&conn, root, b"_NET_ACTIVE_WINDOW").ok()?.first()?;
-    let pid = *values(&conn, window, b"_NET_WM_PID").ok()?.first()?;
+/// Terminals and coding agents with windows of their own, by executable name.
+const AGENTS: &[&str] = &[
+    "ghostty",
+    "wezterm-gui",
+    "kitty",
+    "alacritty",
+    "xterm",
+    "xfce4-terminal",
+    "gnome-terminal-server",
+    "ptyxis",
+    "konsole",
+    "tilix",
+    "terminator",
+    "foot",
+    "footclient",
+    "code",
+    "cursor",
+    "windsurf",
+    "zed",
+    "zed-editor",
+];
+
+fn title(conn: &RustConnection, window: u32) -> String {
+    let Ok(name) = atom(conn, b"_NET_WM_NAME") else {
+        return String::new();
+    };
+    conn.get_property(false, window, name, AtomEnum::ANY, 0, 256)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(|reply| String::from_utf8_lossy(&reply.value).into_owned())
+        .unwrap_or_default()
+}
+
+/// A window as a destination, and whether it hosts a coding agent. `None`
+/// for windows without a process and for ScreenFling itself.
+fn describe(conn: &RustConnection, window: u32) -> Option<(super::Target, bool)> {
+    let pid = *values(conn, window, b"_NET_WM_PID").ok()?.first()?;
     if pid == std::process::id() {
         return None;
     }
     let (name, started) = process(pid)?;
+    let agent = AGENTS.contains(&name.to_lowercase().as_str());
     // X11 terminals forward Control+V to the program inside, and GUI apps paste with it.
-    Some(super::Target {
-        application: name,
-        modifier: Modifier::Control,
-        native: Target {
-            window,
-            pid,
-            started,
+    Some((
+        super::Target {
+            application: name,
+            title: title(conn, window),
+            modifier: Modifier::Control,
+            native: Target {
+                window,
+                pid,
+                started,
+            },
         },
-    })
+        agent,
+    ))
+}
+
+pub fn remember() -> Option<super::Target> {
+    let (conn, screen) = connection().ok()?;
+    let root = conn.setup().roots[screen].root;
+    let window = *values(&conn, root, b"_NET_ACTIVE_WINDOW").ok()?.first()?;
+    describe(&conn, window).map(|(target, _)| target)
+}
+
+/// Agent windows, most recently raised first (EWMH stacking order).
+pub fn agents() -> Vec<super::Target> {
+    let Ok((conn, screen)) = connection() else {
+        return Vec::new();
+    };
+    let root = conn.setup().roots[screen].root;
+    let stacking = values(&conn, root, b"_NET_CLIENT_LIST_STACKING").unwrap_or_default();
+    stacking
+        .into_iter()
+        .rev()
+        .filter_map(|window| describe(&conn, window))
+        .filter_map(|(target, agent)| agent.then_some(target))
+        .collect()
 }
 fn valid(conn: &RustConnection, target: &Target) -> bool {
     values(conn, target.window, b"_NET_WM_PID").is_ok_and(|v| v.first() == Some(&target.pid))

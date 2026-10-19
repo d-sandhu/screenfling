@@ -106,7 +106,7 @@ fn home(app: &mut App, ui: &mut Ui) -> Action {
         });
         muted(
             ui,
-            "Select part of the screen, then copy it or send it straight back to the app you came from.",
+            "Select part of the screen, then copy it or send it straight to your coding agent.",
         );
         ui.add_space(4.0);
         ui.add_enabled_ui(idle, |ui| {
@@ -139,7 +139,7 @@ fn home(app: &mut App, ui: &mut Ui) -> Action {
         muted(
             ui,
             format!(
-                "Selecting: drag · Space whole display · Enter send or copy · {COPY_KEY} copy · Esc cancel"
+                "Selecting: drag · Space whole display · Enter send · Tab next agent · {COPY_KEY} copy · Esc cancel"
             ),
         );
         if capture::is_wayland() {
@@ -203,24 +203,29 @@ fn select(selection: &mut Selection, status: &str, ui: &mut Ui) -> Action {
     let crop = selection
         .region
         .and_then(|region| crop_for(region, image, pixels).ok());
-    let target = selection.target.as_ref();
-    let (escape, copy, enter) = ui.input(|i| {
+    let (escape, copy, enter, tab) = ui.input(|i| {
         (
             i.key_pressed(egui::Key::Escape),
             i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
             i.key_pressed(egui::Key::Enter),
+            i.key_pressed(egui::Key::Tab),
         )
     });
-    if escape {
+    if escape && egui::Popup::is_any_open(ui.ctx()) {
+        // Escape closes the destination list before it cancels the capture.
+        egui::Popup::close_all(ui.ctx());
+    } else if escape {
         selection.armed = Some(Intent::Cancel);
+    } else if tab && !selection.agents.is_empty() {
+        selection.chosen = (selection.chosen + 1) % selection.agents.len();
     } else if !dragging && crop.is_some() {
         if copy {
             selection.armed = Some(Intent::Deliver(Delivery::Copy));
         } else if enter {
-            selection.armed = Some(Intent::Deliver(if target.is_some() {
-                Delivery::Send
-            } else {
+            selection.armed = Some(Intent::Deliver(if selection.agents.is_empty() {
                 Delivery::Copy
+            } else {
+                Delivery::Send
             }));
         }
     }
@@ -238,7 +243,7 @@ fn select(selection: &mut Selection, status: &str, ui: &mut Ui) -> Action {
     }
     if let (Some(region), Some(crop)) = (selection.region, crop) {
         outline(ui, region, image);
-        if let Some(clicked) = toolbar(ui, region, image, crop, target, dragging) {
+        if let Some(clicked) = toolbar(ui, region, image, crop, selection, dragging) {
             action = Action::Deliver(clicked, crop);
         }
     }
@@ -312,7 +317,7 @@ fn toolbar(
     region: Rect,
     image: Rect,
     crop: Crop,
-    target: Option<&send::Target>,
+    selection: &mut Selection,
     dragging: bool,
 ) -> Option<Delivery> {
     const GAP: f32 = 8.0;
@@ -352,29 +357,40 @@ fn toolbar(
                         if dragging {
                             return;
                         }
-                        let copy = match target {
-                            Some(_) => format!("Copy  {COPY_KEY}"),
-                            None => "Copy  Enter".to_owned(),
+                        let Some(agent) = selection.agents.get(selection.chosen) else {
+                            if ui.add(primary("Copy  Enter")).clicked() {
+                                clicked = Some(Delivery::Copy);
+                            }
+                            return;
                         };
-                        let copy = if target.is_some() {
-                            ui.button(copy)
-                        } else {
-                            ui.add(primary(&copy))
-                        };
-                        if copy.clicked() {
+                        if ui.button(format!("Copy  {COPY_KEY}")).clicked() {
                             clicked = Some(Delivery::Copy);
                         }
-                        if let Some(target) = target
-                            && ui
-                                .add(primary(&format!("Send to {}  Enter", target.application)))
-                                .on_hover_text(format!(
-                                    "Return to {} and press {} once. Nothing is submitted.",
-                                    target.application,
-                                    target.chord()
-                                ))
-                                .clicked()
+                        if ui
+                            .add(primary(&format!("Send to {}  Enter", agent.name())))
+                            .on_hover_text(format!(
+                                "Activate {} and press {} once. Nothing is submitted.",
+                                agent.label(),
+                                agent.chord()
+                            ))
+                            .clicked()
                         {
                             clicked = Some(Delivery::Send);
+                        }
+                        if selection.agents.len() > 1 {
+                            ui.menu_button("⏷", |ui| {
+                                for (index, agent) in selection.agents.iter().enumerate() {
+                                    if ui
+                                        .selectable_label(index == selection.chosen, agent.label())
+                                        .clicked()
+                                    {
+                                        selection.chosen = index;
+                                        ui.close();
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text("Choose where Send goes (Tab)");
                         }
                     });
                 });

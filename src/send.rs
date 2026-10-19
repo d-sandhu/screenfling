@@ -1,5 +1,5 @@
-//! Send: return to the window that was active before capture and press its
-//! paste key once. The clipboard carries the image; Enter is never pressed.
+//! Send: activate an agent window and press its image-paste key once. The
+//! clipboard carries the image; Enter is never pressed.
 use screenfling::model::Result;
 use std::time::{Duration, Instant};
 
@@ -33,11 +33,37 @@ pub enum Modifier {
 #[derive(Clone, Debug)]
 pub struct Target {
     pub application: String,
+    /// The window title, which tells two windows of one app apart. Terminals
+    /// show the active tab's title, such as the agent's session name.
+    pub title: String,
     pub modifier: Modifier,
     native: native::Target,
 }
 
 impl Target {
+    /// The same window of the same process, still identifiable across captures.
+    pub fn same(&self, other: &Self) -> bool {
+        self.native == other.native
+    }
+    /// Short name for a button: the window title when there is one.
+    pub fn name(&self) -> String {
+        shorten(
+            if self.title.trim().is_empty() {
+                &self.application
+            } else {
+                &self.title
+            },
+            32,
+        )
+    }
+    /// Full name for a list: title and application.
+    pub fn label(&self) -> String {
+        if self.title.trim().is_empty() {
+            self.application.clone()
+        } else {
+            format!("{} — {}", shorten(&self.title, 48), self.application)
+        }
+    }
     pub fn chord(&self) -> &'static str {
         match self.modifier {
             Modifier::Control => "Ctrl+V",
@@ -50,6 +76,22 @@ impl Target {
 /// The active window of another application, if the desktop allows returning to it.
 pub fn remember() -> Option<Target> {
     native::remember()
+}
+
+/// Open windows that host a coding agent (terminals and agent apps), most
+/// recently used first. Empty where the desktop does not allow Send.
+pub fn agents() -> Vec<Target> {
+    native::agents()
+}
+
+fn shorten(text: &str, limit: usize) -> String {
+    let text = text.trim();
+    if text.chars().count() <= limit {
+        return text.to_owned();
+    }
+    let mut short: String = text.chars().take(limit - 1).collect();
+    short.push('…');
+    short
 }
 
 /// Give focus back to the window capture started from, without pasting.
@@ -122,6 +164,13 @@ fn checked_paste(
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[test]
+    fn names_stay_short_and_fall_back_to_the_application() {
+        assert_eq!(shorten("  Claude Code  ", 32), "Claude Code");
+        assert_eq!(shorten("abcdef", 4), "abc…");
+        assert_eq!(shorten("ééééé", 5), "ééééé");
+    }
 
     #[test]
     fn paste_requires_the_same_clipboard_and_focus_and_never_retries() {

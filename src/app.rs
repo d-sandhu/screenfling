@@ -54,7 +54,8 @@ pub enum Stage {
         id: u64,
         due: Option<(Instant, [i32; 2])>,
         cancelled: Arc<AtomicBool>,
-        target: Option<send::Target>,
+        origin: Option<send::Target>,
+        agents: Vec<send::Target>,
     },
     /// The frozen display fills the overlay while a region is chosen.
     Selecting(Selection),
@@ -75,7 +76,12 @@ enum Present {
 pub struct Selection {
     pixels: Pixels,
     texture: TextureHandle,
-    target: Option<send::Target>,
+    /// The window capture started from; Copy and Cancel return focus there.
+    origin: Option<send::Target>,
+    /// Where Send can go, most recently used first.
+    agents: Vec<send::Target>,
+    /// Index into `agents` of the Send destination.
+    chosen: usize,
     /// Pointer position where the current drag began.
     anchor: Option<Pos2>,
     /// Chosen region in overlay points.
@@ -109,6 +115,8 @@ pub struct App {
     present: Option<Present>,
     /// The window to give focus back to once ours has stepped aside.
     origin: Option<send::Target>,
+    /// The last Send destination; it stays the default while it is open.
+    last_sent: Option<send::Target>,
     pub tray_available: bool,
     pub quit: bool,
 }
@@ -133,6 +141,7 @@ impl App {
             reopen: true,
             present: None,
             origin: None,
+            last_sent: None,
             tray_available: false,
             quit: false,
         }
@@ -269,14 +278,14 @@ impl App {
     fn stop(&mut self, window: &mut Window, status: &str, ok: bool) {
         let origin = match std::mem::replace(&mut self.stage, Stage::Idle) {
             Stage::Capturing {
-                cancelled, target, ..
+                cancelled, origin, ..
             } => {
                 cancelled.store(true, Ordering::Release);
-                target
+                origin
             }
             Stage::Selecting(selection) => {
                 close_overlay(window, self.restore);
-                selection.target
+                selection.origin
             }
             other => {
                 self.stage = other;
@@ -331,7 +340,8 @@ impl App {
         if !matches!(self.stage, Stage::Capturing { id: current, .. } if current == id) {
             return;
         }
-        let Stage::Capturing { target, .. } = std::mem::replace(&mut self.stage, Stage::Idle)
+        let Stage::Capturing { origin, agents, .. } =
+            std::mem::replace(&mut self.stage, Stage::Idle)
         else {
             unreachable!()
         };
@@ -358,7 +368,13 @@ impl App {
         self.stage = Stage::Selecting(Selection {
             pixels: captured.pixels,
             texture,
-            target,
+            chosen: self
+                .last_sent
+                .as_ref()
+                .and_then(|last| agents.iter().position(|agent| agent.same(last)))
+                .unwrap_or(0),
+            origin,
+            agents,
             anchor: None,
             region: None,
             armed: None,
@@ -432,12 +448,14 @@ impl App {
         if !self.reap() {
             return Err("The previous capture is still ending. Try again.".into());
         }
-        // The window that is active now is where Send returns.
-        let target = send::remember();
+        // Read the desktop before our window hides: the active window is where
+        // Copy and Cancel return, and the window order ranks Send destinations.
+        let origin = send::remember();
+        let agents = send::agents();
         let hidden = window.window_flags().0
             & (sdl3_sys::video::SDL_WINDOW_HIDDEN.0 | sdl3_sys::video::SDL_WINDOW_MINIMIZED.0)
             != 0;
-        self.reopen = target.is_none() && !hidden;
+        self.reopen = origin.is_none() && !hidden;
         self.restore = desktop::geometry(window);
         self.generation = self.generation.wrapping_add(1);
         let pointer = desktop::pointer();
@@ -452,7 +470,8 @@ impl App {
             id: self.generation,
             due: Some((Instant::now() + Duration::from_millis(100), pointer)),
             cancelled: Arc::new(AtomicBool::new(false)),
-            target,
+            origin,
+            agents,
         };
         Ok(())
     }
@@ -461,8 +480,9 @@ impl App {
         let Stage::Selecting(selection) = &self.stage else {
             return Ok(());
         };
-        if delivery == Delivery::Send && selection.target.is_none() {
-            return Err("Send needs a window to return to. Use Copy.".into());
+        let destination = selection.agents.get(selection.chosen).cloned();
+        if delivery == Delivery::Send && destination.is_none() {
+            return Err("No agent window is open. Use Copy.".into());
         }
         let image = selection.pixels.crop(crop)?;
         // A failed copy keeps the selection, so the user can simply try again.
@@ -471,8 +491,9 @@ impl App {
             unreachable!()
         };
         let summary = format!("{} × {}", image.width, image.height);
-        match (delivery, selection.target) {
+        match (delivery, destination) {
             (Delivery::Send, Some(target)) => {
+                self.last_sent = Some(target.clone());
                 // Activate while we still own the foreground, then step aside.
                 let started = send::Pending::start(target);
                 close_overlay(window, self.restore);
@@ -481,15 +502,17 @@ impl App {
                     Err(error) => self.fail(error),
                 }
             }
-            (_, target) => {
+            (_, agent) => {
                 close_overlay(window, self.restore);
-                let hint = match &target {
-                    Some(target) => {
-                        format!("Paste into {} with {}.", target.application, target.chord())
-                    }
+                let hint = match &agent {
+                    Some(agent) => format!("Paste into {} with {}.", agent.name(), agent.chord()),
                     None => PASTE.to_owned(),
                 };
-                self.finish(window, format!("Copied {summary}. {hint}"), target);
+                self.finish(
+                    window,
+                    format!("Copied {summary}. {hint}"),
+                    selection.origin,
+                );
             }
         }
         Ok(())
