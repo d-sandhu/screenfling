@@ -72,7 +72,7 @@ jobs:
               dpkg-query -W sway xdg-desktop-portal-wlr pipewire
               runuser -u sf-check -- python3 scripts/smoke-wayland.py
             '
-      - name: Send to the original window
+      - name: Send to the agent window
         if: runner.os == 'Linux'
         timeout-minutes: 3
         run: |
