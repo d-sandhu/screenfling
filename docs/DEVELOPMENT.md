@@ -56,7 +56,9 @@ Front-to-back order is the desktop's own most-recently-used record, so nothing i
 - **macOS:** `CGWindowListCopyWindowInfo`, layer 0, one entry per app, because macOS activates apps rather than windows.
 - **X11:** `_NET_CLIENT_LIST_STACKING`.
 
-The default destination is the last one sent to, if still open, otherwise the most recent agent window. Targets are windows; tabs inside a terminal are not addressed.
+The default destination is the last one sent to, if still open, otherwise the most recent agent window.
+
+Windows Terminal tabs are destinations of their own. They are read through UI Automation, the accessibility interface screen readers use, with no terminal setting or plugin: tab items and their names come from the window's automation tree, and the selected tab is listed first. Send selects the tab through its SelectionItem pattern, after checking that the tab at that position still has the listed name. Other terminals have no comparable interface, so they are targeted by window.
 
 **Paste chord.** Each adapter classifies the window it remembered:
 
@@ -153,6 +155,7 @@ v0.1.0 is: capture, select, then Copy or Send, with Send returning to any app.
 - [x] Windows, real agent: Send attaches `[Image #1]` to a Claude Code 2.1 prompt in Windows Terminal, without submitting it.
 - [x] Windows, Chromium: Send into a local Chrome page delivers the image through an ordinary Ctrl+V paste event. VS Code, Cursor and Claude desktop read the clipboard the same way.
 - [x] Windows, keyboard: Ctrl+C copies, and Esc cancels and returns focus. Holding Enter does nothing until release, then pastes once.
+- [x] Windows, destinations: capturing from Chrome sends to the most recently used terminal, and Chrome receives nothing. Tab picks another window, and the choice stays the default. Copy returns to Chrome. In one Windows Terminal window with two tabs, Tab then Enter selects the other tab and delivers exactly one Alt+V there.
 - [x] Linux: CI pixel, cancel and Send fixtures on X11, and pixel fixtures on Wayland.
 - [ ] macOS, physical desktop:
   - capture across display scales and multiple displays;

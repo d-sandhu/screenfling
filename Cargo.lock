@@ -2055,6 +2055,7 @@ dependencies = [
  "sdl3-sys",
  "serde",
  "serde_json",
+ "windows",
  "windows-sys 0.61.2",
  "x11rb",
  "xcap",

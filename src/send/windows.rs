@@ -14,6 +14,8 @@ pub struct Target {
     window: usize,
     pid: u32,
     started: u64,
+    /// A Windows Terminal tab: its position and name when listed.
+    tab: Option<(usize, String)>,
 }
 
 /// Executable path (NUL-terminated UTF-16) and start time. The start time
@@ -167,6 +169,7 @@ fn describe(window: HWND) -> Option<(super::Target, bool)> {
                 window: window as usize,
                 pid,
                 started,
+                tab: None,
             },
         },
         agent,
@@ -192,7 +195,33 @@ pub fn agents() -> Vec<super::Target> {
         .filter(|&window| switchable(window))
         .filter_map(describe)
         .filter_map(|(target, agent)| agent.then_some(target))
+        .flat_map(with_tabs)
         .collect()
+}
+
+/// A Windows Terminal window with several tabs becomes one destination per
+/// tab: the selected tab first, as the most recently used, then the rest.
+fn with_tabs(window: super::Target) -> Vec<super::Target> {
+    let tabs = if class(window.native.window as HWND) == "CASCADIA_HOSTING_WINDOW_CLASS" {
+        tabs::list(window.native.window)
+    } else {
+        Vec::new()
+    };
+    if tabs.len() < 2 {
+        return vec![window];
+    }
+    let mut targets: Vec<(bool, super::Target)> = tabs
+        .into_iter()
+        .enumerate()
+        .map(|(index, (name, selected))| {
+            let mut target = window.clone();
+            target.title = name.clone();
+            target.native.tab = Some((index, name));
+            (selected, target)
+        })
+        .collect();
+    targets.sort_by_key(|(selected, _)| !selected);
+    targets.into_iter().map(|(_, target)| target).collect()
 }
 
 /// A window Alt+Tab would offer: visible, unowned, and not cloaked on another
@@ -222,6 +251,11 @@ pub fn authorize() -> Result<()> {
 pub fn activate(target: &Target) -> Result<()> {
     if !valid(target) {
         return Err("That window closed. The image is copied; paste it manually.".into());
+    }
+    if let Some((index, name)) = &target.tab
+        && !tabs::select(target.window, *index, name)
+    {
+        return Err("That tab closed or moved. The image is copied; paste it manually.".into());
     }
     unsafe {
         if IsIconic(target.window as HWND) != 0 {
@@ -285,4 +319,72 @@ pub fn paste(modifier: Modifier) -> Result<()> {
         return Err("Windows did not confirm the paste request. Check the destination before retrying; elevated windows may reject input.".into());
     }
     Ok(())
+}
+
+/// Windows Terminal tabs through UI Automation, the interface screen readers
+/// use. No terminal setting or plugin is involved.
+mod tabs {
+    use windows::Win32::{
+        Foundation::HWND,
+        System::Com::{
+            CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+        },
+        UI::Accessibility::{
+            CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationSelectionItemPattern,
+            TreeScope_Descendants, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId,
+        },
+    };
+
+    fn items(window: usize) -> Option<Vec<IUIAutomationElement>> {
+        unsafe {
+            // SDL may already have initialized COM on this thread; either way
+            // the thread can create the in-process automation client.
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let automation: IUIAutomation =
+                CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+            let root = automation.ElementFromHandle(HWND(window as *mut _)).ok()?;
+            let all = root
+                .FindAll(
+                    TreeScope_Descendants,
+                    &automation.CreateTrueCondition().ok()?,
+                )
+                .ok()?;
+            let mut tabs = Vec::new();
+            for index in 0..all.Length().ok()? {
+                let element = all.GetElement(index).ok()?;
+                if element.CurrentControlType().ok()? == UIA_TabItemControlTypeId {
+                    tabs.push(element);
+                }
+            }
+            Some(tabs)
+        }
+    }
+
+    fn selection(tab: &IUIAutomationElement) -> Option<IUIAutomationSelectionItemPattern> {
+        unsafe { tab.GetCurrentPatternAs(UIA_SelectionItemPatternId).ok() }
+    }
+
+    /// Each tab's name, in order, and whether it is the selected one.
+    pub fn list(window: usize) -> Vec<(String, bool)> {
+        items(window)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|tab| {
+                let name = unsafe { tab.CurrentName() }.ok()?.to_string();
+                let selected = selection(tab)
+                    .and_then(|pattern| unsafe { pattern.CurrentIsSelected() }.ok())
+                    .is_some_and(|selected| selected.as_bool());
+                Some((name, selected))
+            })
+            .collect()
+    }
+
+    /// Select the tab at `index`, only if it still has the listed name.
+    pub fn select(window: usize, index: usize, name: &str) -> bool {
+        let Some(tab) = items(window).and_then(|tabs| tabs.into_iter().nth(index)) else {
+            return false;
+        };
+        unsafe { tab.CurrentName() }.is_ok_and(|current| current == name)
+            && selection(&tab).is_some_and(|pattern| unsafe { pattern.Select() }.is_ok())
+    }
 }

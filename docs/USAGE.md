@@ -27,7 +27,7 @@ Send goes to an **agent window**: a terminal, or an app such as Claude, ChatGPT 
 - The toolbar names the destination by its window title. Terminals show the active tab's title, which agents such as Claude Code set to the session name. Tab or the ⏷ menu picks another open agent window.
 - The last destination you sent to stays the default while it is open.
 
-Send targets a window. Inside a terminal window with several tabs, the image goes to the active tab. On macOS it targets the app's frontmost window.
+In **Windows Terminal**, every tab is its own destination, listed by tab title. Send switches to the chosen tab before pasting. Other terminals are targeted by window, and the image goes to the window's active tab. On macOS Send targets the app's frontmost window.
 
 The paste key depends on where it lands:
 

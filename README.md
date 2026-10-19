@@ -16,7 +16,7 @@ A screenshot often explains a bug faster than a paragraph. ScreenFling is a smal
 
 1. Anywhere, such as a browser, an app or docs, press **Ctrl+Shift+9** (**Cmd+Shift+9** on macOS). The screen freezes.
 2. Drag a region, or press **Space** for the whole display.
-3. Press **Enter** to **Send**: ScreenFling switches to the agent window you used last and presses its image-paste key once. **Tab** picks another open agent. Or choose **Copy** (Ctrl+C / Cmd+C) and paste it yourself.
+3. Press **Enter** to **Send**: ScreenFling switches to the agent window you used last and presses its image-paste key once. **Tab** picks another open agent, down to the tab in Windows Terminal. Or choose **Copy** (Ctrl+C / Cmd+C) and paste it yourself.
 
 Send never presses Enter, so you still review and submit the prompt. Agents in terminals and agent apps are both supported. Each gets the key it expects for an image: **Alt+V** in Windows terminals, **Ctrl+V** in macOS terminals, and the normal paste key in apps.
 
