@@ -263,7 +263,8 @@ def main():
         env.update(HOME=directory, SF_SMOKE_HOME=directory, XDG_RUNTIME_DIR=str(home / 'run'),
                    XDG_CONFIG_HOME=str(home / 'config'), XDG_DATA_HOME=str(home / 'data'),
                    XDG_CACHE_HOME=str(home / 'cache'), XDG_CURRENT_DESKTOP='sway', XDG_SESSION_TYPE='wayland',
-                   WLR_BACKENDS='headless', WLR_RENDERER='pixman', WLR_HEADLESS_OUTPUTS='1')
+                   WLR_BACKENDS='headless', WLR_RENDERER='pixman', WLR_HEADLESS_OUTPUTS='1',
+                   SCREENFLING_TRACE='1')
         sp.run(['dbus-run-session', '--', sys.executable, str(Path(__file__).resolve()), '--session'],
                env=env, cwd=ROOT, check=True, timeout=150)
 
