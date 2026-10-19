@@ -19,7 +19,7 @@ sudo apt-get install build-essential cmake pkg-config clang libclang-dev \
 cargo run --release --locked
 ```
 
-No GPU is used. X11, Wayland and xkbcommon are loaded at runtime from the desktop. Wayland capture needs PipeWire and the compositor's ScreenCast portal backend; it imports CPU-readable shared memory, not GPU-only buffers. Building on Linux needs the PipeWire headers and libclang for its bindings.
+No GPU is used. X11 (libX11, libX11-xcb, libXcursor, libXi), Wayland and xkbcommon (with xkbcommon-x11 on X11) are loaded at runtime from the desktop, which provides them. Wayland capture needs PipeWire and the compositor's ScreenCast portal backend; it imports CPU-readable shared memory, not GPU-only buffers. Building on Linux needs the PipeWire headers and libclang for its bindings.
 
 ## Code map
 
