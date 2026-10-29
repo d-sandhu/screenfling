@@ -34,7 +34,7 @@
   },
   {
     "packages": {
-      "clipboard-win": "5.4.1"
+      "clipboard-win": "5.4.3"
     },
     "license": "BSL-1.0",
     "source": "https://api.github.com/repos/DoumanAsh/clipboard-win/git/blobs/36b7cd93cdfbac762f5be4c6ce276df2ea6305c2",
