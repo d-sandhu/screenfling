@@ -201,6 +201,6 @@ v0.1.0 is: capture, select, then Copy or Send, with Send returning to any app.
 Known limits:
 - macOS posts the V key by its US-layout key code. On Dvorak and similar layouts Send produces a different chord.
 
-Out of scope for v0.1.0: signing and notarization, installers, annotation, image history, saved files, choosing a destination other than the original window, and any form of submission.
+Out of scope for v0.1.0: signing and notarization, installers, annotation, image history, saved files, and any form of submission.
 
 Contributions should keep this contract small. Add regression tests for wrong pixels, unintended input, lost selections or broken recovery, and avoid agent-specific delivery protocols.
