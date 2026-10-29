@@ -68,7 +68,7 @@ Change the capture shortcut with **Change shortcut…** in the tray menu.
 
 **Windows 10/11.** Extract the ZIP and run `screenfling.exe`. Development packages are unsigned.
 
-**macOS 14+.** Extract the archive, move `ScreenFling.app` to `~/Applications`, and open that copy. Capture needs **Screen Recording**. Send also needs **Accessibility**, which is requested the first time you send. Copy does not need it.
+**macOS 14+.** Extract the archive, move `ScreenFling.app` to `~/Applications`, and open that copy. Capture needs **Screen Recording**. For Send to press the paste key for you, allow ScreenFling under **Device Control and Data Access** (**Accessibility** before macOS 27). macOS asks the first time you send. ScreenFling asks only to press keys, not to read other apps. Until you allow it, Send switches to your agent and you press the key. Copy does not need it.
 
 After replacing a development build, macOS can keep a stale permission entry. Quit ScreenFling, remove its entry in System Settings → Privacy & Security, add the installed app again, and reopen it. Development packages are ad-hoc signed and not notarized; [stable local signing](DEVELOPMENT.md#macos-signing) avoids repeated prompts.
 

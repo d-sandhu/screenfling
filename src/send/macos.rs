@@ -2,20 +2,13 @@
 use super::*;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
-use objc2_core_foundation::{CFArray, CFBoolean, CFDictionary, CFNumber, CFString, CFType};
+use objc2_core_foundation::{CFArray, CFDictionary, CFNumber, CFString, CFType};
 use objc2_core_graphics::{
-    CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGWindowListCopyWindowInfo,
-    CGWindowListOption, kCGNullWindowID, kCGWindowLayer, kCGWindowName, kCGWindowOwnerPID,
+    CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess,
+    CGRequestPostEventAccess, CGWindowListCopyWindowInfo, CGWindowListOption, kCGNullWindowID,
+    kCGWindowLayer, kCGWindowName, kCGWindowOwnerPID,
 };
-use std::{
-    ffi::c_void,
-    sync::atomic::{AtomicBool, Ordering},
-};
-
-#[link(name = "ApplicationServices", kind = "framework")]
-unsafe extern "C" {
-    fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
-}
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// macOS activates applications, not single windows, so an app is the target.
 #[derive(Clone, Debug)]
@@ -132,17 +125,20 @@ pub fn agents() -> Vec<super::Target> {
     agents
 }
 
-/// Posting key events needs Accessibility; activating an app does not.
+/// Posting key events needs only the PostEvent privilege, not Accessibility,
+/// which would also let ScreenFling read other apps' interfaces. Activating
+/// an app needs neither. System Settings lists both under Device Control and
+/// Data Access (Accessibility before macOS 27).
 pub fn authorize() -> Result<()> {
-    // Ask only after an explicit Send, never on capture or startup.
-    static PROMPTED: AtomicBool = AtomicBool::new(false);
-    let prompt = CFString::from_str("AXTrustedCheckOptionPrompt");
-    let options = CFDictionary::from_slices(
-        &[&*prompt],
-        &[CFBoolean::new(!PROMPTED.swap(true, Ordering::Relaxed))],
-    );
-    if !unsafe { AXIsProcessTrustedWithOptions((&*options as *const CFDictionary<_, _>).cast()) } {
-        return Err("Send needs Accessibility access. Enable ScreenFling in System Settings > Privacy & Security > Accessibility. The image is already copied; you can paste it manually.".into());
+    // Ask only after an explicit Send, never on capture or startup, and once per run.
+    static ASKED: AtomicBool = AtomicBool::new(false);
+    let allowed = if ASKED.swap(true, Ordering::Relaxed) {
+        CGPreflightPostEventAccess()
+    } else {
+        CGRequestPostEventAccess()
+    };
+    if !allowed {
+        return Err("Allow ScreenFling in Privacy & Security to have it pressed for you.".into());
     }
     Ok(())
 }

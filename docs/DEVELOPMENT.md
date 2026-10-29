@@ -54,7 +54,7 @@ All of them are drawn on the CPU and presented with softbuffer, which uses GDI o
 
 **Capture.** Notices hide, then after 100 ms a single worker reads the display under the pointer. The overlay then covers that display: borderless fullscreen on its monitor (Windows, X11, Wayland), or a window above the menu bar and Dock on every Space (macOS, set through NSWindow). The overlay stays fullscreen while hidden, because leaving fullscreen restores, and so shows, a window on Windows. Selections map to pixels through the captured image's real size (`model::map_crop`), which stays exact at fractional scaling.
 
-**Delivery.** Copy writes the clipboard and reads it back before reporting success. A failed write leaves the selection in place, so retrying is one key. Send also activates the remembered window, then polls for up to 2 s until that window owns focus. It checks again that focus and clipboard are unchanged and sends one chord. It never retries, because an OS acknowledgment is not proof of attachment and a repeated chord could paste twice. Keyboard-triggered actions, Esc included, wait until every key is released, so no held or auto-repeating key reaches the destination. Key state is the set of physical keys held, modifier keys included, tracked from winit's key events. It does not depend on modifier-state events, which arrive in a different order on each platform. macOS and Wayland do not report releases for keys held as focus leaves, so losing focus clears the set.
+**Delivery.** Copy writes the clipboard and reads it back before reporting success. A failed write leaves the selection in place, so retrying is one key. Send also activates the remembered window, then polls for up to 2 s until that window owns focus. It checks again that focus and clipboard are unchanged and sends one chord. On macOS, posting that chord needs the PostEvent privilege, requested on the first Send. ScreenFling does not request Accessibility, which would also let it read other apps' interfaces; System Settings lists both under Device Control and Data Access (Accessibility before macOS 27). Without the privilege, Send still activates the window and names the key to press, and posts nothing, because macOS would ask again for every posted key. It never retries, because an OS acknowledgment is not proof of attachment and a repeated chord could paste twice. Keyboard-triggered actions, Esc included, wait until every key is released, so no held or auto-repeating key reaches the destination. Key state is the set of physical keys held, modifier keys included, tracked from winit's key events. It does not depend on modifier-state events, which arrive in a different order on each platform. macOS and Wayland do not report releases for keys held as focus leaves, so losing focus clears the set.
 
 **Returning.** Finishing returns to where the user was: the agent after Send, otherwise the window capture started from. Focus is handed back explicitly, because hiding a window does not move it on every platform (macOS would keep ScreenFling active). Without a tray, the home panel reappears behind without taking focus, unless the capture began from it. Errors appear in a notice.
 
@@ -173,7 +173,7 @@ For repeated local builds, reuse a code-signing certificate from your keychain:
 python3 scripts/package.py --signing-identity CERTIFICATE_SHA1_FINGERPRINT
 ```
 
-Supply a dedicated keychain with `--signing-keychain /absolute/path/to/keychain`. The full 40-digit fingerprint prevents selecting the wrong certificate when two share a name. If signing fails, packaging stops; it never silently falls back to ad-hoc. Keep the certificate and the installed bundle path the same across updates. Screen Recording consent, and Accessibility for Send, are still required once.
+Supply a dedicated keychain with `--signing-keychain /absolute/path/to/keychain`. The full 40-digit fingerprint prevents selecting the wrong certificate when two share a name. If signing fails, packaging stops; it never silently falls back to ad-hoc. Keep the certificate and the installed bundle path the same across updates. Screen Recording consent, and permission to post key events for Send, are still required once.
 
 Apple documents [designated requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements) and [self-signed identities for local development](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/Procedures/Procedures.html). A local development certificate is not Developer ID notarization.
 
@@ -191,7 +191,7 @@ v0.1.0 is: capture, select, then Copy or Send, with Send returning to any app.
 - [ ] Linux desktop with a tray host (KDE, or GNOME with AppIndicator): the ksni tray menu and start at login.
 - [ ] macOS, physical desktop:
   - capture across display scales and multiple displays;
-  - Screen Recording and Accessibility grant, deny and revoke;
+  - Screen Recording and Device Control and Data Access grant, deny and revoke, with Send falling back to naming the key;
   - Send into Terminal and Ghostty (Ctrl+V) and into a GUI app (Cmd+V);
   - the overlay above the menu bar and Dock on each display, the tray menu, and start at login;
   - the attachment appears in Claude Code and Codex.

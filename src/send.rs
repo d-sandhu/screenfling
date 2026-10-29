@@ -101,17 +101,21 @@ pub fn return_to(target: &Target) {
 }
 
 /// Activation is asynchronous: wait for the target to own focus, then paste once.
+/// Without permission to press keys, Send still brings the target forward and
+/// names the key to press.
 pub struct Pending {
     target: Target,
     deadline: Instant,
+    authorized: Result<()>,
 }
 impl Pending {
     pub fn start(target: Target) -> Result<Self> {
-        native::authorize()?;
+        let authorized = native::authorize();
         native::activate(&target.native)?;
         Ok(Self {
             target,
             deadline: Instant::now() + Duration::from_secs(2),
+            authorized,
         })
     }
     pub fn into_target(self) -> Target {
@@ -129,7 +133,9 @@ impl Pending {
         }
         Some(
             checked_paste(
-                clipboard_matches(),
+                &self.authorized,
+                self.target.chord(),
+                clipboard_matches,
                 || native::focused(&self.target.native),
                 || paste(&self.target),
             )
@@ -148,11 +154,18 @@ fn paste(target: &Target) -> Result<()> {
 }
 
 fn checked_paste(
-    clipboard_matches: bool,
+    authorized: &Result<()>,
+    chord: &str,
+    clipboard_matches: impl FnOnce() -> bool,
     focused: impl FnOnce() -> bool,
     paste: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
-    if !clipboard_matches || !focused() {
+    // Without permission, attempt nothing: macOS would ask again for every
+    // posted key, and the clipboard need not be read.
+    if let Err(reason) = authorized {
+        return Err(format!("Press {chord} to paste. {reason}"));
+    }
+    if !clipboard_matches() || !focused() {
         return Err("The window or clipboard changed. Nothing was pasted.".into());
     }
     // One request only. An OS acknowledgment is not an attachment receipt,
@@ -179,14 +192,29 @@ mod tests {
             calls.set(calls.get() + 1);
             Ok(())
         };
-        assert!(checked_paste(false, || true, paste).is_err());
-        assert!(checked_paste(true, || false, paste).is_err());
+        assert!(checked_paste(&Ok(()), "Ctrl+V", || false, || true, paste).is_err());
+        assert!(checked_paste(&Ok(()), "Ctrl+V", || true, || false, paste).is_err());
         assert_eq!(calls.get(), 0);
         let failing = || {
             calls.set(calls.get() + 1);
             Err("OS rejected paste".into())
         };
-        assert!(checked_paste(true, || true, failing).is_err());
+        assert!(checked_paste(&Ok(()), "Ctrl+V", || true, || true, failing).is_err());
         assert_eq!(calls.get(), 1);
+    }
+
+    #[test]
+    fn without_permission_nothing_is_read_or_pressed() {
+        let touched = Cell::new(false);
+        let touch = || {
+            touched.set(true);
+            true
+        };
+        let result = checked_paste(&Err("Allow it.".into()), "Cmd+V", touch, touch, || {
+            touched.set(true);
+            Ok(())
+        });
+        assert_eq!(result, Err("Press Cmd+V to paste. Allow it.".into()));
+        assert!(!touched.get());
     }
 }
